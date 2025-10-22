@@ -1,0 +1,280 @@
+<?php
+session_start();
+require_once '../config.php';
+require_once '../functions.php';
+
+header('Content-Type: application/json');
+
+if (!isLoggedIn()) {
+    echo json_encode(['success' => false, 'message' => 'Nicht angemeldet']);
+    exit();
+}
+
+$exhibitorId = intval($_GET['id'] ?? 0);
+$tab = $_GET['tab'] ?? 'info';
+
+if (!$exhibitorId) {
+    echo json_encode(['success' => false, 'message' => 'Ungültige ID']);
+    exit();
+}
+
+$db = getDB();
+$stmt = $db->prepare("SELECT * FROM exhibitors WHERE id = ?");
+$stmt->execute([$exhibitorId]);
+$exhibitor = $stmt->fetch();
+
+if (!$exhibitor) {
+    echo json_encode(['success' => false, 'message' => 'Aussteller nicht gefunden']);
+    exit();
+}
+
+// Registrierungsstatistik
+$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ?");
+$stmt->execute([$exhibitorId]);
+$registeredCount = $stmt->fetch()['count'];
+
+$content = '';
+
+switch ($tab) {
+    case 'info':
+        $content = generateInfoTab($exhibitor, $registeredCount);
+        break;
+    case 'documents':
+        $content = generateDocumentsTab($exhibitorId);
+        break;
+    case 'contact':
+        $content = generateContactTab($exhibitor);
+        break;
+}
+
+echo json_encode([
+    'success' => true,
+    'exhibitor' => $exhibitor,
+    'content' => $content
+]);
+
+function generateInfoTab($exhibitor, $registeredCount) {
+    $availableSlots = $exhibitor['total_slots'] - $registeredCount;
+    $percentage = ($exhibitor['total_slots'] > 0) ? ($registeredCount / $exhibitor['total_slots'] * 100) : 0;
+    
+    ob_start();
+    ?>
+    <div class="space-y-6">
+        <!-- Status Card -->
+        <div class="bg-gradient-to-r from-blue-50 to-blue-50 rounded-xl p-6 border border-blue-200">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-blue-600"><?php echo $exhibitor['total_slots']; ?></div>
+                    <div class="text-sm text-gray-600 mt-1">Gesamtplätze</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-green-600"><?php echo $availableSlots; ?></div>
+                    <div class="text-sm text-gray-600 mt-1">Verfügbar</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-3xl font-bold text-gray-600"><?php echo $registeredCount; ?></div>
+                    <div class="text-sm text-gray-600 mt-1">Angemeldet</div>
+                </div>
+            </div>
+            
+            <div class="mt-4">
+                <div class="flex items-center justify-between text-sm mb-2">
+                    <span class="text-gray-600">Auslastung</span>
+                    <span class="font-semibold text-gray-800"><?php echo round($percentage); ?>%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-3">
+                    <?php 
+                    $colorClass = $percentage >= 90 ? 'bg-red-500' : ($percentage >= 70 ? 'bg-yellow-500' : 'bg-green-500');
+                    ?>
+                    <div class="<?php echo $colorClass; ?> h-3 rounded-full transition-all duration-500" 
+                         style="width: <?php echo min($percentage, 100); ?>%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Beschreibung -->
+        <div>
+            <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-info-circle text-blue-600 mr-3"></i>
+                Über uns
+            </h3>
+            <div class="prose max-w-none text-gray-700 leading-relaxed">
+                <?php echo nl2br(htmlspecialchars($exhibitor['description'] ?? 'Keine Beschreibung verfügbar.')); ?>
+            </div>
+        </div>
+
+        <!-- Website Link -->
+        <?php if ($exhibitor['website']): ?>
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center">
+                    <i class="fas fa-globe text-blue-600 text-xl mr-3"></i>
+                    <div>
+                        <div class="font-semibold text-gray-800">Webseite besuchen</div>
+                        <div class="text-sm text-gray-600"><?php echo htmlspecialchars($exhibitor['website']); ?></div>
+                    </div>
+                </div>
+                <a href="http://<?php echo htmlspecialchars($exhibitor['website']); ?>" 
+                   target="_blank" 
+                   class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition">
+                    Öffnen <i class="fas fa-external-link-alt ml-2"></i>
+                </a>
+            </div>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+function generateDocumentsTab($exhibitorId) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? ORDER BY uploaded_at DESC");
+    $stmt->execute([$exhibitorId]);
+    $documents = $stmt->fetchAll();
+    
+    ob_start();
+    ?>
+    <div class="space-y-4">
+        <?php if (empty($documents)): ?>
+        <div class="text-center py-12">
+            <i class="fas fa-folder-open text-6xl text-gray-300 mb-4"></i>
+            <p class="text-gray-500 text-lg">Keine Dokumente verfügbar</p>
+        </div>
+        <?php else: ?>
+            <?php foreach ($documents as $doc): 
+                $iconClass = match($doc['file_type']) {
+                    'pdf' => 'fa-file-pdf text-red-500',
+                    'doc', 'docx' => 'fa-file-word text-blue-500',
+                    'ppt', 'pptx' => 'fa-file-powerpoint text-orange-500',
+                    'jpg', 'jpeg', 'png', 'gif' => 'fa-file-image text-green-500',
+                    default => 'fa-file text-gray-500'
+                };
+                $fileSize = round($doc['file_size'] / 1024, 2);
+            ?>
+            <div class="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                <div class="flex items-center space-x-4 flex-1 min-w-0">
+                    <div class="flex-shrink-0">
+                        <i class="fas <?php echo $iconClass; ?> text-3xl"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="font-semibold text-gray-800 truncate">
+                            <?php echo htmlspecialchars($doc['original_name']); ?>
+                        </p>
+                        <p class="text-sm text-gray-500">
+                            <?php echo $fileSize; ?> KB · <?php echo formatDateTime($doc['uploaded_at']); ?>
+                        </p>
+                    </div>
+                </div>
+                <a href="<?php echo BASE_URL; ?>uploads/<?php echo htmlspecialchars($doc['filename']); ?>" 
+                   download 
+                   class="ml-4 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex-shrink-0">
+                    <i class="fas fa-download mr-2"></i>Download
+                </a>
+            </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+
+function generateContactTab($exhibitor) {
+    ob_start();
+    ?>
+    <div class="space-y-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- Kontaktperson -->
+            <?php if ($exhibitor['contact_person']): ?>
+            <div class="bg-gradient-to-br from-blue-50 to-blue-50 rounded-xl p-6 border border-blue-200">
+                <div class="flex items-center mb-4">
+                    <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center mr-4">
+                        <i class="fas fa-user text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Ansprechpartner</h4>
+                        <p class="text-sm text-gray-600">Ihr Kontakt</p>
+                    </div>
+                </div>
+                <p class="text-lg font-semibold text-gray-800">
+                    <?php echo htmlspecialchars($exhibitor['contact_person']); ?>
+                </p>
+            </div>
+            <?php endif; ?>
+
+            <!-- Email -->
+            <?php if ($exhibitor['email']): ?>
+            <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6 border border-blue-200">
+                <div class="flex items-center mb-4">
+                    <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center mr-4">
+                        <i class="fas fa-envelope text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">E-Mail</h4>
+                        <p class="text-sm text-gray-600">Kontaktieren Sie uns</p>
+                    </div>
+                </div>
+                <a href="mailto:<?php echo htmlspecialchars($exhibitor['email']); ?>" 
+                   class="text-lg text-blue-600 hover:text-blue-700 font-semibold break-all">
+                    <?php echo htmlspecialchars($exhibitor['email']); ?>
+                </a>
+            </div>
+            <?php endif; ?>
+
+            <!-- Telefon -->
+            <?php if ($exhibitor['phone']): ?>
+            <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+                <div class="flex items-center mb-4">
+                    <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4">
+                        <i class="fas fa-phone text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Telefon</h4>
+                        <p class="text-sm text-gray-600">Rufen Sie an</p>
+                    </div>
+                </div>
+                <a href="tel:<?php echo htmlspecialchars($exhibitor['phone']); ?>" 
+                   class="text-lg text-green-600 hover:text-green-700 font-semibold">
+                    <?php echo htmlspecialchars($exhibitor['phone']); ?>
+                </a>
+            </div>
+            <?php endif; ?>
+
+            <!-- Website -->
+            <?php if ($exhibitor['website']): ?>
+            <div class="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-6 border border-orange-200">
+                <div class="flex items-center mb-4">
+                    <div class="w-12 h-12 bg-orange-600 rounded-full flex items-center justify-center mr-4">
+                        <i class="fas fa-globe text-white text-xl"></i>
+                    </div>
+                    <div>
+                        <h4 class="font-semibold text-gray-800">Webseite</h4>
+                        <p class="text-sm text-gray-600">Mehr erfahren</p>
+                    </div>
+                </div>
+                <a href="http://<?php echo htmlspecialchars($exhibitor['website']); ?>" 
+                   target="_blank"
+                   class="text-lg text-orange-600 hover:text-orange-700 font-semibold break-all">
+                    <?php echo htmlspecialchars($exhibitor['website']); ?>
+                    <i class="fas fa-external-link-alt ml-2 text-sm"></i>
+                </a>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <!-- Karte oder zusätzliche Infos -->
+        <div class="bg-gray-50 rounded-xl p-6 border border-gray-200">
+            <h4 class="font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-info-circle text-blue-600 mr-2"></i>
+                Hinweis
+            </h4>
+            <p class="text-gray-600">
+                Bei Fragen oder Interesse können Sie den Aussteller direkt über die oben angegebenen Kontaktdaten erreichen. 
+                Nutzen Sie die Berufsmesse, um sich persönlich zu informieren und Ihre Fragen direkt zu stellen.
+            </p>
+        </div>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+?>
