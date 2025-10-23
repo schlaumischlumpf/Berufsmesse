@@ -200,6 +200,48 @@ $allExhibitors = $stmt->fetchAll();
 <!-- Add/Edit Modal -->
 <div id="exhibitorModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
     <div class="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        <style>
+        /* Custom Select Styling for Category Dropdown */
+        #category {
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+            background-position: right 0.75rem center;
+            background-repeat: no-repeat;
+            background-size: 1.25em 1.25em;
+            padding-right: 2.5rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        #category:hover {
+            border-color: #A855F7;
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
+        }
+
+        #category:focus {
+            outline: none;
+            border-color: #A855F7;
+            box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.2);
+        }
+
+        #category option {
+            padding: 12px 16px;
+            font-size: 14px;
+            color: #1F2937;
+            background-color: white;
+        }
+
+        #category option:checked {
+            background-color: #F3E8FF;
+            color: #7C3AED;
+            font-weight: 500;
+        }
+
+        #category option[value=""] {
+            color: #9CA3AF;
+        }
+        </style>
+        
         <div class="sticky top-0 bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 flex items-center justify-between">
             <h2 id="modalTitle" class="text-2xl font-bold">Aussteller hinzufügen</h2>
             <button onclick="closeModal()" class="text-white hover:bg-white/20 rounded-lg p-2">
@@ -224,7 +266,9 @@ $allExhibitors = $stmt->fetchAll();
                 </div>
                 
                 <div class="md:col-span-2">
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">Kategorie *</label>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        <i class="fas fa-tag mr-1"></i>Kategorie *
+                    </label>
                     <select name="category" id="category" required
                             class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
                         <option value="">-- Bitte wählen --</option>

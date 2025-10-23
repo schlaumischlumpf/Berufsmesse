@@ -5,8 +5,8 @@ $regStatus = getRegistrationStatus();
 $regStart = getSetting('registration_start');
 $regEnd = getSetting('registration_end');
 
-// Alle Timeslots laden
-$stmt = $db->query("SELECT * FROM timeslots ORDER BY slot_number ASC");
+// Nur verwaltete Timeslots laden (Slots 1, 3, 5) - Slots 2 und 4 sind freie Wahl vor Ort
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");
 $timeslots = $stmt->fetchAll();
 
 // Prüfen ob Benutzer bereits für alle Slots registriert ist
@@ -66,8 +66,8 @@ function getAvailableSlots($db, $exhibitorId, $userId) {
     $totalSlots = $exhibitor['total_slots'];
     $slotsPerTimeslot = ceil($totalSlots / 3); // Gleichmäßig auf 3 Slots verteilen
     
-    // Für jeden Timeslot prüfen
-    $stmt = $db->query("SELECT id FROM timeslots ORDER BY slot_number ASC");
+    // Nur verwaltete Slots (1, 3, 5) - Slots 2 und 4 sind freie Wahl vor Ort
+    $stmt = $db->query("SELECT id, slot_number FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");
     $timeslots = $stmt->fetchAll();
     
     $availableSlots = [];
@@ -272,19 +272,23 @@ foreach ($exhibitors as $exhibitor) {
         <ul class="space-y-2 text-sm text-blue-800">
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Sie können sich für bis zu <?php echo $maxRegistrations; ?> Aussteller einschreiben (je einen pro Zeitslot).</span>
+                <span>Sie können sich für bis zu <?php echo $maxRegistrations; ?> Aussteller einschreiben.</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Das System verteilt Sie automatisch gleichmäßig auf die 3 Zeitslots, um eine ausgewogene Auslastung zu gewährleisten.</span>
+                <span>Die Einschreibung gilt für die <strong>Slots 1, 3 und 5</strong> (09:00-09:30, 10:40-11:10, 12:20-12:50).</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Sie werden dem Zeitslot mit den wenigsten Anmeldungen für den gewählten Aussteller zugewiesen.</span>
+                <span><strong>Slots 2 und 4 sind zur freien Wahl vor Ort</strong> - keine vorherige Anmeldung erforderlich.</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Bei Fristversäumnis werden Sie automatisch einem Aussteller mit freien Plätzen zugeteilt.</span>
+                <span>Das System verteilt Sie automatisch auf den Zeitslot mit den wenigsten Anmeldungen für den gewählten Aussteller.</span>
+            </li>
+            <li class="flex items-start">
+                <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
+                <span>Bei Fristversäumnis erfolgt eine automatische Zuteilung zu Ausstellern mit freien Plätzen.</span>
             </li>
         </ul>
     </div>

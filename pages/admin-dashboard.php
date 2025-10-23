@@ -1,35 +1,6 @@
 <?php
 // Admin Dashboard mit Statistiken
 
-// Auto-Assign durchführen wenn aufgerufen
-if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run') {
-    // API aufrufen
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, BASE_URL . 'api/auto-assign-incomplete.php');
-    curl_setopt($ch, CURLOPT_POST, 1);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, [
-        'Cookie: ' . session_name() . '=' . session_id()
-    ]);
-    
-    $response = curl_exec($ch);
-    curl_close($ch);
-    
-    $result = json_decode($response, true);
-    
-    if ($result && $result['success']) {
-        $_SESSION['auto_assign_success'] = true;
-        $_SESSION['auto_assign_count'] = $result['assigned'];
-        $_SESSION['auto_assign_students'] = $result['statistics']['incomplete_registrations'] ?? 0;
-        $_SESSION['auto_assign_errors'] = $result['errors'] ?? [];
-    } else {
-        $_SESSION['auto_assign_error'] = $result['message'] ?? 'Unbekannter Fehler';
-    }
-    
-    header('Location: ?page=admin-dashboard&auto_assign=done');
-    exit;
-}
-
 // Auto-Assign Ergebnis anzeigen
 $autoAssignMessage = null;
 if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'done') {
@@ -420,8 +391,54 @@ $recentRegistrations = $stmt->fetchAll();
             </div>
         </div>
 
-        <!-- Tab Content: User Search -->
+        <!-- Tab Content: Users Search -->
         <div id="tab-content-users" class="tab-content p-6 hidden">
+            <style>
+            /* Custom Select Styling for Admin Dashboard */
+            #search_role, #search_status {
+                appearance: none;
+                background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236B7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+                background-position: right 0.75rem center;
+                background-repeat: no-repeat;
+                background-size: 1.25em 1.25em;
+                padding-right: 2.5rem;
+                cursor: pointer;
+                transition: all 0.2s ease;
+            }
+
+            #search_role:hover, #search_status:hover {
+                border-color: #3B82F6;
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            }
+
+            #search_role:focus, #search_status:focus {
+                outline: none;
+                border-color: #3B82F6;
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+            }
+
+            #search_role option, #search_status option {
+                padding: 12px 16px;
+                font-size: 14px;
+                color: #1F2937;
+                background-color: white;
+            }
+
+            #search_role option:checked, #search_status option:checked {
+                background-color: #DBEAFE;
+                color: #1D4ED8;
+                font-weight: 500;
+            }
+
+            #search_name, #search_class {
+                transition: all 0.2s ease;
+            }
+
+            #search_name:hover, #search_class:hover {
+                border-color: #3B82F6;
+                box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+            }
+            </style>
             <!-- Search Form -->
             <form id="userSearchForm" class="mb-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
