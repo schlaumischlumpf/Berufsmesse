@@ -31,4 +31,6 @@ define('BASE_URL', '/berufsmesse/');
 // Error Reporting (auf Production auf 0 setzen)
 error_reporting(E_ALL);
 ini_set('display_errors', 1);
+
+// test
 ?>
