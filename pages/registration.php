@@ -56,15 +56,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
 
 // Funktion zur Ermittlung verfügbarer Slots mit gleichmäßiger Verteilung
 function getAvailableSlots($db, $exhibitorId, $userId) {
-    // Aussteller-Kapazität abrufen
-    $stmt = $db->prepare("SELECT total_slots FROM exhibitors WHERE id = ?");
+    // Raum-Kapazität abrufen
+    $stmt = $db->prepare("
+        SELECT r.capacity 
+        FROM exhibitors e 
+        LEFT JOIN rooms r ON e.room_id = r.id 
+        WHERE e.id = ?
+    ");
     $stmt->execute([$exhibitorId]);
-    $exhibitor = $stmt->fetch();
+    $roomData = $stmt->fetch();
     
-    if (!$exhibitor) return [];
+    if (!$roomData || !$roomData['capacity']) return [];
     
-    $totalSlots = $exhibitor['total_slots'];
-    $slotsPerTimeslot = ceil($totalSlots / 3); // Gleichmäßig auf 3 Slots verteilen
+    $roomCapacity = intval($roomData['capacity']);
+    $slotsPerTimeslot = floor($roomCapacity / 3); // Kapazität pro Slot (abgerundet)
+    
+    if ($slotsPerTimeslot <= 0) return [];
     
     // Nur verwaltete Slots (1, 3, 5) - Slots 2 und 4 sind freie Wahl vor Ort
     $stmt = $db->query("SELECT id, slot_number FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");

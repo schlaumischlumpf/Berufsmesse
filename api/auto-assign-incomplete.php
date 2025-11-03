@@ -58,13 +58,14 @@ try {
             // Aussteller mit wenigsten Teilnehmern in diesem Slot finden
             // die noch nicht ihre Kapazität erreicht haben
             $stmt = $db->prepare("
-                SELECT e.id, e.name, e.total_slots,
-                       COUNT(DISTINCT r.user_id) as current_count
+                SELECT e.id, e.name, r.capacity, FLOOR(r.capacity / 3) as slots_per_timeslot,
+                       COUNT(DISTINCT reg.user_id) as current_count
                 FROM exhibitors e
-                LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.timeslot_id = ?
-                WHERE e.active = 1
+                LEFT JOIN rooms r ON e.room_id = r.id
+                LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
+                WHERE e.active = 1 AND e.room_id IS NOT NULL AND r.capacity IS NOT NULL
                 GROUP BY e.id
-                HAVING current_count < e.total_slots
+                HAVING current_count < FLOOR(r.capacity / 3)
                 ORDER BY current_count ASC, RAND()
                 LIMIT 1
             ");
@@ -88,16 +89,19 @@ try {
             if ($alreadyRegistered > 0) {
                 // Schüler ist bereits bei diesem Aussteller - nächsten suchen
                 $stmt = $db->prepare("
-                    SELECT e.id, e.name, e.total_slots,
-                           COUNT(DISTINCT r.user_id) as current_count
+                    SELECT e.id, e.name, r.capacity, FLOOR(r.capacity / 3) as slots_per_timeslot,
+                           COUNT(DISTINCT reg.user_id) as current_count
                     FROM exhibitors e
-                    LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.timeslot_id = ?
+                    LEFT JOIN rooms r ON e.room_id = r.id
+                    LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
                     WHERE e.active = 1 
+                      AND e.room_id IS NOT NULL 
+                      AND r.capacity IS NOT NULL
                       AND e.id NOT IN (
                           SELECT exhibitor_id FROM registrations WHERE user_id = ?
                       )
                     GROUP BY e.id
-                    HAVING current_count < e.total_slots
+                    HAVING current_count < FLOOR(r.capacity / 3)
                     ORDER BY current_count ASC, RAND()
                     LIMIT 1
                 ");

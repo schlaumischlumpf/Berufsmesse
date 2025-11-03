@@ -507,7 +507,7 @@ $recentRegistrations = $stmt->fetchAll();
             <!-- Exhibitor List -->
             <div id="exhibitorsList" class="space-y-3">
                 <?php
-                $stmt = $db->query("SELECT e.*, COUNT(DISTINCT r.user_id) as registered_count, rm.room_number, rm.room_name 
+                $stmt = $db->query("SELECT e.*, COUNT(DISTINCT r.user_id) as registered_count, rm.room_number, rm.room_name, rm.capacity 
                                    FROM exhibitors e 
                                    LEFT JOIN registrations r ON e.id = r.exhibitor_id 
                                    LEFT JOIN rooms rm ON e.room_id = rm.id
@@ -516,7 +516,9 @@ $recentRegistrations = $stmt->fetchAll();
                                    ORDER BY e.name ASC");
                 $exhibitors = $stmt->fetchAll();
                 foreach ($exhibitors as $ex):
-                    $percentage = $ex['total_slots'] > 0 ? ($ex['registered_count'] / $ex['total_slots'] * 100) : 0;
+                    $roomCapacity = $ex['capacity'] ? intval($ex['capacity']) : 0;
+                    $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
+                    $percentage = $totalCapacity > 0 ? ($ex['registered_count'] / $totalCapacity * 100) : 0;
                 ?>
                 <div class="bg-blue-50 border-l-4 border-blue-600 p-4 rounded-r-lg">
                     <div class="flex justify-between items-start">
@@ -525,7 +527,7 @@ $recentRegistrations = $stmt->fetchAll();
                             <p class="text-sm text-gray-600 mt-1"><?php echo htmlspecialchars($ex['short_description'] ?? ''); ?></p>
                             <div class="mt-2 flex items-center gap-4 text-sm">
                                 <span class="text-gray-600">
-                                    <i class="fas fa-users mr-1"></i><?php echo $ex['registered_count']; ?> / <?php echo $ex['total_slots']; ?> Plätze
+                                    <i class="fas fa-users mr-1"></i><?php echo $ex['registered_count']; ?> / <?php echo $totalCapacity; ?> Plätze
                                 </span>
                                 <?php if ($ex['room_number']): ?>
                                 <span class="text-gray-600">

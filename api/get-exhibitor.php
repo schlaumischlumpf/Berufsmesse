@@ -28,6 +28,19 @@ if (!$exhibitor) {
     exit();
 }
 
+// Raum-Kapazität abrufen
+$stmt = $db->prepare("
+    SELECT r.capacity 
+    FROM exhibitors e 
+    LEFT JOIN rooms r ON e.room_id = r.id 
+    WHERE e.id = ?
+");
+$stmt->execute([$exhibitorId]);
+$roomData = $stmt->fetch();
+
+$roomCapacity = $roomData && $roomData['capacity'] ? intval($roomData['capacity']) : 0;
+$totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
+
 // Registrierungsstatistik
 $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ?");
 $stmt->execute([$exhibitorId]);
@@ -37,7 +50,7 @@ $content = '';
 
 switch ($tab) {
     case 'info':
-        $content = generateInfoTab($exhibitor, $registeredCount);
+        $content = generateInfoTab($exhibitor, $registeredCount, $totalCapacity);
         break;
     case 'documents':
         $content = generateDocumentsTab($exhibitorId);
@@ -53,9 +66,9 @@ echo json_encode([
     'content' => $content
 ]);
 
-function generateInfoTab($exhibitor, $registeredCount) {
-    $availableSlots = $exhibitor['total_slots'] - $registeredCount;
-    $percentage = ($exhibitor['total_slots'] > 0) ? ($registeredCount / $exhibitor['total_slots'] * 100) : 0;
+function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
+    $availableSlots = $totalCapacity - $registeredCount;
+    $percentage = ($totalCapacity > 0) ? ($registeredCount / $totalCapacity * 100) : 0;
     
     ob_start();
     ?>
@@ -64,7 +77,7 @@ function generateInfoTab($exhibitor, $registeredCount) {
         <div class="bg-gradient-to-r from-blue-50 to-blue-50 rounded-xl p-6 border border-blue-200">
             <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div class="text-center">
-                    <div class="text-3xl font-bold text-blue-600"><?php echo $exhibitor['total_slots']; ?></div>
+                    <div class="text-3xl font-bold text-blue-600"><?php echo $totalCapacity; ?></div>
                     <div class="text-sm text-gray-600 mt-1">Gesamtplätze</div>
                 </div>
                 <div class="text-center">

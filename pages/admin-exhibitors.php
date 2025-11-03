@@ -9,15 +9,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $shortDesc = sanitize($_POST['short_description']);
         $description = sanitize($_POST['description']);
         $category = sanitize($_POST['category'] ?? '');
-        $totalSlots = intval($_POST['total_slots']);
         $contactPerson = sanitize($_POST['contact_person'] ?? '');
         $email = sanitize($_POST['email'] ?? '');
         $phone = sanitize($_POST['phone'] ?? '');
         $website = sanitize($_POST['website'] ?? '');
         
-        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, total_slots, contact_person, email, phone, website) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$name, $shortDesc, $description, $category, $totalSlots, $contactPerson, $email, $phone, $website])) {
+        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website])) {
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich hinzugefügt'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Hinzufügen'];
@@ -29,15 +28,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $shortDesc = sanitize($_POST['short_description']);
         $description = sanitize($_POST['description']);
         $category = sanitize($_POST['category'] ?? '');
-        $totalSlots = intval($_POST['total_slots']);
         $contactPerson = sanitize($_POST['contact_person'] ?? '');
         $email = sanitize($_POST['email'] ?? '');
         $phone = sanitize($_POST['phone'] ?? '');
         $website = sanitize($_POST['website'] ?? '');
         
-        $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, total_slots = ?, 
+        $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, 
                               contact_person = ?, email = ?, phone = ?, website = ? WHERE id = ?");
-        if ($stmt->execute([$name, $shortDesc, $description, $category, $totalSlots, $contactPerson, $email, $phone, $website, $id])) {
+        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $id])) {
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich aktualisiert'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren'];
@@ -67,8 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Alle Aussteller laden
-$stmt = $db->query("SELECT * FROM exhibitors ORDER BY name ASC");
+// Alle Aussteller laden mit Raum-Kapazität
+$stmt = $db->query("
+    SELECT e.*, r.capacity as room_capacity 
+    FROM exhibitors e 
+    LEFT JOIN rooms r ON e.room_id = r.id 
+    ORDER BY e.name ASC
+");
 $allExhibitors = $stmt->fetchAll();
 ?>
 
@@ -103,6 +106,10 @@ $allExhibitors = $stmt->fetchAll();
     <!-- Exhibitors List -->
     <div class="grid grid-cols-1 gap-6">
         <?php foreach ($allExhibitors as $exhibitor): 
+            // Raum-basierte Kapazität berechnen
+            $roomCapacity = $exhibitor['room_capacity'] ? intval($exhibitor['room_capacity']) : 0;
+            $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
+            
             // Registrierungen zählen
             $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ?");
             $stmt->execute([$exhibitor['id']]);
@@ -120,7 +127,10 @@ $allExhibitors = $stmt->fetchAll();
                     <div class="flex-1">
                         <h3 class="text-xl font-bold mb-1"><?php echo htmlspecialchars($exhibitor['name']); ?></h3>
                         <p class="text-sm text-purple-100">
-                            <?php echo $regCount; ?> / <?php echo $exhibitor['total_slots']; ?> Plätze belegt
+                            <?php echo $regCount; ?> / <?php echo $totalCapacity; ?> Plätze belegt
+                            <?php if ($totalCapacity === 0): ?>
+                                <span class="ml-2 text-yellow-300">(Kein Raum zugewiesen)</span>
+                            <?php endif; ?>
                         </p>
                     </div>
                     <div class="flex gap-2">
@@ -291,10 +301,12 @@ $allExhibitors = $stmt->fetchAll();
                               class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500"></textarea>
                 </div>
                 
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">Gesamtplätze *</label>
-                    <input type="number" name="total_slots" id="total_slots" required min="1" value="25"
-                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
+                <div class="md:col-span-2 bg-blue-50 border-l-4 border-blue-500 p-4 rounded">
+                    <p class="text-sm text-blue-800">
+                        <i class="fas fa-info-circle mr-2"></i>
+                        <strong>Hinweis:</strong> Die Kapazität wird automatisch basierend auf dem zugewiesenen Raum berechnet. 
+                        Bitte weisen Sie den Aussteller in der Raumverwaltung einem Raum zu.
+                    </p>
                 </div>
                 
                 <div>
@@ -389,7 +401,6 @@ function openEditModal(exhibitor) {
     document.getElementById('short_description').value = exhibitor.short_description || '';
     document.getElementById('description').value = exhibitor.description || '';
     document.getElementById('category').value = exhibitor.category || '';
-    document.getElementById('total_slots').value = exhibitor.total_slots;
     document.getElementById('contact_person').value = exhibitor.contact_person || '';
     document.getElementById('email').value = exhibitor.email || '';
     document.getElementById('phone').value = exhibitor.phone || '';

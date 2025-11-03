@@ -32,15 +32,24 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
             $stmt->execute([$studentId]);
             $registeredSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
-            // Fehlende Slots ermitteln
-            $missingSlots = array_diff($managedSlots, $registeredSlots);
+            // Anzahl der aktuellen Registrierungen prüfen
+            $currentRegCount = count($registeredSlots);
             
-            if (empty($missingSlots)) {
+            // Wenn Schüler bereits 3 oder mehr Slots hat, überspringen
+            if ($currentRegCount >= 3) {
+                continue;
+            }
+            
+            // Fehlende Slots ermitteln (nur so viele wie noch fehlen bis 3)
+            $missingSlots = array_diff($managedSlots, $registeredSlots);
+            $slotsToAssign = array_slice($missingSlots, 0, 3 - $currentRegCount);
+            
+            if (empty($slotsToAssign)) {
                 continue; // Schüler hat alle 3 Slots
             }
             
             // Für jeden fehlenden Slot den Aussteller mit den wenigsten Teilnehmern finden
-            foreach ($missingSlots as $slotNumber) {
+            foreach ($slotsToAssign as $slotNumber) {
                 // Timeslot ID ermitteln
                 $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
                 $stmt->execute([$slotNumber]);
@@ -53,14 +62,17 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
                 
                 // Aussteller mit wenigsten Teilnehmern in diesem Slot finden
                 // die noch nicht ihre Kapazität erreicht haben
+                // Kapazität kommt vom Raum: capacity / 3 pro Slot
                 $stmt = $db->prepare("
-                    SELECT e.id, e.name, e.total_slots,
-                           COUNT(DISTINCT r.user_id) as current_count
+                    SELECT e.id, e.name, e.room_id, r.capacity,
+                           FLOOR(r.capacity / 3) as slots_per_timeslot,
+                           COUNT(DISTINCT reg.user_id) as current_count
                     FROM exhibitors e
-                    LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.timeslot_id = ?
-                    WHERE e.active = 1
+                    LEFT JOIN rooms r ON e.room_id = r.id
+                    LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
+                    WHERE e.active = 1 AND e.room_id IS NOT NULL AND r.capacity IS NOT NULL
                     GROUP BY e.id
-                    HAVING current_count < e.total_slots
+                    HAVING current_count < FLOOR(r.capacity / 3)
                     ORDER BY current_count ASC, RAND()
                     LIMIT 1
                 ");
@@ -84,16 +96,20 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
                 if ($alreadyRegistered > 0) {
                     // Schüler ist bereits bei diesem Aussteller - nächsten suchen
                     $stmt = $db->prepare("
-                        SELECT e.id, e.name, e.total_slots,
-                               COUNT(DISTINCT r.user_id) as current_count
+                        SELECT e.id, e.name, e.room_id, r.capacity,
+                               FLOOR(r.capacity / 3) as slots_per_timeslot,
+                               COUNT(DISTINCT reg.user_id) as current_count
                         FROM exhibitors e
-                        LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.timeslot_id = ?
+                        LEFT JOIN rooms r ON e.room_id = r.id
+                        LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
                         WHERE e.active = 1 
+                          AND e.room_id IS NOT NULL 
+                          AND r.capacity IS NOT NULL
                           AND e.id NOT IN (
                               SELECT exhibitor_id FROM registrations WHERE user_id = ?
                           )
                         GROUP BY e.id
-                        HAVING current_count < e.total_slots
+                        HAVING current_count < FLOOR(r.capacity / 3)
                         ORDER BY current_count ASC, RAND()
                         LIMIT 1
                     ");

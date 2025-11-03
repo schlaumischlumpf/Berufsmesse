@@ -36,13 +36,14 @@ try {
             
             // Aussteller mit den wenigsten Anmeldungen in diesem Slot finden
             $stmt = $db->prepare("
-                SELECT e.id, e.total_slots, 
-                       COUNT(r.id) as current_registrations
+                SELECT e.id, r.capacity, FLOOR(r.capacity / 3) as slots_per_timeslot,
+                       COUNT(reg.id) as current_registrations
                 FROM exhibitors e
-                LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.timeslot_id = ?
-                WHERE e.active = 1
+                LEFT JOIN rooms r ON e.room_id = r.id
+                LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
+                WHERE e.active = 1 AND e.room_id IS NOT NULL AND r.capacity IS NOT NULL
                 GROUP BY e.id
-                HAVING current_registrations < (e.total_slots / 3)
+                HAVING current_registrations < FLOOR(r.capacity / 3)
                 ORDER BY current_registrations ASC
                 LIMIT 1
             ");

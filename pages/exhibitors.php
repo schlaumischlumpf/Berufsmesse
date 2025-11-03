@@ -36,11 +36,18 @@
 
 <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="exhibitorGrid">
     <?php foreach ($exhibitors as $exhibitor): 
-        // Anzahl registrierter Schüler für diesen Aussteller
+        // Kapazität berechnen (Raum-Kapazität geteilt durch 3 Slots)
+        $stmt = $db->prepare("SELECT r.capacity FROM exhibitors e LEFT JOIN rooms r ON e.room_id = r.id WHERE e.id = ?");
+        $stmt->execute([$exhibitor['id']]);
+        $roomData = $stmt->fetch();
+        $roomCapacity = $roomData && $roomData['capacity'] ? intval($roomData['capacity']) : 0;
+        $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0; // Gesamt für 3 Slots
+        
+        // Anzahl registrierter Schüler für diesen Aussteller (über alle 3 verwalteten Slots)
         $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ?");
         $stmt->execute([$exhibitor['id']]);
         $registeredCount = $stmt->fetch()['count'];
-        $availableSlots = $exhibitor['total_slots'] - $registeredCount;
+        $availableSlots = $totalCapacity - $registeredCount;
     ?>
     <div class="bg-white rounded-xl shadow-md cursor-pointer overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow duration-300 exhibitor-card" 
          data-name="<?php echo strtolower(htmlspecialchars($exhibitor['name'])); ?>"
@@ -100,7 +107,7 @@
             <div class="flex items-center justify-between text-sm">
                 <div class="flex items-center text-gray-500">
                     <i class="fas fa-users mr-2"></i>
-                    <span><?php echo $registeredCount; ?> / <?php echo $exhibitor['total_slots']; ?> Plätze</span>
+                    <span><?php echo $registeredCount; ?> / <?php echo $totalCapacity; ?> Plätze</span>
                 </div>
                 
                 <button class="text-blue-600 font-semibold hover:text-blue-700 transition">
@@ -112,7 +119,7 @@
             <div class="mt-4">
                 <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200">
                     <?php 
-                    $percentage = ($exhibitor['total_slots'] > 0) ? ($registeredCount / $exhibitor['total_slots'] * 100) : 0;
+                    $percentage = ($totalCapacity > 0) ? ($registeredCount / $totalCapacity * 100) : 0;
                     $colorClass = $percentage >= 90 ? 'bg-gray-800' : ($percentage >= 70 ? 'bg-gray-600' : 'bg-gray-500');
                     ?>
                     <div class="<?php echo $colorClass; ?> h-2 rounded-full transition-all duration-500" 
