@@ -239,4 +239,66 @@ function getExhibitorTotalCapacity($exhibitorId) {
     
     return $totalCapacity;
 }
+
+// Berechtigungssystem (Issue #10)
+function hasPermission($permission) {
+    // Admins haben immer alle Berechtigungen
+    if (isAdmin()) {
+        return true;
+    }
+    
+    if (!isLoggedIn()) {
+        return false;
+    }
+    
+    $db = getDB();
+    $stmt = $db->prepare("SELECT COUNT(*) FROM user_permissions WHERE user_id = ? AND permission = ?");
+    $stmt->execute([$_SESSION['user_id'], $permission]);
+    return $stmt->fetchColumn() > 0;
+}
+
+function requirePermission($permission) {
+    if (!hasPermission($permission)) {
+        die('Keine Berechtigung für diese Aktion');
+    }
+}
+
+function getUserPermissions($userId) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT permission FROM user_permissions WHERE user_id = ?");
+    $stmt->execute([$userId]);
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
+}
+
+function grantPermission($userId, $permission) {
+    if (!isAdmin()) {
+        return false;
+    }
+    
+    $db = getDB();
+    $stmt = $db->prepare("INSERT IGNORE INTO user_permissions (user_id, permission, granted_by) VALUES (?, ?, ?)");
+    return $stmt->execute([$userId, $permission, $_SESSION['user_id']]);
+}
+
+function revokePermission($userId, $permission) {
+    if (!isAdmin()) {
+        return false;
+    }
+    
+    $db = getDB();
+    $stmt = $db->prepare("DELETE FROM user_permissions WHERE user_id = ? AND permission = ?");
+    return $stmt->execute([$userId, $permission]);
+}
+
+// Verfügbare Berechtigungen
+function getAvailablePermissions() {
+    return [
+        'manage_exhibitors' => 'Aussteller verwalten (erstellen/bearbeiten/löschen, Räume zuordnen)',
+        'manage_rooms' => 'Räume verwalten',
+        'manage_settings' => 'Einstellungen verwalten (Einschreibezeiten, Event-Datum)',
+        'manage_users' => 'Benutzer verwalten (Passwörter zurücksetzen, Accounts erstellen/löschen)',
+        'view_reports' => 'Berichte ansehen und drucken',
+        'auto_assign' => 'Automatische Zuteilung durchführen'
+    ];
+}
 ?>

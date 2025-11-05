@@ -329,6 +329,11 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     <span>Nutzerverwaltung</span>
                 </a>
                 
+                <a href="?page=admin-permissions" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-permissions' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
+                    <i class="fas fa-shield-alt w-5"></i>
+                    <span>Berechtigungen</span>
+                </a>
+                
                 <a href="?page=admin-settings" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-settings' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-cog w-5"></i>
                     <span>Einstellungen</span>
@@ -367,6 +372,7 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                                 'admin-rooms' => 'Raum-Zuteilung',
                                 'admin-room-capacities' => 'Slot-Kapazitäten',
                                 'admin-users' => 'Nutzerverwaltung',
+                                'admin-permissions' => 'Berechtigungen',
                                 'admin-settings' => 'Einstellungen'
                             ];
                             echo $titles[$currentPage] ?? 'Dashboard';
@@ -437,6 +443,9 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     break;
                 case 'admin-users':
                     if (isAdmin()) include 'pages/admin-users.php';
+                    break;
+                case 'admin-permissions':
+                    if (isAdmin()) include 'pages/admin-permissions.php';
                     break;
                 case 'admin-print':
                     if (isAdmin()) include 'pages/admin-print.php';
