@@ -70,6 +70,17 @@ function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
     $availableSlots = $totalCapacity - $registeredCount;
     $percentage = ($totalCapacity > 0) ? ($registeredCount / $totalCapacity * 100) : 0;
     
+    // Sichtbare Felder ermitteln (Issue #9)
+    $visibleFields = isset($exhibitor['visible_fields']) ? json_decode($exhibitor['visible_fields'], true) : ['name', 'short_description', 'description', 'category', 'website'];
+    if (!is_array($visibleFields)) {
+        $visibleFields = ['name', 'short_description', 'description', 'category', 'website'];
+    }
+    
+    // Helper-Funktion für Sichtbarkeitsprüfung
+    $isVisible = function($field) use ($visibleFields) {
+        return in_array($field, $visibleFields);
+    };
+    
     ob_start();
     ?>
     <div class="space-y-6">
@@ -105,7 +116,24 @@ function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
             </div>
         </div>
 
-        <!-- Beschreibung -->
+        <!-- Kategorie (wenn sichtbar) -->
+        <?php if ($isVisible('category') && $exhibitor['category']): ?>
+        <div>
+            <span class="inline-flex items-center px-4 py-2 rounded-full text-sm bg-purple-100 text-purple-800">
+                <i class="fas fa-tag mr-2"></i><?php echo htmlspecialchars($exhibitor['category']); ?>
+            </span>
+        </div>
+        <?php endif; ?>
+
+        <!-- Kurzbeschreibung (wenn sichtbar) -->
+        <?php if ($isVisible('short_description') && $exhibitor['short_description']): ?>
+        <div class="bg-gray-50 rounded-lg p-4 border-l-4 border-blue-500">
+            <p class="text-gray-700 font-medium"><?php echo htmlspecialchars($exhibitor['short_description']); ?></p>
+        </div>
+        <?php endif; ?>
+
+        <!-- Beschreibung (wenn sichtbar) -->
+        <?php if ($isVisible('description')): ?>
         <div>
             <h3 class="text-xl font-bold text-gray-800 mb-4 flex items-center">
                 <i class="fas fa-info-circle text-blue-600 mr-3"></i>
@@ -115,9 +143,10 @@ function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
                 <?php echo nl2br(htmlspecialchars($exhibitor['description'] ?? 'Keine Beschreibung verfügbar.')); ?>
             </div>
         </div>
+        <?php endif; ?>
 
-        <!-- Website Link -->
-        <?php if ($exhibitor['website']): ?>
+        <!-- Website Link (wenn sichtbar) -->
+        <?php if ($isVisible('website') && $exhibitor['website']): ?>
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
             <div class="flex items-center justify-between">
                 <div class="flex items-center">
@@ -193,12 +222,23 @@ function generateDocumentsTab($exhibitorId) {
 }
 
 function generateContactTab($exhibitor) {
+    // Sichtbare Felder ermitteln (Issue #9)
+    $visibleFields = isset($exhibitor['visible_fields']) ? json_decode($exhibitor['visible_fields'], true) : ['name', 'short_description', 'description', 'category', 'website'];
+    if (!is_array($visibleFields)) {
+        $visibleFields = ['name', 'short_description', 'description', 'category', 'website'];
+    }
+    
+    // Helper-Funktion für Sichtbarkeitsprüfung
+    $isVisible = function($field) use ($visibleFields) {
+        return in_array($field, $visibleFields);
+    };
+    
     ob_start();
     ?>
     <div class="space-y-6">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
             <!-- Kontaktperson -->
-            <?php if ($exhibitor['contact_person']): ?>
+            <?php if ($isVisible('contact_person') && $exhibitor['contact_person']): ?>
             <div class="bg-gradient-to-br from-blue-50 to-blue-50 rounded-xl p-6 border border-blue-200">
                 <div class="flex items-center mb-4">
                     <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center mr-4">
@@ -216,7 +256,7 @@ function generateContactTab($exhibitor) {
             <?php endif; ?>
 
             <!-- Email -->
-            <?php if ($exhibitor['email']): ?>
+            <?php if ($isVisible('email') && $exhibitor['email']): ?>
             <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6 border border-blue-200">
                 <div class="flex items-center mb-4">
                     <div class="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center mr-4">
@@ -235,7 +275,7 @@ function generateContactTab($exhibitor) {
             <?php endif; ?>
 
             <!-- Telefon -->
-            <?php if ($exhibitor['phone']): ?>
+            <?php if ($isVisible('phone') && $exhibitor['phone']): ?>
             <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
                 <div class="flex items-center mb-4">
                     <div class="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mr-4">
@@ -254,7 +294,7 @@ function generateContactTab($exhibitor) {
             <?php endif; ?>
 
             <!-- Website -->
-            <?php if ($exhibitor['website']): ?>
+            <?php if ($isVisible('website') && $exhibitor['website']): ?>
             <div class="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-6 border border-orange-200">
                 <div class="flex items-center mb-4">
                     <div class="w-12 h-12 bg-orange-600 rounded-full flex items-center justify-center mr-4">

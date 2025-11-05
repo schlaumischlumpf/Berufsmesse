@@ -14,9 +14,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $phone = sanitize($_POST['phone'] ?? '');
         $website = sanitize($_POST['website'] ?? '');
         
-        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website])) {
+        // Sichtbare Felder als JSON speichern
+        $visibleFields = isset($_POST['visible_fields']) ? $_POST['visible_fields'] : ['name', 'short_description', 'description', 'category', 'website'];
+        $visibleFieldsJson = json_encode($visibleFields);
+        
+        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson])) {
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich hinzugefügt'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Hinzufügen'];
@@ -33,9 +37,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $phone = sanitize($_POST['phone'] ?? '');
         $website = sanitize($_POST['website'] ?? '');
         
+        // Sichtbare Felder als JSON speichern
+        $visibleFields = isset($_POST['visible_fields']) ? $_POST['visible_fields'] : ['name', 'short_description', 'description', 'category', 'website'];
+        $visibleFieldsJson = json_encode($visibleFields);
+        
         $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, 
-                              contact_person = ?, email = ?, phone = ?, website = ? WHERE id = ?");
-        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $id])) {
+                              contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ? WHERE id = ?");
+        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $id])) {
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich aktualisiert'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren'];
@@ -332,6 +340,52 @@ $allExhibitors = $stmt->fetchAll();
                     <input type="text" name="website" id="website" placeholder="www.beispiel.de"
                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500">
                 </div>
+                
+                <!-- Sichtbarkeitseinstellungen (Issue #9) -->
+                <div class="md:col-span-2 border-t border-gray-200 pt-4">
+                    <label class="block text-sm font-semibold text-gray-700 mb-3">
+                        <i class="fas fa-eye mr-2"></i>Für Schüler sichtbare Felder
+                    </label>
+                    <p class="text-xs text-gray-600 mb-3">Wählen Sie, welche Informationen für Schüler angezeigt werden sollen:</p>
+                    <div class="grid grid-cols-2 gap-3">
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition">
+                            <input type="checkbox" name="visible_fields[]" value="name" checked disabled class="mr-2 rounded text-purple-600">
+                            <span class="text-sm">Name (immer sichtbar)</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition">
+                            <input type="checkbox" name="visible_fields[]" value="short_description" checked class="mr-2 rounded text-purple-600">
+                            <span class="text-sm">Kurzbeschreibung</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition">
+                            <input type="checkbox" name="visible_fields[]" value="description" checked class="mr-2 rounded text-purple-600">
+                            <span class="text-sm">Beschreibung</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition">
+                            <input type="checkbox" name="visible_fields[]" value="category" checked class="mr-2 rounded text-purple-600">
+                            <span class="text-sm">Kategorie</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition">
+                            <input type="checkbox" name="visible_fields[]" value="contact_person" class="mr-2 rounded text-purple-600">
+                            <span class="text-sm">Ansprechpartner</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition">
+                            <input type="checkbox" name="visible_fields[]" value="email" class="mr-2 rounded text-purple-600">
+                            <span class="text-sm">E-Mail</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition">
+                            <input type="checkbox" name="visible_fields[]" value="phone" class="mr-2 rounded text-purple-600">
+                            <span class="text-sm">Telefon</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition">
+                            <input type="checkbox" name="visible_fields[]" value="website" checked class="mr-2 rounded text-purple-600">
+                            <span class="text-sm">Webseite</span>
+                        </label>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">
+                        <i class="fas fa-info-circle mr-1"></i>
+                        Kontaktinformationen werden standardmäßig ausgeblendet und können bei Bedarf aktiviert werden.
+                    </p>
+                </div>
             </div>
             
             <div class="flex gap-3 pt-4">
@@ -405,6 +459,15 @@ function openEditModal(exhibitor) {
     document.getElementById('email').value = exhibitor.email || '';
     document.getElementById('phone').value = exhibitor.phone || '';
     document.getElementById('website').value = exhibitor.website || '';
+    
+    // Sichtbare Felder setzen
+    const visibleFields = exhibitor.visible_fields ? JSON.parse(exhibitor.visible_fields) : ['name', 'short_description', 'description', 'category', 'website'];
+    document.querySelectorAll('input[name="visible_fields[]"]').forEach(checkbox => {
+        if (checkbox.value !== 'name') { // name ist immer aktiviert
+            checkbox.checked = visibleFields.includes(checkbox.value);
+        }
+    });
+    
     document.getElementById('submitBtn').name = 'edit_exhibitor';
     document.getElementById('exhibitorModal').classList.remove('hidden');
     document.getElementById('exhibitorModal').classList.add('flex');
