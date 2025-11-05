@@ -5,14 +5,18 @@
  * automatisch auf die Aussteller mit den wenigsten Teilnehmern
  */
 
-require_once '../config/config.php';
+session_start();
+require_once '../config.php';
+require_once '../functions.php';
 
 header('Content-Type: application/json');
 
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
+if (!isAdmin()) {
     echo json_encode(['success' => false, 'message' => 'Keine Berechtigung']);
     exit;
 }
+
+$db = getDB();
 
 try {
     // Verwaltete Slots (nur 1, 3, 5)
