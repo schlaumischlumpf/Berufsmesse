@@ -58,6 +58,11 @@ CREATE TABLE IF NOT EXISTS user_permissions (
 -- 'auto_assign' - Automatische Zuteilung nutzen
 
 -- ===========================================================================
+-- Optional: E-Mail-Spalte zu users Tabelle hinzufügen
+-- ===========================================================================
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) DEFAULT NULL AFTER username;
+
+-- ===========================================================================
 -- Verifikation der Änderungen
 -- ===========================================================================
 -- Überprüfen der neuen Spalten und Tabellen:
