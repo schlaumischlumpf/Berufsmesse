@@ -205,12 +205,12 @@ $stats['teachers'] = $stmt->fetch()['count'];
                         </td>
                         <td class="px-6 py-4 text-right">
                             <div class="flex justify-end gap-2">
-                                <button onclick="openResetPasswordModal(<?php echo $user['id']; ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?>')"
+                                <button onclick="openResetPasswordModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>')"
                                         class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
                                     <i class="fas fa-key mr-1"></i>Passwort
                                 </button>
-                                <?php if ($user['id'] != $_SESSION['user_id']): ?>
-                                <button onclick="confirmDeleteUser(<?php echo $user['id']; ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?>')"
+                                <?php if ($user['id'] !== $_SESSION['user_id']): ?>
+                                <button onclick="confirmDeleteUser(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>')"
                                         class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm font-medium">
                                     <i class="fas fa-trash mr-1"></i>Löschen
                                 </button>

@@ -23,13 +23,16 @@ if ($printType === 'all' || $printType === 'class') {
         WHERE u.role = 'student'
     ";
     
+    $params = [];
     if ($filterClass) {
-        $query .= " AND u.class = " . $db->quote($filterClass);
+        $query .= " AND u.class = ?";
+        $params[] = $filterClass;
     }
     
     $query .= " ORDER BY u.class, u.lastname, u.firstname, t.slot_number";
     
-    $stmt = $db->query($query);
+    $stmt = $db->prepare($query);
+    $stmt->execute($params);
     $registrations = $stmt->fetchAll();
 } elseif ($printType === 'rooms') {
     // Raum-basierte Ansicht
@@ -46,13 +49,16 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN rooms r ON e.room_id = r.id
     ";
     
+    $params = [];
     if ($filterRoom) {
-        $query .= " WHERE r.id = " . intval($filterRoom);
+        $query .= " WHERE r.id = ?";
+        $params[] = intval($filterRoom);
     }
     
     $query .= " ORDER BY r.room_number, t.slot_number, u.lastname, u.firstname";
     
-    $stmt = $db->query($query);
+    $stmt = $db->prepare($query);
+    $stmt->execute($params);
     $registrations = $stmt->fetchAll();
 }
 
@@ -150,8 +156,13 @@ $rooms = $stmt->fetchAll();
                 elseif ($printType === 'class') echo $filterClass ? "Klasse: $filterClass" : 'Alle Klassen';
                 elseif ($printType === 'rooms') {
                     if ($filterRoom) {
-                        $roomInfo = array_filter($rooms, fn($r) => $r['id'] == $filterRoom)[0];
-                        echo 'Raum ' . htmlspecialchars($roomInfo['room_number']);
+                        $roomData = array_filter($rooms, fn($r) => $r['id'] == $filterRoom);
+                        if (!empty($roomData)) {
+                            $roomInfo = array_values($roomData)[0];
+                            echo 'Raum ' . htmlspecialchars($roomInfo['room_number']);
+                        } else {
+                            echo 'Unbekannter Raum';
+                        }
                     } else {
                         echo 'Alle Räume';
                     }

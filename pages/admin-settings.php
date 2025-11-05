@@ -29,7 +29,7 @@ $currentSettings = [
     'registration_end' => getSetting('registration_end'),
     'event_date' => getSetting('event_date'),
     'max_registrations_per_student' => getSetting('max_registrations_per_student', 3),
-    'qr_code_url' => getSetting('qr_code_url', 'http://localhost' . BASE_URL)
+    'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL)
 ];
 ?>
 
