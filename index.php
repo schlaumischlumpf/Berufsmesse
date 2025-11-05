@@ -242,13 +242,20 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     </div>
                     <div class="flex-1 min-w-0">
                         <p class="font-semibold text-sm truncate text-gray-800"><?php echo htmlspecialchars($_SESSION['firstname'] . ' ' . $_SESSION['lastname']); ?></p>
-                        <p class="text-xs text-gray-600 truncate"><?php echo isAdmin() ? 'Administrator' : 'Schüler'; ?></p>
+                        <p class="text-xs text-gray-600 truncate">
+                            <?php 
+                            if (isAdmin()) echo 'Administrator';
+                            elseif (isTeacher()) echo 'Lehrer';
+                            else echo 'Schüler';
+                            ?>
+                        </p>
                     </div>
                 </div>
             </div>
 
             <!-- Navigation -->
             <nav class="space-y-2">
+                <?php if (!isTeacher()): ?>
                 <a href="?page=exhibitors" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'exhibitors' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-building w-5"></i>
                     <span>Aussteller</span>
@@ -268,6 +275,26 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     <i class="fas fa-calendar-alt w-5"></i>
                     <span>Zeitplan</span>
                 </a>
+                <?php endif; ?>
+
+                <?php if (isTeacher() && !isAdmin()): ?>
+                <hr class="my-4 border-gray-200">
+                
+                <!-- Teacher Section -->
+                <div class="mb-3 px-3">
+                    <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Lehrer-Bereich</p>
+                </div>
+                
+                <a href="?page=teacher-dashboard" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'teacher-dashboard' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
+                    <i class="fas fa-chalkboard-teacher w-5"></i>
+                    <span>Dashboard</span>
+                </a>
+                
+                <a href="?page=exhibitors" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'exhibitors' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
+                    <i class="fas fa-building w-5"></i>
+                    <span>Aussteller ansehen</span>
+                </a>
+                <?php endif; ?>
 
                 <?php if (isAdmin()): ?>
                 <hr class="my-4 border-gray-200">
@@ -333,6 +360,8 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                                 'registration' => 'Einschreibung',
                                 'my-registrations' => 'Meine Anmeldungen',
                                 'schedule' => 'Zeitplan',
+                                'teacher-dashboard' => 'Lehrer Dashboard',
+                                'teacher-class-list' => 'Klassenliste',
                                 'admin-dashboard' => 'Admin Dashboard',
                                 'admin-exhibitors' => 'Aussteller verwalten',
                                 'admin-rooms' => 'Raum-Zuteilung',
@@ -388,6 +417,12 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                 case 'schedule':
                     include 'pages/schedule.php';
                     break;
+                case 'teacher-dashboard':
+                    if (isTeacher() || isAdmin()) include 'pages/teacher-dashboard.php';
+                    break;
+                case 'teacher-class-list':
+                    if (isTeacher() || isAdmin()) include 'pages/teacher-class-list.php';
+                    break;
                 case 'admin-dashboard':
                     if (isAdmin()) include 'pages/admin-dashboard.php';
                     break;
@@ -410,7 +445,11 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     if (isAdmin()) include 'pages/admin-settings.php';
                     break;
                 default:
-                    include 'pages/exhibitors.php';
+                    if (isTeacher()) {
+                        include 'pages/teacher-dashboard.php';
+                    } else {
+                        include 'pages/exhibitors.php';
+                    }
             }
             ?>
         </div>

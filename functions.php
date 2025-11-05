@@ -55,6 +55,10 @@ function isAdmin() {
     return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 }
 
+function isTeacher() {
+    return isset($_SESSION['role']) && $_SESSION['role'] === 'teacher';
+}
+
 function requireLogin() {
     if (!isLoggedIn()) {
         header('Location: ' . BASE_URL . 'login.php');
@@ -65,6 +69,14 @@ function requireLogin() {
 function requireAdmin() {
     requireLogin();
     if (!isAdmin()) {
+        header('Location: ' . BASE_URL . 'index.php');
+        exit();
+    }
+}
+
+function requireTeacherOrAdmin() {
+    requireLogin();
+    if (!isTeacher() && !isAdmin()) {
         header('Location: ' . BASE_URL . 'index.php');
         exit();
     }
