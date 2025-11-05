@@ -42,6 +42,10 @@ class Database {
     }
 }
 
+// Konstanten für Kapazitätsberechnung
+define('MANAGED_SLOTS_COUNT', 3); // Anzahl der verwalteten Slots (1, 3, 5)
+define('DEFAULT_CAPACITY_DIVISOR', 3); // Standard-Divisor für Raumkapazität
+
 // Hilfsfunktionen
 function getDB() {
     return Database::getInstance()->getConnection();
@@ -203,13 +207,13 @@ function getRoomSlotCapacity($roomId, $timeslotId) {
         return intval($result['capacity']);
     }
     
-    // Fallback: Standard-Kapazität (Raumkapazität / 3)
+    // Fallback: Standard-Kapazität (Raumkapazität / DEFAULT_CAPACITY_DIVISOR)
     $stmt = $db->prepare("SELECT capacity FROM rooms WHERE id = ?");
     $stmt->execute([$roomId]);
     $room = $stmt->fetch();
     
     if ($room && $room['capacity']) {
-        return floor(intval($room['capacity']) / 3);
+        return floor(intval($room['capacity']) / DEFAULT_CAPACITY_DIVISOR);
     }
     
     return 0;

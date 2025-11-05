@@ -172,7 +172,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                         </td>
                         <td class="px-6 py-4 text-right">
                             <?php if ($user['role'] !== 'admin'): ?>
-                                <button onclick="openPermissionModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', <?php echo htmlspecialchars(json_encode($userPermissions)); ?>)"
+                                <button onclick="openPermissionModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', <?php echo json_encode($userPermissions); ?>)"
                                         class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold">
                                     <i class="fas fa-edit mr-2"></i>Berechtigungen
                                 </button>

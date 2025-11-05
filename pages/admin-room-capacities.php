@@ -115,7 +115,7 @@ foreach ($stmt->fetchAll() as $cap) {
                     </thead>
                     <tbody>
                         <?php foreach ($rooms as $room): 
-                            $defaultCapacity = $room['capacity'] ? floor(intval($room['capacity']) / 3) : 0;
+                            $defaultCapacity = $room['capacity'] ? floor(intval($room['capacity']) / DEFAULT_CAPACITY_DIVISOR) : 0;
                         ?>
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-4 py-3 font-semibold text-gray-800 sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">

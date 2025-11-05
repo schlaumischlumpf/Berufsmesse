@@ -35,17 +35,17 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
             // Anzahl der aktuellen Registrierungen prüfen
             $currentRegCount = count($registeredSlots);
             
-            // Wenn Schüler bereits 3 oder mehr Slots hat, überspringen
-            if ($currentRegCount >= 3) {
+            // Wenn Schüler bereits MANAGED_SLOTS_COUNT oder mehr Slots hat, überspringen
+            if ($currentRegCount >= MANAGED_SLOTS_COUNT) {
                 continue;
             }
             
-            // Fehlende Slots ermitteln (nur so viele wie noch fehlen bis 3)
+            // Fehlende Slots ermitteln (nur so viele wie noch fehlen bis MANAGED_SLOTS_COUNT)
             $missingSlots = array_diff($managedSlots, $registeredSlots);
-            $slotsToAssign = array_slice(array_values($missingSlots), 0, 3 - $currentRegCount);
+            $slotsToAssign = array_slice(array_values($missingSlots), 0, MANAGED_SLOTS_COUNT - $currentRegCount);
             
             if (empty($slotsToAssign)) {
-                continue; // Schüler hat alle 3 Slots
+                continue; // Schüler hat alle MANAGED_SLOTS_COUNT Slots
             }
             
             // Für jeden fehlenden Slot den Aussteller mit den wenigsten Teilnehmern finden
@@ -122,7 +122,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
                 WHERE r.user_id = u.id AND t.slot_number IN (1, 3, 5)
-            ) < 3
+            ) < " . MANAGED_SLOTS_COUNT . "
         ");
         $incompleteStudents = $stmt->fetchColumn();
         

@@ -142,7 +142,18 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
                     $classComplete = $stmt->fetch()['count'];
                     
                     $percentage = $classTotal > 0 ? round(($classComplete / $classTotal) * 100) : 0;
-                    $colorClass = $percentage >= 80 ? 'green' : ($percentage >= 50 ? 'yellow' : 'red');
+                    $colorClasses = [
+                        'green' => 80,
+                        'yellow' => 50,
+                        'red' => 0
+                    ];
+                    $colorClass = 'red';
+                    foreach ($colorClasses as $color => $threshold) {
+                        if ($percentage >= $threshold) {
+                            $colorClass = $color;
+                            break;
+                        }
+                    }
                 ?>
                 <div class="bg-gray-50 rounded-lg p-4 border-2 border-gray-200 hover:border-<?php echo $colorClass; ?>-400 transition">
                     <div class="flex items-center justify-between mb-3">
