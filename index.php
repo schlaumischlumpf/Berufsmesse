@@ -292,6 +292,11 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     <span>Raum-Zuteilung</span>
                 </a>
                 
+                <a href="?page=admin-room-capacities" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-room-capacities' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
+                    <i class="fas fa-table w-5"></i>
+                    <span>Slot-Kapazitäten</span>
+                </a>
+                
                 <a href="?page=admin-users" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-users' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-users w-5"></i>
                     <span>Nutzerverwaltung</span>
@@ -331,6 +336,7 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                                 'admin-dashboard' => 'Admin Dashboard',
                                 'admin-exhibitors' => 'Aussteller verwalten',
                                 'admin-rooms' => 'Raum-Zuteilung',
+                                'admin-room-capacities' => 'Slot-Kapazitäten',
                                 'admin-users' => 'Nutzerverwaltung',
                                 'admin-settings' => 'Einstellungen'
                             ];
@@ -390,6 +396,9 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     break;
                 case 'admin-rooms':
                     if (isAdmin()) include 'pages/admin-rooms.php';
+                    break;
+                case 'admin-room-capacities':
+                    if (isAdmin()) include 'pages/admin-room-capacities.php';
                     break;
                 case 'admin-users':
                     if (isAdmin()) include 'pages/admin-users.php';

@@ -177,4 +177,54 @@ function deleteFile($documentId) {
     
     return false;
 }
+
+// Helper-Funktion für Raumkapazität pro Slot (Issue #4)
+function getRoomSlotCapacity($roomId, $timeslotId) {
+    $db = getDB();
+    
+    // Erst prüfen ob spezifische Kapazität definiert ist
+    $stmt = $db->prepare("SELECT capacity FROM room_slot_capacities WHERE room_id = ? AND timeslot_id = ?");
+    $stmt->execute([$roomId, $timeslotId]);
+    $result = $stmt->fetch();
+    
+    if ($result) {
+        return intval($result['capacity']);
+    }
+    
+    // Fallback: Standard-Kapazität (Raumkapazität / 3)
+    $stmt = $db->prepare("SELECT capacity FROM rooms WHERE id = ?");
+    $stmt->execute([$roomId]);
+    $room = $stmt->fetch();
+    
+    if ($room && $room['capacity']) {
+        return floor(intval($room['capacity']) / 3);
+    }
+    
+    return 0;
+}
+
+// Helper-Funktion für Gesamt-Kapazität eines Ausstellers (über alle Slots)
+function getExhibitorTotalCapacity($exhibitorId) {
+    $db = getDB();
+    
+    // Raum des Ausstellers ermitteln
+    $stmt = $db->prepare("SELECT room_id FROM exhibitors WHERE id = ?");
+    $stmt->execute([$exhibitorId]);
+    $exhibitor = $stmt->fetch();
+    
+    if (!$exhibitor || !$exhibitor['room_id']) {
+        return 0;
+    }
+    
+    // Alle verwalteten Zeitslots (1, 3, 5)
+    $stmt = $db->query("SELECT id FROM timeslots WHERE slot_number IN (1, 3, 5)");
+    $timeslots = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    
+    $totalCapacity = 0;
+    foreach ($timeslots as $timeslotId) {
+        $totalCapacity += getRoomSlotCapacity($exhibitor['room_id'], $timeslotId);
+    }
+    
+    return $totalCapacity;
+}
 ?>
