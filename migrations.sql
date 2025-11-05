@@ -7,7 +7,7 @@
 -- ===========================================================================
 -- Fügt JSON-Feld für sichtbare Felder hinzu
 ALTER TABLE exhibitors 
-ADD COLUMN visible_fields JSON DEFAULT NULL COMMENT 'Definiert welche Felder für Schüler sichtbar sind';
+ADD COLUMN IF NOT EXISTS visible_fields JSON DEFAULT NULL COMMENT 'Definiert welche Felder für Schüler sichtbar sind';
 
 -- Standard-Werte setzen (alle Felder außer Kontaktdaten)
 UPDATE exhibitors 
@@ -61,6 +61,12 @@ CREATE TABLE IF NOT EXISTS user_permissions (
 -- Optional: E-Mail-Spalte zu users Tabelle hinzufügen
 -- ===========================================================================
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(255) DEFAULT NULL AFTER username;
+
+-- ===========================================================================
+-- Fix: users.role Spalte von ENUM zu VARCHAR ändern für Flexibilität
+-- ===========================================================================
+-- Ermöglicht teacher und weitere Rollen ohne Schema-Änderungen
+ALTER TABLE users MODIFY role VARCHAR(50) NOT NULL DEFAULT 'student';
 
 -- ===========================================================================
 -- Verifikation der Änderungen

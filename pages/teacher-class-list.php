@@ -171,12 +171,16 @@ $timeslots = $stmt->fetchAll();
     <!-- Summary -->
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <?php
-        $complete = count(array_filter($studentData, fn($d) => count(array_intersect(array_keys($d['slots']), $managedSlots)) === 3));
-        $incomplete = count(array_filter($studentData, fn($d) => {
+        $complete = count(array_filter($studentData, function($d) use ($managedSlots) {
+            return count(array_intersect(array_keys($d['slots']), $managedSlots)) === 3;
+        }));
+        $incomplete = count(array_filter($studentData, function($d) use ($managedSlots) {
             $count = count(array_intersect(array_keys($d['slots']), $managedSlots));
             return $count > 0 && $count < 3;
         }));
-        $none = count(array_filter($studentData, fn($d) => count(array_intersect(array_keys($d['slots']), $managedSlots)) === 0));
+        $none = count(array_filter($studentData, function($d) use ($managedSlots) {
+            return count(array_intersect(array_keys($d['slots']), $managedSlots)) === 0;
+        }));
         ?>
 
         <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">

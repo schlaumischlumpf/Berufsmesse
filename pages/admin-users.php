@@ -1,6 +1,9 @@
 <?php
 // Admin Nutzerverwaltung
 
+// Datenbankverbindung holen
+$db = getDB();
+
 // Handle User Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['create_user'])) {
@@ -13,47 +16,91 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $class = sanitize($_POST['class'] ?? '');
         $password = $_POST['password'];
         
-        // Prüfen ob Username bereits existiert
-        $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
-        $stmt->execute([$username]);
-        if ($stmt->fetch()) {
-            $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
+        // SICHERHEIT: Nur echte Admins können Admin-Accounts erstellen
+        if ($role === 'admin' && !isAdmin()) {
+            $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts erstellen'];
         } else {
-            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class) 
-                                  VALUES (?, ?, ?, ?, ?, ?, ?)");
-            if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class])) {
-                $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
+            // Prüfen ob Username bereits existiert
+            $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
+            $stmt->execute([$username]);
+            if ($stmt->fetch()) {
+                $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
             } else {
-                $message = ['type' => 'error', 'text' => 'Fehler beim Erstellen des Benutzers'];
+                // Validate role to avoid DB truncation/enum issues
+                $allowedRoles = ['student', 'teacher', 'admin']; // must match app expectations
+                if (!in_array($role, $allowedRoles, true)) {
+                    // fallback to a safe default
+                    $role = 'student';
+                }
+
+                $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?)");
+                try {
+                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class])) {
+                        $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
+                    } else {
+                        // fetch error info for logging
+                        $err = $stmt->errorInfo();
+                        error_log('DB insert user failed: ' . json_encode($err));
+                        $message = ['type' => 'error', 'text' => 'Fehler beim Erstellen des Benutzers'];
+                    }
+                } catch (PDOException $e) {
+                    // Log and show a friendly error instead of letting the script crash
+                    error_log('PDOException when inserting user: ' . $e->getMessage());
+                    $message = ['type' => 'error', 'text' => 'Datenbankfehler beim Erstellen des Benutzers. Bitte überprüfe Eingaben und Schema.'];
+                }
             }
         }
     } elseif (isset($_POST['reset_password'])) {
         // Passwort zurücksetzen
         $userId = intval($_POST['user_id']);
         $newPassword = $_POST['new_password'];
-        $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
         
-        $stmt = $db->prepare("UPDATE users SET password = ? WHERE id = ?");
-        if ($stmt->execute([$hashedPassword, $userId])) {
-            $message = ['type' => 'success', 'text' => 'Passwort erfolgreich zurückgesetzt'];
+        // SICHERHEIT: Prüfen ob der Zielbenutzer ein Admin ist
+        $stmt = $db->prepare("SELECT role FROM users WHERE id = ?");
+        $stmt->execute([$userId]);
+        $targetUser = $stmt->fetch();
+        
+        if ($targetUser && $targetUser['role'] === 'admin' && !isAdmin()) {
+            $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Passwörter ändern'];
         } else {
-            $message = ['type' => 'error', 'text' => 'Fehler beim Zurücksetzen des Passworts'];
+            $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+            
+            $stmt = $db->prepare("UPDATE users SET password = ? WHERE id = ?");
+            if ($stmt->execute([$hashedPassword, $userId])) {
+                $message = ['type' => 'success', 'text' => 'Passwort erfolgreich zurückgesetzt'];
+            } else {
+                $message = ['type' => 'error', 'text' => 'Fehler beim Zurücksetzen des Passworts'];
+            }
         }
     } elseif (isset($_POST['delete_user'])) {
         // Benutzer löschen
         $userId = intval($_POST['user_id']);
         
-        // Zunächst alle Registrierungen löschen
-        $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ?");
+        // SICHERHEIT: Prüfen ob der Zielbenutzer ein Admin ist
+        $stmt = $db->prepare("SELECT role FROM users WHERE id = ?");
         $stmt->execute([$userId]);
+        $targetUser = $stmt->fetch();
         
-        // Dann den Benutzer löschen
-        $stmt = $db->prepare("DELETE FROM users WHERE id = ?");
-        if ($stmt->execute([$userId])) {
-            $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich gelöscht'];
+        if ($targetUser && $targetUser['role'] === 'admin' && !isAdmin()) {
+            $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts löschen'];
         } else {
-            $message = ['type' => 'error', 'text' => 'Fehler beim Löschen des Benutzers'];
+            // Zunächst alle Registrierungen löschen
+            $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ?");
+            $stmt->execute([$userId]);
+            
+            // Berechtigungen löschen
+            $stmt = $db->prepare("DELETE FROM user_permissions WHERE user_id = ?");
+            $stmt->execute([$userId]);
+            
+            // Dann den Benutzer löschen
+            $stmt = $db->prepare("DELETE FROM users WHERE id = ?");
+            if ($stmt->execute([$userId])) {
+                $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich gelöscht'];
+            } else {
+                $message = ['type' => 'error', 'text' => 'Fehler beim Löschen des Benutzers'];
+            }
         }
     }
 }
@@ -205,15 +252,25 @@ $stats['teachers'] = $stmt->fetch()['count'];
                         </td>
                         <td class="px-6 py-4 text-right">
                             <div class="flex justify-end gap-2">
-                                <button onclick="openResetPasswordModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>')"
-                                        class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
-                                    <i class="fas fa-key mr-1"></i>Passwort
-                                </button>
-                                <?php if ($user['id'] !== $_SESSION['user_id']): ?>
-                                <button onclick="confirmDeleteUser(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>')"
-                                        class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm font-medium">
-                                    <i class="fas fa-trash mr-1"></i>Löschen
-                                </button>
+                                <?php 
+                                // Nur Admins können Admin-Accounts bearbeiten
+                                $canEdit = ($user['role'] !== 'admin') || isAdmin();
+                                ?>
+                                <?php if ($canEdit): ?>
+                                    <button onclick="openResetPasswordModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
+                                            class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
+                                        <i class="fas fa-key mr-1"></i>Passwort
+                                    </button>
+                                    <?php if ($user['id'] !== $_SESSION['user_id']): ?>
+                                    <button onclick="confirmDeleteUser(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
+                                            class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm font-medium">
+                                        <i class="fas fa-trash mr-1"></i>Löschen
+                                    </button>
+                                    <?php endif; ?>
+                                <?php else: ?>
+                                    <span class="text-gray-400 text-sm italic">
+                                        <i class="fas fa-lock mr-1"></i>Nur für Admins
+                                    </span>
                                 <?php endif; ?>
                             </div>
                         </td>
@@ -265,8 +322,15 @@ $stats['teachers'] = $stmt->fetch()['count'];
                 <select name="role" id="roleSelect" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" onchange="toggleClassField()">
                     <option value="student">Schüler</option>
                     <option value="teacher">Lehrer</option>
+                    <?php if (isAdmin()): ?>
                     <option value="admin">Administrator</option>
+                    <?php endif; ?>
                 </select>
+                <?php if (!isAdmin()): ?>
+                <p class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>Nur Administratoren können Admin-Accounts erstellen
+                </p>
+                <?php endif; ?>
             </div>
             
             <div id="classField">
@@ -361,7 +425,14 @@ function closeCreateUserModal() {
     document.getElementById('createUserModal').classList.remove('flex');
 }
 
-function openResetPasswordModal(userId, userName) {
+function openResetPasswordModal(userId, userName, userRole) {
+    // Warnung für Admin-Accounts anzeigen
+    if (userRole === 'admin') {
+        if (!confirm('WARNUNG: Sie ändern das Passwort eines Administrator-Accounts. Möchten Sie fortfahren?')) {
+            return;
+        }
+    }
+    
     document.getElementById('resetUserId').value = userId;
     document.getElementById('resetUserName').textContent = userName;
     document.getElementById('resetPasswordModal').classList.remove('hidden');
@@ -373,7 +444,14 @@ function closeResetPasswordModal() {
     document.getElementById('resetPasswordModal').classList.remove('flex');
 }
 
-function confirmDeleteUser(userId, userName) {
+function confirmDeleteUser(userId, userName, userRole) {
+    // Extra Warnung für Admin-Accounts
+    if (userRole === 'admin') {
+        if (!confirm('WARNUNG: Sie löschen einen Administrator-Account! Dies ist eine sensible Aktion. Sind Sie absolut sicher?')) {
+            return;
+        }
+    }
+    
     document.getElementById('deleteUserId').value = userId;
     document.getElementById('deleteUserName').textContent = userName;
     document.getElementById('deleteUserModal').classList.remove('hidden');

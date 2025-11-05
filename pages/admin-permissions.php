@@ -1,6 +1,9 @@
 <?php
 // Admin Berechtigungsverwaltung (Issue #10)
 
+// Datenbankverbindung holen
+$db = getDB();
+
 // Handle Permission Changes
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) {
     $userId = intval($_POST['user_id']);
@@ -15,6 +18,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
     }
     
     $message = ['type' => 'success', 'text' => 'Berechtigungen erfolgreich aktualisiert'];
+    $reopenUserId = $userId; // Flag to reopen modal
 }
 
 // Alle Benutzer laden (außer Schüler)
@@ -172,9 +176,12 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                         </td>
                         <td class="px-6 py-4 text-right">
                             <?php if ($user['role'] !== 'admin'): ?>
-                                <button onclick="openPermissionModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', <?php echo json_encode($userPermissions); ?>)"
-                                        class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold">
-                                    <i class="fas fa-edit mr-2"></i>Berechtigungen
+                                <button type="button" 
+                                        class="permission-btn px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm hover:shadow-md"
+                                        data-user-id="<?php echo htmlspecialchars($user['id']); ?>"
+                                        data-user-name="<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?>"
+                                        data-permissions='<?php echo htmlspecialchars(json_encode($userPermissions), ENT_QUOTES, 'UTF-8'); ?>'>
+                                    <i class="fas fa-shield-alt mr-2"></i>Berechtigungen verwalten
                                 </button>
                             <?php else: ?>
                                 <span class="text-gray-400 text-sm italic">-</span>
@@ -259,28 +266,104 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
 </div>
 
 <script>
-function openPermissionModal(userId, userName, currentPermissions) {
-    document.getElementById('modal_user_id').value = userId;
-    document.getElementById('modalUserName').textContent = userName;
+// Event Listener für alle Berechtigungsknöpfe
+document.addEventListener('DOMContentLoaded', function() {
+    // Alle Berechtigungsknöpfe finden
+    const permissionButtons = document.querySelectorAll('.permission-btn');
     
-    // Alle Checkboxen zurücksetzen
-    document.querySelectorAll('input[name="permissions[]"]').forEach(checkbox => {
-        checkbox.checked = currentPermissions.includes(checkbox.value);
+    permissionButtons.forEach(function(button) {
+        button.addEventListener('click', function() {
+            const userId = this.getAttribute('data-user-id');
+            const userName = this.getAttribute('data-user-name');
+            const permissionsJson = this.getAttribute('data-permissions');
+            
+            let currentPermissions = [];
+            try {
+                currentPermissions = JSON.parse(permissionsJson);
+            } catch(e) {
+                console.error('Fehler beim Parsen der Berechtigungen:', e);
+                currentPermissions = [];
+            }
+            
+            openPermissionModal(userId, userName, currentPermissions);
+        });
     });
-    
-    document.getElementById('permissionModal').classList.remove('hidden');
-    document.getElementById('permissionModal').classList.add('flex');
+});
+
+function openPermissionModal(userId, userName, currentPermissions) {
+    try {
+        // User ID setzen
+        const userIdField = document.getElementById('modal_user_id');
+        if (userIdField) {
+            userIdField.value = userId;
+        }
+        
+        // Benutzername setzen
+        const userNameField = document.getElementById('modalUserName');
+        if (userNameField) {
+            userNameField.textContent = userName;
+        }
+        
+        // Alle Checkboxen zurücksetzen und dann die aktuellen Berechtigungen setzen
+        const checkboxes = document.querySelectorAll('input[name="permissions[]"]');
+        checkboxes.forEach(function(checkbox) {
+            checkbox.checked = currentPermissions.includes(checkbox.value);
+        });
+        
+        // Modal anzeigen
+        const modal = document.getElementById('permissionModal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+    } catch(err) {
+        console.error('Fehler beim Öffnen des Modals:', err);
+        alert('Fehler beim Öffnen des Berechtigungsfensters. Bitte versuchen Sie es erneut.');
+    }
 }
 
 function closePermissionModal() {
-    document.getElementById('permissionModal').classList.add('hidden');
-    document.getElementById('permissionModal').classList.remove('flex');
+    const modal = document.getElementById('permissionModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
 }
 
-// ESC key to close
-document.addEventListener('keydown', (e) => {
+// ESC-Taste zum Schließen
+document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closePermissionModal();
     }
 });
+
+// Klick außerhalb des Modals zum Schließen
+document.getElementById('permissionModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closePermissionModal();
+    }
+});
+<?php if (isset($reopenUserId) && $reopenUserId): ?>
+<?php
+try {
+    $stmt = $db->prepare("SELECT firstname, lastname FROM users WHERE id = ?");
+    $stmt->execute([$reopenUserId]);
+    $reopenUser = $stmt->fetch();
+    
+    if ($reopenUser && isset($reopenUser['firstname']) && isset($reopenUser['lastname'])) {
+        $reopenPermissions = getUserPermissions($reopenUserId);
+        $reopenUserName = $reopenUser['firstname'] . ' ' . $reopenUser['lastname'];
+        ?>
+
+// Auto-reopen modal after save
+setTimeout(function() {
+    openPermissionModal(<?php echo json_encode(intval($reopenUserId)); ?>, <?php echo json_encode($reopenUserName); ?>, <?php echo json_encode($reopenPermissions); ?>);
+}, 100);
+<?php 
+    }
+} catch (Exception $e) {
+    // Silent error - don't break the page
+}
+?>
+<?php endif; ?>
 </script>

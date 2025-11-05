@@ -272,7 +272,7 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                 </a>
                 <?php endif; ?>
 
-                <?php if (isAdmin()): ?>
+                <?php if (isAdmin() || hasPermission('manage_exhibitors') || hasPermission('manage_rooms') || hasPermission('manage_settings') || hasPermission('manage_users') || hasPermission('view_reports') || hasPermission('auto_assign')): ?>
                 <hr class="my-4 border-gray-200">
                 
                 <!-- Admin Section -->
@@ -280,16 +280,21 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider">Administration</p>
                 </div>
                 
+                <?php if (isAdmin()): ?>
                 <a href="?page=admin-dashboard" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-dashboard' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-tachometer-alt w-5"></i>
                     <span>Dashboard</span>
                 </a>
+                <?php endif; ?>
                 
+                <?php if (isAdmin() || hasPermission('manage_exhibitors')): ?>
                 <a href="?page=admin-exhibitors" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-exhibitors' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-building w-5"></i>
                     <span>Aussteller verwalten</span>
                 </a>
+                <?php endif; ?>
                 
+                <?php if (isAdmin() || hasPermission('manage_rooms')): ?>
                 <a href="?page=admin-rooms" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-rooms' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-map-marker-alt w-5"></i>
                     <span>Raum-Zuteilung</span>
@@ -299,21 +304,35 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     <i class="fas fa-table w-5"></i>
                     <span>Slot-Kapazitäten</span>
                 </a>
+                <?php endif; ?>
                 
+                <?php if (isAdmin() || hasPermission('manage_users')): ?>
                 <a href="?page=admin-users" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-users' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-users w-5"></i>
                     <span>Nutzerverwaltung</span>
                 </a>
+                <?php endif; ?>
                 
+                <?php if (isAdmin()): ?>
                 <a href="?page=admin-permissions" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-permissions' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-shield-alt w-5"></i>
                     <span>Berechtigungen</span>
                 </a>
+                <?php endif; ?>
                 
+                <?php if (isAdmin() || hasPermission('manage_settings')): ?>
                 <a href="?page=admin-settings" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-settings' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-cog w-5"></i>
                     <span>Einstellungen</span>
                 </a>
+                <?php endif; ?>
+                
+                <?php if (isAdmin() || hasPermission('view_reports')): ?>
+                <a href="?page=admin-print" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-print' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
+                    <i class="fas fa-print w-5"></i>
+                    <span>Berichte & Drucken</span>
+                </a>
+                <?php endif; ?>
                 <?php endif; ?>
             </nav>
 
@@ -409,25 +428,25 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     if (isAdmin()) include 'pages/admin-dashboard.php';
                     break;
                 case 'admin-exhibitors':
-                    if (isAdmin()) include 'pages/admin-exhibitors.php';
+                    if (isAdmin() || hasPermission('manage_exhibitors')) include 'pages/admin-exhibitors.php';
                     break;
                 case 'admin-rooms':
-                    if (isAdmin()) include 'pages/admin-rooms.php';
+                    if (isAdmin() || hasPermission('manage_rooms')) include 'pages/admin-rooms.php';
                     break;
                 case 'admin-room-capacities':
-                    if (isAdmin()) include 'pages/admin-room-capacities.php';
+                    if (isAdmin() || hasPermission('manage_rooms')) include 'pages/admin-room-capacities.php';
                     break;
                 case 'admin-users':
-                    if (isAdmin()) include 'pages/admin-users.php';
+                    if (isAdmin() || hasPermission('manage_users')) include 'pages/admin-users.php';
                     break;
                 case 'admin-permissions':
                     if (isAdmin()) include 'pages/admin-permissions.php';
                     break;
                 case 'admin-print':
-                    if (isAdmin()) include 'pages/admin-print.php';
+                    if (isAdmin() || hasPermission('view_reports')) include 'pages/admin-print.php';
                     break;
                 case 'admin-settings':
-                    if (isAdmin()) include 'pages/admin-settings.php';
+                    if (isAdmin() || hasPermission('manage_settings')) include 'pages/admin-settings.php';
                     break;
                 default:
                     if (isTeacher()) {
