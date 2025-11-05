@@ -42,7 +42,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
             
             // Fehlende Slots ermitteln (nur so viele wie noch fehlen bis 3)
             $missingSlots = array_diff($managedSlots, $registeredSlots);
-            $slotsToAssign = array_slice($missingSlots, 0, 3 - $currentRegCount);
+            $slotsToAssign = array_slice(array_values($missingSlots), 0, 3 - $currentRegCount);
             
             if (empty($slotsToAssign)) {
                 continue; // Schüler hat alle 3 Slots
@@ -60,66 +60,42 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
                     continue;
                 }
                 
-                // Aussteller mit wenigsten Teilnehmern in diesem Slot finden
-                // die noch nicht ihre Kapazität erreicht haben
-                // Kapazität kommt vom Raum: capacity / 3 pro Slot
+                // Alle Aussteller mit Raum abrufen
                 $stmt = $db->prepare("
-                    SELECT e.id, e.name, e.room_id, r.capacity,
-                           FLOOR(r.capacity / 3) as slots_per_timeslot,
+                    SELECT e.id, e.name, e.room_id,
                            COUNT(DISTINCT reg.user_id) as current_count
                     FROM exhibitors e
                     LEFT JOIN rooms r ON e.room_id = r.id
                     LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
-                    WHERE e.active = 1 AND e.room_id IS NOT NULL AND r.capacity IS NOT NULL
+                    WHERE e.active = 1 AND e.room_id IS NOT NULL
                     GROUP BY e.id
-                    HAVING current_count < FLOOR(r.capacity / 3)
                     ORDER BY current_count ASC, RAND()
-                    LIMIT 1
                 ");
                 $stmt->execute([$timeslotId]);
-                $exhibitor = $stmt->fetch();
+                $exhibitors = $stmt->fetchAll();
+                
+                $exhibitor = null;
+                
+                // Aussteller finden, der noch Kapazität hat und Schüler noch nicht hat
+                foreach ($exhibitors as $ex) {
+                    // Prüfen ob Schüler bereits bei diesem Aussteller ist
+                    $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+                    $stmt->execute([$studentId, $ex['id']]);
+                    if ($stmt->fetchColumn() > 0) {
+                        continue; // Schüler bereits bei diesem Aussteller
+                    }
+                    
+                    // Kapazität für diesen Slot prüfen (Issue #4)
+                    $slotCapacity = getRoomSlotCapacity($ex['room_id'], $timeslotId);
+                    if ($slotCapacity > 0 && $ex['current_count'] < $slotCapacity) {
+                        $exhibitor = $ex;
+                        break;
+                    }
+                }
                 
                 if (!$exhibitor) {
                     $errors[] = "Kein verfügbarer Aussteller für Slot $slotNumber (Schüler ID: $studentId)";
                     continue;
-                }
-                
-                // Prüfen, ob Schüler bereits bei diesem Aussteller in einem anderen Slot ist
-                $stmt = $db->prepare("
-                    SELECT COUNT(*) 
-                    FROM registrations 
-                    WHERE user_id = ? AND exhibitor_id = ?
-                ");
-                $stmt->execute([$studentId, $exhibitor['id']]);
-                $alreadyRegistered = $stmt->fetchColumn();
-                
-                if ($alreadyRegistered > 0) {
-                    // Schüler ist bereits bei diesem Aussteller - nächsten suchen
-                    $stmt = $db->prepare("
-                        SELECT e.id, e.name, e.room_id, r.capacity,
-                               FLOOR(r.capacity / 3) as slots_per_timeslot,
-                               COUNT(DISTINCT reg.user_id) as current_count
-                        FROM exhibitors e
-                        LEFT JOIN rooms r ON e.room_id = r.id
-                        LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
-                        WHERE e.active = 1 
-                          AND e.room_id IS NOT NULL 
-                          AND r.capacity IS NOT NULL
-                          AND e.id NOT IN (
-                              SELECT exhibitor_id FROM registrations WHERE user_id = ?
-                          )
-                        GROUP BY e.id
-                        HAVING current_count < FLOOR(r.capacity / 3)
-                        ORDER BY current_count ASC, RAND()
-                        LIMIT 1
-                    ");
-                    $stmt->execute([$timeslotId, $studentId]);
-                    $exhibitor = $stmt->fetch();
-                    
-                    if (!$exhibitor) {
-                        $errors[] = "Kein alternativer Aussteller für Slot $slotNumber (Schüler ID: $studentId)";
-                        continue;
-                    }
                 }
                 
                 // Registrierung erstellen
@@ -136,17 +112,17 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
             }
         }
         
-        // Statistik erstellen
+        // Statistik erstellen - Anzahl Schüler mit unvollständigen Anmeldungen
         $stmt = $db->query("
-            SELECT COUNT(DISTINCT user_id) as complete
-            FROM (
-                SELECT r.user_id, COUNT(DISTINCT t.slot_number) as slot_count
+            SELECT COUNT(*) as incomplete
+            FROM users u
+            WHERE u.role = 'student'
+            AND (
+                SELECT COUNT(DISTINCT t.slot_number)
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE t.slot_number IN (1, 3, 5)
-                GROUP BY r.user_id
-                HAVING slot_count < 3
-            ) as incomplete_registrations
+                WHERE r.user_id = u.id AND t.slot_number IN (1, 3, 5)
+            ) < 3
         ");
         $incompleteStudents = $stmt->fetchColumn();
         

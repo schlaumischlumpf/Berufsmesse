@@ -10,18 +10,16 @@
 
 Dieses Dokument enthält eine vollständige Übersicht aller durchgeführten Änderungen sowie eine Liste von Verbesserungsvorschlägen für zukünftige Entwicklungen.
 
-### Bearbeitete Issues: 3 von 9
+### ✅ ALLE Issues bearbeitet: 9 von 9
 - ✅ Issue #3: Raum hinzufügen fehlerhaft (Bug)
+- ✅ Issue #6: Autozuteilung teilweise fehlerhaft (Bug)
 - ✅ Issue #5: QR-Code Generator (Feature)
 - ✅ Issue #2: Nutzerverwaltung (Feature)
 - ✅ Issue #7: Plan drucken (Feature)
-
-### Noch offene Issues: 5
-- ⏳ Issue #6: Autozuteilung teilweise fehlerhaft (Bug)
-- ⏳ Issue #10: Berechtigungssystem (Feature)
-- ⏳ Issue #9: Aussteller-Informationen Sichtbarkeit (Feature)
-- ⏳ Issue #8: Lehrer-Account-System (Feature)
-- ⏳ Issue #4: Raumkapazitäten pro Slot (Feature)
+- ✅ Issue #9: Aussteller-Informationen Sichtbarkeit (Feature)
+- ✅ Issue #4: Raumkapazitäten pro Slot (Feature)
+- ✅ Issue #8: Lehrer-Account-System (Feature)
+- ✅ Issue #10: Berechtigungssystem (Feature)
 
 ---
 

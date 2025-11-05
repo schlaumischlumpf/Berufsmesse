@@ -62,60 +62,40 @@ try {
             // Aussteller mit wenigsten Teilnehmern in diesem Slot finden
             // die noch nicht ihre Kapazität erreicht haben
             $stmt = $db->prepare("
-                SELECT e.id, e.name, r.capacity, FLOOR(r.capacity / 3) as slots_per_timeslot,
+                SELECT e.id, e.name, e.room_id,
                        COUNT(DISTINCT reg.user_id) as current_count
                 FROM exhibitors e
                 LEFT JOIN rooms r ON e.room_id = r.id
                 LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
-                WHERE e.active = 1 AND e.room_id IS NOT NULL AND r.capacity IS NOT NULL
+                WHERE e.active = 1 AND e.room_id IS NOT NULL
                 GROUP BY e.id
-                HAVING current_count < FLOOR(r.capacity / 3)
                 ORDER BY current_count ASC, RAND()
-                LIMIT 1
             ");
             $stmt->execute([$timeslotId]);
-            $exhibitor = $stmt->fetch();
+            $exhibitors = $stmt->fetchAll();
+            
+            $exhibitor = null;
+            
+            // Aussteller finden, der noch Kapazität hat und Schüler noch nicht hat
+            foreach ($exhibitors as $ex) {
+                // Prüfen ob Schüler bereits bei diesem Aussteller ist
+                $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+                $stmt->execute([$studentId, $ex['id']]);
+                if ($stmt->fetchColumn() > 0) {
+                    continue; // Schüler bereits bei diesem Aussteller
+                }
+                
+                // Kapazität für diesen Slot prüfen (Issue #4)
+                $slotCapacity = getRoomSlotCapacity($ex['room_id'], $timeslotId);
+                if ($slotCapacity > 0 && $ex['current_count'] < $slotCapacity) {
+                    $exhibitor = $ex;
+                    break;
+                }
+            }
             
             if (!$exhibitor) {
                 $errors[] = "Kein verfügbarer Aussteller für Slot $slotNumber (Schüler ID: $studentId)";
                 continue;
-            }
-            
-            // Prüfen, ob Schüler bereits bei diesem Aussteller in einem anderen Slot ist
-            $stmt = $db->prepare("
-                SELECT COUNT(*) 
-                FROM registrations 
-                WHERE user_id = ? AND exhibitor_id = ?
-            ");
-            $stmt->execute([$studentId, $exhibitor['id']]);
-            $alreadyRegistered = $stmt->fetchColumn();
-            
-            if ($alreadyRegistered > 0) {
-                // Schüler ist bereits bei diesem Aussteller - nächsten suchen
-                $stmt = $db->prepare("
-                    SELECT e.id, e.name, r.capacity, FLOOR(r.capacity / 3) as slots_per_timeslot,
-                           COUNT(DISTINCT reg.user_id) as current_count
-                    FROM exhibitors e
-                    LEFT JOIN rooms r ON e.room_id = r.id
-                    LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
-                    WHERE e.active = 1 
-                      AND e.room_id IS NOT NULL 
-                      AND r.capacity IS NOT NULL
-                      AND e.id NOT IN (
-                          SELECT exhibitor_id FROM registrations WHERE user_id = ?
-                      )
-                    GROUP BY e.id
-                    HAVING current_count < FLOOR(r.capacity / 3)
-                    ORDER BY current_count ASC, RAND()
-                    LIMIT 1
-                ");
-                $stmt->execute([$timeslotId, $studentId]);
-                $exhibitor = $stmt->fetch();
-                
-                if (!$exhibitor) {
-                    $errors[] = "Kein alternativer Aussteller für Slot $slotNumber (Schüler ID: $studentId)";
-                    continue;
-                }
             }
             
             // Registrierung erstellen
