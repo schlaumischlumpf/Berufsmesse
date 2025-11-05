@@ -237,6 +237,27 @@ $recentRegistrations = $stmt->fetchAll();
                 </div>
             </div>
             
+            <!-- Print Tool -->
+            <div class="mb-6 bg-gradient-to-r from-indigo-500 to-purple-500 rounded-xl p-6 text-white">
+                <div class="flex items-start justify-between flex-wrap gap-4">
+                    <div class="flex-1">
+                        <h3 class="text-xl font-bold mb-2 flex items-center">
+                            <i class="fas fa-print mr-3"></i>
+                            Pläne drucken
+                        </h3>
+                        <p class="text-sm text-indigo-100 mb-3">
+                            Drucken Sie verschiedene Übersichten: Gesamtplan, Klassenpläne oder Raumpläne
+                        </p>
+                    </div>
+                    <div class="flex-shrink-0">
+                        <a href="?page=admin-print" 
+                           class="bg-white text-indigo-600 px-6 py-3 rounded-lg font-bold hover:bg-indigo-50 transition shadow-lg inline-block">
+                            <i class="fas fa-file-pdf mr-2"></i>Zur Druckansicht
+                        </a>
+                    </div>
+                </div>
+            </div>
+            
             <!-- Charts Row -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <!-- Top Exhibitors -->

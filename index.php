@@ -282,6 +282,21 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     <span>Dashboard</span>
                 </a>
                 
+                <a href="?page=admin-exhibitors" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-exhibitors' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
+                    <i class="fas fa-building w-5"></i>
+                    <span>Aussteller verwalten</span>
+                </a>
+                
+                <a href="?page=admin-rooms" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-rooms' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
+                    <i class="fas fa-map-marker-alt w-5"></i>
+                    <span>Raum-Zuteilung</span>
+                </a>
+                
+                <a href="?page=admin-users" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-users' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
+                    <i class="fas fa-users w-5"></i>
+                    <span>Nutzerverwaltung</span>
+                </a>
+                
                 <a href="?page=admin-settings" class="flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-100 transition <?php echo $currentPage === 'admin-settings' ? 'bg-blue-50 text-blue-600' : 'text-gray-700'; ?>">
                     <i class="fas fa-cog w-5"></i>
                     <span>Einstellungen</span>
@@ -316,6 +331,7 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                                 'admin-dashboard' => 'Admin Dashboard',
                                 'admin-exhibitors' => 'Aussteller verwalten',
                                 'admin-rooms' => 'Raum-Zuteilung',
+                                'admin-users' => 'Nutzerverwaltung',
                                 'admin-settings' => 'Einstellungen'
                             ];
                             echo $titles[$currentPage] ?? 'Dashboard';
@@ -374,6 +390,12 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                     break;
                 case 'admin-rooms':
                     if (isAdmin()) include 'pages/admin-rooms.php';
+                    break;
+                case 'admin-users':
+                    if (isAdmin()) include 'pages/admin-users.php';
+                    break;
+                case 'admin-print':
+                    if (isAdmin()) include 'pages/admin-print.php';
                     break;
                 case 'admin-settings':
                     if (isAdmin()) include 'pages/admin-settings.php';
