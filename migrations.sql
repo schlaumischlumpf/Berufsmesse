@@ -95,3 +95,11 @@ ALTER TABLE users MODIFY role VARCHAR(50) NOT NULL DEFAULT 'student';
 -- SHOW TABLES LIKE 'user_permissions';
 -- SELECT * FROM room_slot_capacities LIMIT 5;
 -- SELECT * FROM user_permissions LIMIT 5;
+
+-- ===========================================================================
+-- Issue: Passwortänderung beim ersten Login erzwingen
+-- ===========================================================================
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password TINYINT(1) DEFAULT 0 COMMENT 'Erzwingt Passwortänderung beim nächsten Login';
+
+-- Setze must_change_password für alle neuen Benutzer standardmäßig auf 1
+-- Bereits bestehende Benutzer müssen ihr Passwort nicht ändern

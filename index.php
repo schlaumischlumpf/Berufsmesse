@@ -487,7 +487,7 @@ $currentPage = $_GET['page'] ?? 'exhibitors';
                 <div class="w-9 h-9 rounded-lg <?php echo $currentPage === 'admin-print' ? 'bg-white/20' : 'bg-emerald-100'; ?> flex items-center justify-center">
                     <i class="fas fa-print <?php echo $currentPage === 'admin-print' ? 'text-white' : 'text-emerald-600'; ?>"></i>
                 </div>
-                <span>Berichte</span>
+                <span>Druckzentrale</span>
             </a>
             <?php endif; ?>
             <?php endif; ?>

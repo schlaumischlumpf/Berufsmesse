@@ -34,11 +34,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class) 
-                                      VALUES (?, ?, ?, ?, ?, ?, ?)");
+                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
                 try {
                     if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class])) {
-                        $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
+                        $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt (muss Passwort beim ersten Login ändern)'];
                     } else {
                         // fetch error info for logging
                         $err = $stmt->errorInfo();
@@ -100,6 +100,116 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich gelöscht'];
             } else {
                 $message = ['type' => 'error', 'text' => 'Fehler beim Löschen des Benutzers'];
+            }
+        }
+    } elseif (isset($_POST['import_csv']) && isset($_FILES['csv_file'])) {
+        // CSV Import
+        $file = $_FILES['csv_file'];
+        
+        if ($file['error'] !== UPLOAD_ERR_OK) {
+            $message = ['type' => 'error', 'text' => 'Fehler beim Hochladen der Datei'];
+        } elseif (pathinfo($file['name'], PATHINFO_EXTENSION) !== 'csv') {
+            $message = ['type' => 'error', 'text' => 'Bitte eine CSV-Datei hochladen'];
+        } else {
+            $handle = fopen($file['tmp_name'], 'r');
+            if ($handle === false) {
+                $message = ['type' => 'error', 'text' => 'Fehler beim Öffnen der Datei'];
+            } else {
+                $imported = 0;
+                $skipped = 0;
+                $errors = [];
+                $lineNumber = 0;
+                
+                // Header-Zeile lesen
+                $header = fgetcsv($handle, 0, ';');
+                if ($header === false) {
+                    $message = ['type' => 'error', 'text' => 'Leere oder ungültige CSV-Datei'];
+                } else {
+                    // Header normalisieren (lowercase, trim)
+                    $header = array_map(function($col) { return strtolower(trim($col)); }, $header);
+                    
+                    // Erforderliche Spalten prüfen
+                    $requiredColumns = ['username', 'password', 'firstname', 'lastname'];
+                    $missingColumns = array_diff($requiredColumns, $header);
+                    
+                    if (!empty($missingColumns)) {
+                        $message = ['type' => 'error', 'text' => 'Fehlende Spalten in CSV: ' . implode(', ', $missingColumns)];
+                    } else {
+                        while (($row = fgetcsv($handle, 0, ';')) !== false) {
+                            $lineNumber++;
+                            
+                            // Leere Zeilen überspringen
+                            if (empty(array_filter($row))) {
+                                continue;
+                            }
+                            
+                            // Zeile zu assoziativem Array machen
+                            $data = array_combine($header, array_pad($row, count($header), ''));
+                            
+                            $username = sanitize($data['username'] ?? '');
+                            $password = $data['password'] ?? '';
+                            $firstname = sanitize($data['firstname'] ?? '');
+                            $lastname = sanitize($data['lastname'] ?? '');
+                            $email = sanitize($data['email'] ?? '');
+                            $role = sanitize($data['role'] ?? 'student');
+                            $class = sanitize($data['class'] ?? '');
+                            
+                            // Validierung
+                            if (empty($username) || empty($password) || empty($firstname) || empty($lastname)) {
+                                $errors[] = "Zeile $lineNumber: Pflichtfelder fehlen";
+                                continue;
+                            }
+                            
+                            // Rolle validieren
+                            $allowedRoles = ['student', 'teacher', 'admin'];
+                            if (!in_array($role, $allowedRoles, true)) {
+                                $role = 'student';
+                            }
+                            
+                            // Nur Admins können Admin-Accounts erstellen
+                            if ($role === 'admin' && !isAdmin()) {
+                                $role = 'student';
+                            }
+                            
+                            // Prüfen ob Benutzer bereits existiert
+                            $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
+                            $stmt->execute([$username]);
+                            if ($stmt->fetch()) {
+                                $skipped++;
+                                continue; // Überspringen, nicht überschreiben
+                            }
+                            
+                            // Benutzer erstellen mit Passwort aus CSV
+                            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                            $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password) 
+                                                  VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
+                            try {
+                                if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class])) {
+                                    $imported++;
+                                } else {
+                                    $errors[] = "Zeile $lineNumber: Datenbankfehler";
+                                }
+                            } catch (PDOException $e) {
+                                $errors[] = "Zeile $lineNumber: " . $e->getMessage();
+                            }
+                        }
+                        
+                        fclose($handle);
+                        
+                        $resultText = "$imported Benutzer importiert";
+                        if ($skipped > 0) {
+                            $resultText .= ", $skipped übersprungen (existieren bereits)";
+                        }
+                        if (!empty($errors)) {
+                            $resultText .= ". Fehler: " . count($errors);
+                        }
+                        
+                        $message = ['type' => $imported > 0 ? 'success' : 'warning', 'text' => $resultText];
+                        if (!empty($errors)) {
+                            $message['errors'] = $errors;
+                        }
+                    }
+                }
             }
         }
     }
@@ -240,10 +350,16 @@ $stats['total'] = $stats['admins'] + $stats['students'] + $stats['teachers'];
                     <p class="text-slate-300 mt-1">Benutzer erstellen, bearbeiten und verwalten</p>
                 </div>
             </div>
-            <button onclick="openCreateUserModal()" class="group bg-gradient-to-r from-accent-500 to-purple-600 text-white px-6 py-3.5 rounded-xl font-bold hover:shadow-xl hover:shadow-accent-500/30 transition-all duration-300 flex items-center gap-3 transform hover:scale-105">
-                <i class="fas fa-user-plus text-lg group-hover:rotate-12 transition-transform"></i>
-                <span>Neuer Benutzer</span>
-            </button>
+            <div class="flex flex-wrap gap-3">
+                <button onclick="openCsvImportModal()" class="group bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-5 py-3.5 rounded-xl font-bold hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 flex items-center gap-3 transform hover:scale-105">
+                    <i class="fas fa-file-csv text-lg group-hover:rotate-12 transition-transform"></i>
+                    <span>CSV Import</span>
+                </button>
+                <button onclick="openCreateUserModal()" class="group bg-gradient-to-r from-accent-500 to-purple-600 text-white px-6 py-3.5 rounded-xl font-bold hover:shadow-xl hover:shadow-accent-500/30 transition-all duration-300 flex items-center gap-3 transform hover:scale-105">
+                    <i class="fas fa-user-plus text-lg group-hover:rotate-12 transition-transform"></i>
+                    <span>Neuer Benutzer</span>
+                </button>
+            </div>
         </div>
     </div>
 
@@ -582,7 +698,98 @@ $stats['total'] = $stats['admins'] + $stats['students'] + $stats['teachers'];
     </div>
 </div>
 
+<!-- CSV Import Modal -->
+<div id="csvImportModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
+    <div class="modal-content bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 text-white px-8 py-6 rounded-t-3xl relative overflow-hidden">
+            <div class="absolute inset-0 bg-white/10 opacity-30" style="background-image: url('data:image/svg+xml,%3Csvg width=\"40\" height=\"40\" viewBox=\"0 0 40 40\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.3\" fill-rule=\"evenodd\"%3E%3Cpath d=\"M0 40L40 0H20L0 20M40 40V20L20 40\"/%3E%3C/g%3E%3C/svg%3E');"></div>
+            <div class="relative flex items-center gap-4">
+                <div class="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+                    <i class="fas fa-file-csv text-2xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-2xl font-extrabold font-display">Benutzer aus CSV importieren</h3>
+                    <p class="text-white/80 text-sm">Mehrere Benutzer auf einmal hinzufügen</p>
+                </div>
+            </div>
+        </div>
+        
+        <form method="POST" enctype="multipart/form-data" class="p-8 space-y-6">
+            <div class="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-5">
+                <div class="flex items-start gap-4">
+                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                        <i class="fas fa-info-circle text-blue-600 text-lg"></i>
+                    </div>
+                    <div>
+                        <p class="text-blue-800 font-semibold mb-2">CSV-Format</p>
+                        <p class="text-blue-700 text-sm">
+                            Die CSV-Datei muss folgende Spalten enthalten (Semikolon-getrennt):
+                        </p>
+                        <ul class="text-blue-600 text-sm mt-2 space-y-1">
+                            <li><strong>Pflicht:</strong> username, password, firstname, lastname</li>
+                            <li><strong>Optional:</strong> email, role (student/teacher/admin), class</li>
+                        </ul>
+                        <p class="text-blue-600 text-sm mt-2 italic">
+                            <i class="fas fa-lightbulb text-amber-500 mr-1"></i>
+                            Bereits existierende Benutzer (gleicher username) werden übersprungen.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-emerald-400 hover:bg-emerald-50/30 transition-all">
+                <div class="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-cloud-upload-alt text-emerald-600 text-2xl"></i>
+                </div>
+                <label class="cursor-pointer">
+                    <span class="text-gray-600 font-medium">CSV-Datei auswählen oder hierher ziehen</span>
+                    <input type="file" name="csv_file" accept=".csv" required class="hidden" onchange="updateFileName(this)">
+                </label>
+                <p id="selectedFileName" class="text-sm text-emerald-600 mt-2 hidden">
+                    <i class="fas fa-file-csv mr-1"></i>
+                    <span></span>
+                </p>
+            </div>
+            
+            <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4">
+                <p class="text-amber-700 text-sm flex items-center gap-2">
+                    <i class="fas fa-key text-amber-500"></i>
+                    <span>Alle importierten Benutzer müssen ihr Passwort beim ersten Login ändern.</span>
+                </p>
+            </div>
+            
+            <div class="bg-gray-100 rounded-xl p-4">
+                <p class="text-gray-600 text-sm font-medium mb-2">Beispiel-CSV:</p>
+                <code class="text-xs bg-white p-3 rounded-lg block font-mono text-gray-700 overflow-x-auto">
+username;password;firstname;lastname;email;role;class<br>
+max.mueller;pass123;Max;Müller;max@schule.de;student;10A<br>
+anna.schmidt;pass456;Anna;Schmidt;;student;10B<br>
+lehrer.meier;pass789;Hans;Meier;meier@schule.de;teacher;
+                </code>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
+                <button type="button" onclick="closeCsvImportModal()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold">
+                    Abbrechen
+                </button>
+                <button type="submit" name="import_csv" class="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:shadow-lg hover:shadow-emerald-500/30 transition font-bold">
+                    <i class="fas fa-upload mr-2"></i>Importieren
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
+function updateFileName(input) {
+    const fileNameDisplay = document.getElementById('selectedFileName');
+    if (input.files && input.files[0]) {
+        fileNameDisplay.querySelector('span').textContent = input.files[0].name;
+        fileNameDisplay.classList.remove('hidden');
+    } else {
+        fileNameDisplay.classList.add('hidden');
+    }
+}
 function openCreateUserModal() {
     document.getElementById('createUserModal').classList.remove('hidden');
     document.getElementById('createUserModal').classList.add('flex');
@@ -591,6 +798,16 @@ function openCreateUserModal() {
 function closeCreateUserModal() {
     document.getElementById('createUserModal').classList.add('hidden');
     document.getElementById('createUserModal').classList.remove('flex');
+}
+
+function openCsvImportModal() {
+    document.getElementById('csvImportModal').classList.remove('hidden');
+    document.getElementById('csvImportModal').classList.add('flex');
+}
+
+function closeCsvImportModal() {
+    document.getElementById('csvImportModal').classList.add('hidden');
+    document.getElementById('csvImportModal').classList.remove('flex');
 }
 
 function openResetPasswordModal(userId, userName, userRole) {
@@ -648,6 +865,7 @@ document.addEventListener('keydown', function(e) {
         closeCreateUserModal();
         closeResetPasswordModal();
         closeDeleteUserModal();
+        closeCsvImportModal();
     }
 });
 </script>

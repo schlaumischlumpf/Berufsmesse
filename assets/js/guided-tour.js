@@ -291,6 +291,7 @@ class GuidedTour {
     
     skip() {
         this.end();
+        localStorage.setItem(this.storageKey, 'skipped');
         this.onSkip();
     }
     
@@ -315,9 +316,10 @@ class GuidedTour {
         document.body.style.overflow = '';
     }
     
-    // Check if tour has been completed
+    // Check if tour has been completed or skipped
     hasCompleted() {
-        return localStorage.getItem(this.storageKey) === 'true';
+        const status = localStorage.getItem(this.storageKey);
+        return status === 'true' || status === 'skipped';
     }
     
     // Reset tour completion status
@@ -341,13 +343,15 @@ const berufsmesseTourSteps = [
         position: 'center'
     },
     {
-        target: '#sidebar',
+        target: '#sidebar nav',
         title: 'Navigation',
         description: `
             <p>Über die Seitenleiste erreichst du alle Bereiche:</p>
             <ul class="mt-2 space-y-1 text-sm">
-                <li><i class="fas fa-home text-emerald-500 mr-1"></i> <strong>Dashboard</strong> - Deine persönliche Übersicht</li>
-                <li><i class="fas fa-building text-purple-500 mr-1"></i> <strong>Unternehmen</strong> - Alle Aussteller entdecken</li>
+                <li><i class="fas fa-calendar-alt text-primary-500 mr-1"></i> <strong>Kalender</strong> - Alle Termine auf einen Blick</li>
+                <li><i class="fas fa-building text-accent-500 mr-1"></i> <strong>Unternehmen</strong> - Alle Aussteller entdecken</li>
+                <li><i class="fas fa-clipboard-list text-blue-500 mr-1"></i> <strong>Einschreibung</strong> - Für Aussteller anmelden</li>
+                <li><i class="fas fa-check-circle text-orange-500 mr-1"></i> <strong>Meine Termine</strong> - Deine Anmeldungen</li>
             </ul>
             <p class="mt-2 text-sm text-gray-500">Auf Mobilgeräten erreichst du die Navigation über das Menü-Symbol.</p>
         `,

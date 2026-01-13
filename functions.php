@@ -301,7 +301,7 @@ function getAvailablePermissions() {
         'manage_rooms' => 'Räume verwalten',
         'manage_settings' => 'Einstellungen verwalten (Einschreibezeiten, Event-Datum)',
         'manage_users' => 'Benutzer verwalten (Passwörter zurücksetzen, Accounts erstellen/löschen)',
-        'view_reports' => 'Berichte ansehen und drucken',
+        'view_reports' => 'Druckzentrale nutzen (Berichte ansehen und drucken)',
         'auto_assign' => 'Automatische Zuteilung durchführen'
     ];
 }

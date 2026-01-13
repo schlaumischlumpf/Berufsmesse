@@ -5,13 +5,46 @@ require_once 'functions.php';
 
 // Wenn bereits eingeloggt, weiterleiten
 if (isLoggedIn()) {
-    header('Location: ' . BASE_URL . 'index.php');
-    exit();
+    // Prüfen ob Passwort geändert werden muss
+    if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password']) {
+        // Bleibe auf dieser Seite für Passwortänderung
+    } else {
+        header('Location: ' . BASE_URL . 'index.php');
+        exit();
+    }
 }
 
 $error = '';
+$showPasswordChange = isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'];
+$passwordChangeSuccess = false;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+// Passwort ändern (bei Pflicht-Änderung)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
+    $newPassword = $_POST['new_password'] ?? '';
+    $confirmPassword = $_POST['confirm_password'] ?? '';
+    
+    if (empty($newPassword) || empty($confirmPassword)) {
+        $error = 'Bitte alle Felder ausfüllen';
+    } elseif (strlen($newPassword) < 6) {
+        $error = 'Das Passwort muss mindestens 6 Zeichen lang sein';
+    } elseif ($newPassword !== $confirmPassword) {
+        $error = 'Die Passwörter stimmen nicht überein';
+    } else {
+        $db = getDB();
+        $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+        $stmt = $db->prepare("UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?");
+        if ($stmt->execute([$hashedPassword, $_SESSION['user_id']])) {
+            $_SESSION['must_change_password'] = false;
+            $passwordChangeSuccess = true;
+            // Weiterleitung nach kurzer Verzögerung (wird im JS gemacht)
+        } else {
+            $error = 'Fehler beim Ändern des Passworts';
+        }
+    }
+}
+
+// Normaler Login
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password'])) {
     $username = sanitize($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     
@@ -19,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Bitte alle Felder ausfüllen';
     } else {
         $db = getDB();
-        $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role FROM users WHERE username = ?");
+        $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role, must_change_password FROM users WHERE username = ?");
         $stmt->execute([$username]);
         $user = $stmt->fetch();
         
@@ -29,9 +62,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['firstname'] = $user['firstname'];
             $_SESSION['lastname'] = $user['lastname'];
             $_SESSION['role'] = $user['role'];
+            $_SESSION['must_change_password'] = (bool)($user['must_change_password'] ?? false);
             
-            header('Location: ' . BASE_URL . 'index.php');
-            exit();
+            // Wenn Passwort geändert werden muss, zeige Formular
+            if ($_SESSION['must_change_password']) {
+                $showPasswordChange = true;
+            } else {
+                header('Location: ' . BASE_URL . 'index.php');
+                exit();
+            }
         } else {
             $error = 'Ungültiger Benutzername oder Passwort';
         }
@@ -193,6 +232,112 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         <!-- Login Card -->
         <div class="login-card rounded-3xl shadow-2xl p-8 border border-white/20 glow-effect">
+            <?php if ($passwordChangeSuccess): ?>
+            <!-- Passwort erfolgreich geändert -->
+            <div class="text-center">
+                <div class="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <i class="fas fa-check text-white text-4xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 font-display mb-2">Passwort geändert!</h2>
+                <p class="text-gray-500 mb-6">Ihr Passwort wurde erfolgreich geändert. Sie werden weitergeleitet...</p>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full animate-pulse" style="width: 100%"></div>
+                </div>
+            </div>
+            <script>setTimeout(() => window.location.href = '<?php echo BASE_URL; ?>index.php', 2000);</script>
+            
+            <?php elseif ($showPasswordChange): ?>
+            <!-- Passwort ändern (Pflicht) -->
+            <div class="text-center mb-8">
+                <div class="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-key text-white text-2xl"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-gray-800 font-display">Passwort ändern</h2>
+                <p class="text-gray-500 mt-1">Bitte wählen Sie ein neues Passwort</p>
+            </div>
+            
+            <?php if ($error): ?>
+            <div class="bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 p-4 mb-6 rounded-xl">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center mr-3">
+                        <i class="fas fa-exclamation-circle text-red-500"></i>
+                    </div>
+                    <p class="text-red-700 font-medium"><?php echo $error; ?></p>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <div class="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500 p-4 mb-6 rounded-xl">
+                <div class="flex items-center">
+                    <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center mr-3">
+                        <i class="fas fa-info-circle text-amber-500"></i>
+                    </div>
+                    <p class="text-amber-700 font-medium">Bei Ihrem ersten Login müssen Sie ein neues Passwort festlegen.</p>
+                </div>
+            </div>
+
+            <form method="POST" action="" class="space-y-6">
+                <!-- Neues Passwort -->
+                <div class="space-y-2">
+                    <label for="new_password" class="block text-sm font-semibold text-gray-700">
+                        Neues Passwort
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <div class="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-lock text-white text-sm"></i>
+                            </div>
+                        </div>
+                        <input 
+                            type="password" 
+                            id="new_password" 
+                            name="new_password" 
+                            required
+                            minlength="6"
+                            class="w-full pl-16 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:border-amber-500 focus:bg-white focus:outline-none input-focus-glow transition-all duration-300"
+                            placeholder="Mindestens 6 Zeichen"
+                        >
+                    </div>
+                </div>
+
+                <!-- Passwort bestätigen -->
+                <div class="space-y-2">
+                    <label for="confirm_password" class="block text-sm font-semibold text-gray-700">
+                        Passwort bestätigen
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                            <div class="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
+                                <i class="fas fa-lock text-white text-sm"></i>
+                            </div>
+                        </div>
+                        <input 
+                            type="password" 
+                            id="confirm_password" 
+                            name="confirm_password" 
+                            required
+                            minlength="6"
+                            class="w-full pl-16 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:border-amber-500 focus:bg-white focus:outline-none input-focus-glow transition-all duration-300"
+                            placeholder="Passwort wiederholen"
+                        >
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button 
+                    type="submit"
+                    name="change_password"
+                    class="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold py-4 px-6 rounded-2xl btn-glow transition-all duration-300 flex items-center justify-center gap-3 group"
+                >
+                    <span class="text-lg">Passwort ändern</span>
+                    <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center group-hover:bg-white/30 transition-colors">
+                        <i class="fas fa-check"></i>
+                    </div>
+                </button>
+            </form>
+            
+            <?php else: ?>
+            <!-- Normaler Login -->
             <div class="text-center mb-8">
                 <h2 class="text-2xl font-bold text-gray-800 font-display">Willkommen zurück!</h2>
                 <p class="text-gray-500 mt-1">Melden Sie sich an, um fortzufahren</p>
@@ -285,6 +430,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
                 </div>
             </div>
+            <?php endif; ?>
         </div>
 
         <!-- Footer -->
