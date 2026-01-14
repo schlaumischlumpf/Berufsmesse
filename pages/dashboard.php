@@ -381,9 +381,33 @@ foreach ($userRegistrations as $reg) {
 <script>
 // Start guided tour
 function startGuidedTour() {
+    // Navigate to dashboard first if not already there
+    const currentPage = new URLSearchParams(window.location.search).get('page');
+    const userRole = '<?php echo $_SESSION["role"] ?? "student"; ?>';
+    
+    // Determine the correct dashboard page
+    let dashboardPage = 'dashboard';
+    // Admin kann Tour sowohl auf dashboard als auch auf admin-dashboard starten
+    if (userRole === 'admin' && currentPage !== 'dashboard') {
+        dashboardPage = 'admin-dashboard';
+    } else if (userRole === 'teacher') {
+        dashboardPage = 'teacher-dashboard';
+    }
+    
+    // If not on dashboard, navigate there first
+    if (currentPage !== dashboardPage && currentPage !== 'dashboard') {
+        window.location.href = '?page=' + dashboardPage + '&start_tour=1';
+        return;
+    }
+    
     if (typeof GuidedTour !== 'undefined') {
+        // Generate role-based steps
+        const steps = typeof generateTourSteps !== 'undefined' 
+            ? generateTourSteps(userRole)
+            : (window.berufsmesseTourSteps || []);
+        
         const tour = new GuidedTour({
-            steps: window.berufsmesseTourSteps || [],
+            steps: steps,
             onComplete: () => {
                 if (typeof showToast !== 'undefined') {
                     showToast('Tour abgeschlossen! 🎉', 'success');
@@ -413,6 +437,17 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             localStorage.setItem('berufsmesse_visited', 'true');
         }, 1500);
+    }
+    
+    // Auto-start tour if start_tour parameter is present
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('start_tour') === '1') {
+        // Remove parameter from URL
+        window.history.replaceState({}, '', window.location.pathname + '?page=dashboard');
+        // Start tour after a short delay
+        setTimeout(() => {
+            startGuidedTour();
+        }, 500);
     }
 });
 </script>

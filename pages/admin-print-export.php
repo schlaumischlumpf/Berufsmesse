@@ -1,14 +1,17 @@
 <?php
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 /**
  * Berufsmesse - Admin Print Export
  * Professionelle Druckansicht für Lehrkräfte und Administratoren
  * Mit Pastel-Design und PDF-optimiertem Layout
  */
 
-session_start();
 require_once '../config.php';
 require_once '../functions.php';
 
+// Ensure DB connection is available when opened directly
 $db = getDB();
 
 // Session prüfen
@@ -21,10 +24,6 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher())) {
 $printType = $_GET['type'] ?? 'all';
 $filterClass = $_GET['class'] ?? '';
 $filterRoom = $_GET['room'] ?? '';
-
-// Initialize variables
-$registrations = [];
-$allStudentsSchedules = [];
 
 // Daten laden
 if ($printType === 'all' || $printType === 'class') {
@@ -79,47 +78,6 @@ if ($printType === 'all' || $printType === 'class') {
     $stmt = $db->prepare($query);
     $stmt->execute($params);
     $registrations = $stmt->fetchAll();
-    
-} elseif ($printType === 'schedules') {
-    // Alle Schüler mit ihren Registrierungen laden
-    $query = "
-        SELECT 
-            u.id as user_id, u.firstname, u.lastname, u.class,
-            e.name as exhibitor_name,
-            e.short_description,
-            e.room_id,
-            rm.room_number, rm.room_name, rm.building,
-            t.slot_name, t.slot_number, t.start_time, t.end_time,
-            reg.registration_type
-        FROM users u
-        LEFT JOIN registrations reg ON u.id = reg.user_id
-        LEFT JOIN exhibitors e ON reg.exhibitor_id = e.id
-        LEFT JOIN timeslots t ON reg.timeslot_id = t.id
-        LEFT JOIN rooms rm ON e.room_id = rm.id
-        WHERE u.role = 'student'
-        ORDER BY u.class, u.lastname, u.firstname, t.slot_number
-    ";
-    $stmt = $db->query($query);
-    $registrations = $stmt->fetchAll();
-    
-    // Nach Schüler gruppieren
-    $allStudentsSchedules = [];
-    foreach ($registrations as $reg) {
-        $studentKey = $reg['user_id'];
-        if (!isset($allStudentsSchedules[$studentKey])) {
-            $allStudentsSchedules[$studentKey] = [
-                'info' => [
-                    'firstname' => $reg['firstname'],
-                    'lastname' => $reg['lastname'],
-                    'class' => $reg['class']
-                ],
-                'registrations' => []
-            ];
-        }
-        if ($reg['slot_number']) {
-            $allStudentsSchedules[$studentKey]['registrations'][$reg['slot_number']] = $reg;
-        }
-    }
 }
 
 // Räume für Titel
@@ -138,10 +96,6 @@ if ($printType === 'all') {
     } else {
         $docTitle = 'Alle Räume';
     }
-} elseif ($printType === 'schedules') {
-    $docTitle = 'Alle Tagespläne';
-} else {
-    $docTitle = 'Druckansicht';
 }
 
 $eventDate = getSetting('event_date') ?? date('Y-m-d');
@@ -451,7 +405,12 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
         
         /* Print Styles */
         @media print {
-            .screen-controls {
+            /* Verstecke alle UI-Elemente beim Drucken */
+            .screen-controls,
+            .fas.fa-cog,
+            .fas.fa-ellipsis-v,
+            button[class*="settings"],
+            .settings-icon {
                 display: none !important;
             }
             
@@ -461,9 +420,12 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                 max-width: none;
             }
             
+            /* Entferne Browser-Kopf- und Fußzeilen */
             @page {
                 size: A4 portrait;
                 margin: 12mm;
+                /* Entfernt automatisch Browser-Kopf-/Fußzeilen */
+                marks: none;
             }
             
             .section {
@@ -494,7 +456,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
     <div class="screen-controls">
         <h1><i class="fas fa-file-alt mr-2"></i> <?php echo htmlspecialchars($docTitle); ?></h1>
         <div class="control-buttons">
-            <a href="../?page=admin-print" class="btn btn-secondary">
+            <a href="<?php echo BASE_URL; ?>?page=admin-print" class="btn btn-secondary">
                 <i class="fas fa-arrow-left"></i> Zurück
             </a>
             <button class="btn btn-primary" onclick="window.print()">
@@ -508,7 +470,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
         <!-- Document Header -->
         <header class="doc-header">
             <div class="doc-logo">
-                <div class="logo-icon"><i class="fas fa-graduation-cap"></i></div>
+                <div class="logo-icon">🎓</div>
                 <div class="logo-text">
                     <h1>Berufsmesse <?php echo date('Y'); ?></h1>
                     <p><?php echo htmlspecialchars($docTitle); ?></p>
@@ -517,13 +479,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
             <div class="doc-meta">
                 <div class="meta-date"><?php echo formatDate($eventDate); ?></div>
                 <div class="meta-info">Erstellt am <?php echo date('d.m.Y, H:i'); ?> Uhr</div>
-                <div class="meta-info"><?php 
-                    if ($printType === 'schedules') {
-                        echo count($allStudentsSchedules ?? []) . ' Schüler';
-                    } else {
-                        echo count($registrations ?? []) . ' Einträge';
-                    }
-                ?></div>
+                <div class="meta-info"><?php echo count($registrations); ?> Einträge</div>
             </div>
         </header>
         
@@ -542,7 +498,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
             <?php foreach ($groupedByClass as $class => $students): ?>
                 <div class="section">
                     <div class="section-header">
-                        <div class="section-icon"><i class="fas fa-users"></i></div>
+                        <div class="section-icon">🎓</div>
                         <div class="section-title"><?php echo htmlspecialchars($class); ?></div>
                         <div class="section-count"><?php echo count($students); ?> Schüler</div>
                     </div>
@@ -604,7 +560,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
             <?php foreach ($groupedByRoom as $roomNum => $slots): ?>
                 <div class="section">
                     <div class="section-header room">
-                        <div class="section-icon"><i class="fas fa-door-open"></i></div>
+                        <div class="section-icon">🚪</div>
                         <div class="section-title">Raum <?php echo htmlspecialchars($roomNum); ?></div>
                         <div class="section-count"><?php echo array_sum(array_map(fn($s) => count($s['students']), $slots)); ?> Besuche</div>
                     </div>
@@ -644,138 +600,6 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                         </div>
                     <?php endforeach; ?>
                 </div>
-            <?php endforeach; ?>
-        
-        <?php elseif ($printType === 'schedules'): ?>
-            <?php
-            // Tagesablauf-Vorlage
-            $scheduleTemplate = [
-                ['time' => '08:45', 'end' => '09:00', 'label' => 'Ankunft & Begrüßung', 'type' => 'info', 'slot' => null, 'icon' => 'fa-door-open'],
-                ['time' => '09:00', 'end' => '09:30', 'label' => 'Slot 1', 'type' => 'assigned', 'slot' => 1, 'icon' => 'fa-clipboard-check'],
-                ['time' => '09:30', 'end' => '09:40', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => 'fa-coffee'],
-                ['time' => '09:40', 'end' => '10:10', 'label' => 'Slot 2', 'type' => 'free', 'slot' => 2, 'icon' => 'fa-hand-pointer'],
-                ['time' => '10:10', 'end' => '10:40', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => 'fa-utensils'],
-                ['time' => '10:40', 'end' => '11:10', 'label' => 'Slot 3', 'type' => 'assigned', 'slot' => 3, 'icon' => 'fa-clipboard-check'],
-                ['time' => '11:10', 'end' => '11:20', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => 'fa-coffee'],
-                ['time' => '11:20', 'end' => '11:50', 'label' => 'Slot 4', 'type' => 'free', 'slot' => 4, 'icon' => 'fa-hand-pointer'],
-                ['time' => '11:50', 'end' => '12:20', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => 'fa-utensils'],
-                ['time' => '12:20', 'end' => '12:50', 'label' => 'Slot 5', 'type' => 'assigned', 'slot' => 5, 'icon' => 'fa-clipboard-check'],
-                ['time' => '12:50', 'end' => '13:00', 'label' => 'Verabschiedung', 'type' => 'info', 'slot' => null, 'icon' => 'fa-flag-checkered'],
-            ];
-            
-            // Nach Klasse gruppieren
-            $byClass = [];
-            foreach ($allStudentsSchedules as $id => $data) {
-                $class = $data['info']['class'] ?: 'Keine Klasse';
-                $byClass[$class][$id] = $data;
-            }
-            ksort($byClass);
-            
-            $studentIndex = 0;
-            $totalStudents = count($allStudentsSchedules);
-            ?>
-            
-            <?php foreach ($byClass as $class => $students): ?>
-                <?php foreach ($students as $studentId => $studentData): 
-                    $studentIndex++;
-                    $studentRegs = $studentData['registrations'];
-                ?>
-                    <!-- Individueller Tagesplan -->
-                    <div class="schedule-page" style="page-break-after: always; <?php if ($studentIndex === $totalStudents) echo 'page-break-after: auto;'; ?>">
-                        <!-- Student Header -->
-                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; background: linear-gradient(135deg, var(--color-mint-light), var(--color-sky-light)); border-radius: 10px; margin-bottom: 1rem;">
-                            <div style="display: flex; align-items: center; gap: 1rem;">
-                                <div style="width: 50px; height: 50px; background: linear-gradient(135deg, var(--color-mint), var(--color-lavender)); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: #1f2937; font-size: 1.25rem;">
-                                    <?php echo strtoupper(substr($studentData['info']['firstname'], 0, 1) . substr($studentData['info']['lastname'], 0, 1)); ?>
-                                </div>
-                                <div>
-                                    <div style="font-size: 1.25rem; font-weight: 700; color: #1f2937;">
-                                        <?php echo htmlspecialchars($studentData['info']['firstname'] . ' ' . $studentData['info']['lastname']); ?>
-                                    </div>
-                                    <div style="font-size: 0.875rem; color: #6b7280;">
-                                        Klasse <?php echo htmlspecialchars($studentData['info']['class'] ?: '—'); ?> · <?php echo formatDate($eventDate); ?>
-                                    </div>
-                                </div>
-                            </div>
-                            <div style="text-align: right; font-size: 0.75rem; color: #9ca3af;">
-                                Schüler <?php echo $studentIndex; ?> / <?php echo $totalStudents; ?>
-                            </div>
-                        </div>
-                        
-                        <!-- Zeitplan -->
-                        <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem;">
-                            <thead>
-                                <tr style="background: #f8fafc;">
-                                    <th style="padding: 0.5rem; text-align: left; border-bottom: 2px solid #e5e7eb; width: 100px;">Zeit</th>
-                                    <th style="padding: 0.5rem; text-align: left; border-bottom: 2px solid #e5e7eb;">Aktivität</th>
-                                    <th style="padding: 0.5rem; text-align: left; border-bottom: 2px solid #e5e7eb; width: 80px;">Raum</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <?php foreach ($scheduleTemplate as $item): 
-                                    $reg = ($item['slot'] !== null && isset($studentRegs[$item['slot']])) ? $studentRegs[$item['slot']] : null;
-                                    
-                                    // Farben basierend auf Typ
-                                    $bgColor = '#f8fafc';
-                                    $borderColor = '#e5e7eb';
-                                    if ($item['type'] === 'break') {
-                                        $bgColor = '#fffbeb';
-                                        $borderColor = '#fcd34d';
-                                    } elseif ($item['type'] === 'info') {
-                                        $bgColor = '#f0f9ff';
-                                        $borderColor = '#93c5fd';
-                                    } elseif ($reg) {
-                                        $bgColor = $reg['registration_type'] === 'mandatory' ? '#ecfdf5' : '#fdf4ff';
-                                        $borderColor = $reg['registration_type'] === 'mandatory' ? '#86efac' : '#e9d5ff';
-                                    }
-                                ?>
-                                <tr style="background: <?php echo $bgColor; ?>;">
-                                    <td style="padding: 0.6rem 0.5rem; border-bottom: 1px solid <?php echo $borderColor; ?>; vertical-align: top;">
-                                        <div style="display: flex; align-items: center; gap: 0.4rem;">
-                                            <i class="fas <?php echo $item['icon']; ?>" style="color: #6b7280; font-size: 0.75rem;"></i>
-                                            <span style="font-weight: 600;"><?php echo $item['time']; ?></span>
-                                        </div>
-                                        <div style="font-size: 0.65rem; color: #9ca3af;">bis <?php echo $item['end']; ?></div>
-                                    </td>
-                                    <td style="padding: 0.6rem 0.5rem; border-bottom: 1px solid <?php echo $borderColor; ?>;">
-                                        <?php if ($reg): ?>
-                                            <div style="font-weight: 600; color: #1f2937;"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></div>
-                                            <?php if ($reg['registration_type'] === 'mandatory'): ?>
-                                                <span style="display: inline-block; font-size: 0.6rem; padding: 0.125rem 0.375rem; background: #dcfce7; color: #166534; border-radius: 4px;">Pflicht</span>
-                                            <?php else: ?>
-                                                <span style="display: inline-block; font-size: 0.6rem; padding: 0.125rem 0.375rem; background: #f3e8ff; color: #7e22ce; border-radius: 4px;">Wahl</span>
-                                            <?php endif; ?>
-                                        <?php elseif ($item['slot'] !== null): ?>
-                                            <div style="color: #9ca3af; font-style: italic;">— Nicht belegt —</div>
-                                        <?php else: ?>
-                                            <div style="color: #6b7280;"><?php echo htmlspecialchars($item['label']); ?></div>
-                                        <?php endif; ?>
-                                    </td>
-                                    <td style="padding: 0.6rem 0.5rem; border-bottom: 1px solid <?php echo $borderColor; ?>; vertical-align: top;">
-                                        <?php if ($reg && $reg['room_number']): ?>
-                                            <span style="display: inline-block; padding: 0.25rem 0.5rem; background: #e0f2fe; color: #0369a1; border-radius: 4px; font-weight: 600; font-size: 0.75rem;">
-                                                <?php echo htmlspecialchars($reg['room_number']); ?>
-                                            </span>
-                                        <?php else: ?>
-                                            <span style="color: #d1d5db;">—</span>
-                                        <?php endif; ?>
-                                    </td>
-                                </tr>
-                                <?php endforeach; ?>
-                            </tbody>
-                        </table>
-                        
-                        <!-- Hinweise -->
-                        <div style="margin-top: 1rem; padding: 0.75rem; background: #fef3c7; border-radius: 8px; font-size: 0.7rem; color: #92400e;">
-                            <strong><i class="fas fa-exclamation-triangle" style="margin-right: 0.25rem;"></i> Wichtige Hinweise:</strong>
-                            <ul style="margin: 0.5rem 0 0 1.25rem; padding: 0;">
-                                <li>Bitte sei pünktlich zu deinen Terminen.</li>
-                                <li>Pflichttermine sind verbindlich und müssen wahrgenommen werden.</li>
-                                <li>Bei Fragen wende dich an deine Lehrkraft.</li>
-                            </ul>
-                        </div>
-                    </div>
-                <?php endforeach; ?>
             <?php endforeach; ?>
         <?php endif; ?>
         

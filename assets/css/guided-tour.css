@@ -7,7 +7,7 @@
 .tour-overlay {
     position: fixed;
     inset: 0;
-    z-index: 9998;
+    z-index: 99998;
     pointer-events: none;
     opacity: 0;
     visibility: hidden;
@@ -23,45 +23,65 @@
 .tour-overlay-bg {
     position: absolute;
     inset: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(2px);
-}
-
-/* Spotlight - highlights the target element */
-.tour-spotlight {
-    position: fixed;
-    z-index: 9999;
-    border-radius: 12px;
-    background: transparent;
-    box-shadow: 
-        0 0 0 9999px rgba(0, 0, 0, 0.7);
+    /* Apply backdrop blur to everything underneath the overlay. The currently highlighted element
+       will be elevated above the overlay so it remains unblurred. */
+    background: rgba(255, 255, 255, 0.0);
+    backdrop-filter: blur(6px);
     pointer-events: none;
-    opacity: 0;
-    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: backdrop-filter 0.25s ease;
 }
 
-.tour-spotlight.active {
-    opacity: 1;
-}
-
-/* Ensure highlighted element is visible */
+/* Highlighted target - elevated above overlay so it stays crisp */
 .tour-highlight {
-    position: relative !important;
-    z-index: 10000 !important;
-    box-shadow: 0 0 0 4px rgba(168, 230, 207, 0.8), 0 0 20px rgba(168, 230, 207, 0.5) !important;
+    z-index: 100001 !important;
+    box-shadow: 0 0 0 4px rgba(168, 230, 207, 0.9) !important;
     border-radius: 12px;
+    transition: box-shadow 0.2s ease, transform 0.15s ease;
 }
 
-/* Tooltip */
+/* Ensure tooltip sits above highlighted element */
 .tour-tooltip {
-    position: fixed;
-    z-index: 10000;
+    position: absolute;
+    z-index: 100002;
     width: 380px;
     max-width: calc(100vw - 32px);
     opacity: 0;
     visibility: hidden;
     transform: translateY(10px);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: auto;
+}
+
+/* Spotlight */
+.tour-spotlight {
+    position: absolute;
+    z-index: 99999;
+    border-radius: 12px;
+    box-shadow: 
+        0 0 0 9999px rgba(0, 0, 0, 0.4),
+        0 0 0 4px rgba(168, 230, 207, 0.9),
+        0 0 40px rgba(168, 230, 207, 0.6);
+    pointer-events: none;
+    opacity: 0;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    backdrop-filter: none;
+}
+
+.tour-spotlight.active {
+    opacity: 1;
+}
+
+/* Tooltip */
+.tour-tooltip {
+    position: absolute;
+    z-index: 100000;
+    width: 380px;
+    max-width: calc(100vw - 32px);
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(10px);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    pointer-events: auto;
 }
 
 .tour-tooltip.active {
@@ -77,6 +97,7 @@
         0 25px 50px -12px rgba(0, 0, 0, 0.25),
         0 0 0 1px rgba(0, 0, 0, 0.05);
     overflow: hidden;
+    pointer-events: auto;
 }
 
 /* Tooltip Header */

@@ -5,46 +5,13 @@ require_once 'functions.php';
 
 // Wenn bereits eingeloggt, weiterleiten
 if (isLoggedIn()) {
-    // Prüfen ob Passwort geändert werden muss
-    if (isset($_SESSION['must_change_password']) && $_SESSION['must_change_password']) {
-        // Bleibe auf dieser Seite für Passwortänderung
-    } else {
-        header('Location: ' . BASE_URL . 'index.php');
-        exit();
-    }
+    header('Location: ' . BASE_URL . 'index.php');
+    exit();
 }
 
 $error = '';
-$showPasswordChange = isset($_SESSION['must_change_password']) && $_SESSION['must_change_password'];
-$passwordChangeSuccess = false;
 
-// Passwort ändern (bei Pflicht-Änderung)
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
-    $newPassword = $_POST['new_password'] ?? '';
-    $confirmPassword = $_POST['confirm_password'] ?? '';
-    
-    if (empty($newPassword) || empty($confirmPassword)) {
-        $error = 'Bitte alle Felder ausfüllen';
-    } elseif (strlen($newPassword) < 6) {
-        $error = 'Das Passwort muss mindestens 6 Zeichen lang sein';
-    } elseif ($newPassword !== $confirmPassword) {
-        $error = 'Die Passwörter stimmen nicht überein';
-    } else {
-        $db = getDB();
-        $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-        $stmt = $db->prepare("UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?");
-        if ($stmt->execute([$hashedPassword, $_SESSION['user_id']])) {
-            $_SESSION['must_change_password'] = false;
-            $passwordChangeSuccess = true;
-            // Weiterleitung nach kurzer Verzögerung (wird im JS gemacht)
-        } else {
-            $error = 'Fehler beim Ändern des Passworts';
-        }
-    }
-}
-
-// Normaler Login
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $username = sanitize($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     
@@ -52,7 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password'])) 
         $error = 'Bitte alle Felder ausfüllen';
     } else {
         $db = getDB();
-        $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role, must_change_password FROM users WHERE username = ?");
+        $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role FROM users WHERE username = ?");
         $stmt->execute([$username]);
         $user = $stmt->fetch();
         
@@ -62,15 +29,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password'])) 
             $_SESSION['firstname'] = $user['firstname'];
             $_SESSION['lastname'] = $user['lastname'];
             $_SESSION['role'] = $user['role'];
-            $_SESSION['must_change_password'] = (bool)($user['must_change_password'] ?? false);
             
-            // Wenn Passwort geändert werden muss, zeige Formular
-            if ($_SESSION['must_change_password']) {
-                $showPasswordChange = true;
-            } else {
-                header('Location: ' . BASE_URL . 'index.php');
+            // Prüfe ob Passwort erzwungen werden muss (beim ersten Login oder nach Admin-Reset)
+            $db = getDB();
+            $stmt = $db->prepare("SELECT must_change_password FROM users WHERE id = ?");
+            $stmt->execute([$user['id']]);
+            $userData = $stmt->fetch();
+            
+            if ($userData && $userData['must_change_password']) {
+                $_SESSION['force_password_change'] = true;
+                header('Location: ' . BASE_URL . 'change-password.php');
                 exit();
             }
+            
+            header('Location: ' . BASE_URL . 'index.php');
+            exit();
         } else {
             $error = 'Ungültiger Benutzername oder Passwort';
         }
@@ -82,319 +55,192 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password'])) 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Berufsmesse 2026</title>
+    <title>Login - Berufsmesse</title>
     
-    <!-- Google Fonts -->
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        display: ['Plus Jakarta Sans', 'system-ui', 'sans-serif']
-                    }
-                }
-            }
-        }
-    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
+        :root {
+            --color-pastel-mint: #a8e6cf;
+            --color-pastel-mint-light: #d4f5e4;
+            --color-pastel-lavender: #c3b1e1;
+            --color-pastel-lavender-light: #e8dff5;
+            --color-pastel-peach: #ffb7b2;
+            --color-pastel-sky: #b5deff;
+        }
+        
         body {
             font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, var(--color-pastel-mint-light) 50%, var(--color-pastel-lavender-light) 100%);
+            min-height: 100vh;
         }
         
-        .gradient-text {
-            background: linear-gradient(135deg, #22c55e 0%, #a855f7 50%, #3b82f6 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+        /* Animated Background Shapes */
+        .bg-shapes {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+            z-index: 0;
+            pointer-events: none;
         }
         
-        .login-card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
+        .bg-shape {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.4;
+            animation: float 6s ease-in-out infinite;
         }
         
-        .animated-bg {
-            background: linear-gradient(-45deg, #22c55e, #a855f7, #3b82f6, #f97316);
-            background-size: 400% 400%;
-            animation: gradient 15s ease infinite;
+        .bg-shape-1 {
+            width: 300px;
+            height: 300px;
+            background: var(--color-pastel-mint);
+            top: -100px;
+            right: -50px;
+            animation-delay: 0s;
         }
         
-        @keyframes gradient {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        
-        .floating {
-            animation: floating 3s ease-in-out infinite;
-        }
-        
-        @keyframes floating {
-            0%, 100% { transform: translateY(0px); }
-            50% { transform: translateY(-20px); }
-        }
-        
-        .floating-delayed {
-            animation: floating 3s ease-in-out infinite;
-            animation-delay: 1s;
-        }
-        
-        .floating-delayed-2 {
-            animation: floating 3s ease-in-out infinite;
+        .bg-shape-2 {
+            width: 200px;
+            height: 200px;
+            background: var(--color-pastel-lavender);
+            bottom: 10%;
+            left: -50px;
             animation-delay: 2s;
         }
         
-        .glow-effect {
-            box-shadow: 0 0 60px rgba(34, 197, 94, 0.3), 0 0 100px rgba(168, 85, 247, 0.2);
+        .bg-shape-3 {
+            width: 150px;
+            height: 150px;
+            background: var(--color-pastel-peach);
+            top: 40%;
+            right: 10%;
+            animation-delay: 4s;
         }
         
-        .input-focus-glow:focus {
-            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.15), 0 10px 40px rgba(34, 197, 94, 0.1);
-        }
-        
-        .btn-glow {
-            box-shadow: 0 10px 40px rgba(34, 197, 94, 0.4);
-        }
-        
-        .btn-glow:hover {
-            box-shadow: 0 15px 50px rgba(34, 197, 94, 0.5);
-            transform: translateY(-2px);
-        }
-        
-        .particle {
-            position: absolute;
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            opacity: 0.5;
-            animation: float-particle 8s infinite;
-        }
-        
-        @keyframes float-particle {
+        @keyframes float {
             0%, 100% { transform: translateY(0) rotate(0deg); }
-            50% { transform: translateY(-100px) rotate(180deg); }
+            50% { transform: translateY(-20px) rotate(5deg); }
         }
         
-        .shimmer {
-            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.4) 50%, transparent 100%);
-            background-size: 200% 100%;
-            animation: shimmer 2s infinite;
+        /* Card Animation */
+        .login-card {
+            animation: slideUp 0.6s ease-out;
         }
         
-        @keyframes shimmer {
-            0% { background-position: -200% 0; }
-            100% { background-position: 200% 0; }
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Input Focus Effects */
+        .input-field {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .input-field:focus {
+            border-color: var(--color-pastel-mint);
+            box-shadow: 0 0 0 4px rgba(168, 230, 207, 0.3);
+        }
+        
+        /* Button Hover */
+        .btn-login {
+            background: linear-gradient(135deg, var(--color-pastel-mint) 0%, #6bc4a6 100%);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(168, 230, 207, 0.4);
+        }
+        
+        .btn-login:active {
+            transform: translateY(0);
         }
     </style>
 </head>
-<body class="min-h-screen animated-bg flex items-center justify-center p-4 relative overflow-hidden">
-    <!-- Floating Shapes Background -->
-    <div class="absolute inset-0 overflow-hidden pointer-events-none">
-        <div class="absolute top-20 left-20 w-72 h-72 bg-white/10 rounded-full blur-3xl floating"></div>
-        <div class="absolute top-40 right-20 w-96 h-96 bg-white/10 rounded-full blur-3xl floating-delayed"></div>
-        <div class="absolute bottom-20 left-1/3 w-80 h-80 bg-white/10 rounded-full blur-3xl floating-delayed-2"></div>
-        
-        <!-- Particles -->
-        <div class="particle bg-white/30" style="top: 10%; left: 10%; animation-delay: 0s;"></div>
-        <div class="particle bg-white/30" style="top: 20%; left: 80%; animation-delay: 1s;"></div>
-        <div class="particle bg-white/30" style="top: 60%; left: 20%; animation-delay: 2s;"></div>
-        <div class="particle bg-white/30" style="top: 80%; left: 70%; animation-delay: 3s;"></div>
-        <div class="particle bg-white/30" style="top: 40%; left: 50%; animation-delay: 4s;"></div>
+<body class="min-h-screen flex items-center justify-center p-4">
+    <!-- Background Shapes -->
+    <div class="bg-shapes">
+        <div class="bg-shape bg-shape-1"></div>
+        <div class="bg-shape bg-shape-2"></div>
+        <div class="bg-shape bg-shape-3"></div>
     </div>
-
+    
     <div class="w-full max-w-md relative z-10">
         <!-- Logo/Header -->
-        <div class="text-center mb-10">
-            <div class="relative inline-block">
-                <div class="w-24 h-24 bg-white rounded-3xl flex items-center justify-center shadow-2xl glow-effect mb-6 mx-auto transform hover:scale-110 hover:rotate-6 transition-all duration-500">
-                    <div class="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl flex items-center justify-center">
-                        <i class="fas fa-graduation-cap text-white text-4xl"></i>
-                    </div>
-                </div>
-                <div class="absolute -top-2 -right-2 w-8 h-8 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center shadow-lg animate-bounce">
-                    <i class="fas fa-star text-white text-xs"></i>
-                </div>
+        <div class="text-center mb-8 animate-fade-in">
+            <div class="inline-flex items-center justify-center w-20 h-20 rounded-2xl shadow-xl mb-4" style="background: linear-gradient(135deg, var(--color-pastel-mint) 0%, var(--color-pastel-lavender) 100%);">
+                <i class="fas fa-graduation-cap text-white text-3xl"></i>
             </div>
-            <h1 class="text-4xl font-extrabold font-display text-white mb-2 drop-shadow-lg">
-                Berufsmesse
-            </h1>
-            <p class="text-white/80 text-lg font-medium">Karriere Portal 2026</p>
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Berufsmesse</h1>
+            <p class="text-gray-500">Willkommen zurück! Bitte melde dich an.</p>
         </div>
 
         <!-- Login Card -->
-        <div class="login-card rounded-3xl shadow-2xl p-8 border border-white/20 glow-effect">
-            <?php if ($passwordChangeSuccess): ?>
-            <!-- Passwort erfolgreich geändert -->
-            <div class="text-center">
-                <div class="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-2xl flex items-center justify-center mx-auto mb-6">
-                    <i class="fas fa-check text-white text-4xl"></i>
-                </div>
-                <h2 class="text-2xl font-bold text-gray-800 font-display mb-2">Passwort geändert!</h2>
-                <p class="text-gray-500 mb-6">Ihr Passwort wurde erfolgreich geändert. Sie werden weitergeleitet...</p>
-                <div class="w-full bg-gray-200 rounded-full h-2">
-                    <div class="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full animate-pulse" style="width: 100%"></div>
-                </div>
-            </div>
-            <script>setTimeout(() => window.location.href = '<?php echo BASE_URL; ?>index.php', 2000);</script>
-            
-            <?php elseif ($showPasswordChange): ?>
-            <!-- Passwort ändern (Pflicht) -->
-            <div class="text-center mb-8">
-                <div class="w-16 h-16 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-key text-white text-2xl"></i>
-                </div>
-                <h2 class="text-2xl font-bold text-gray-800 font-display">Passwort ändern</h2>
-                <p class="text-gray-500 mt-1">Bitte wählen Sie ein neues Passwort</p>
-            </div>
+        <div class="login-card bg-white/90 backdrop-blur-lg rounded-3xl shadow-2xl p-8 border border-white/50">
+            <h2 class="text-xl font-bold text-gray-800 mb-6 text-center">Anmelden</h2>
             
             <?php if ($error): ?>
-            <div class="bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 p-4 mb-6 rounded-xl">
+            <div class="mb-6 p-4 rounded-xl border" style="background: var(--color-pastel-peach); border-color: rgba(255, 183, 178, 0.5);">
                 <div class="flex items-center">
-                    <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center mr-3">
+                    <div class="w-8 h-8 rounded-lg bg-white/50 flex items-center justify-center mr-3">
                         <i class="fas fa-exclamation-circle text-red-500"></i>
                     </div>
-                    <p class="text-red-700 font-medium"><?php echo $error; ?></p>
-                </div>
-            </div>
-            <?php endif; ?>
-            
-            <div class="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500 p-4 mb-6 rounded-xl">
-                <div class="flex items-center">
-                    <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center mr-3">
-                        <i class="fas fa-info-circle text-amber-500"></i>
-                    </div>
-                    <p class="text-amber-700 font-medium">Bei Ihrem ersten Login müssen Sie ein neues Passwort festlegen.</p>
-                </div>
-            </div>
-
-            <form method="POST" action="" class="space-y-6">
-                <!-- Neues Passwort -->
-                <div class="space-y-2">
-                    <label for="new_password" class="block text-sm font-semibold text-gray-700">
-                        Neues Passwort
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <div class="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-lock text-white text-sm"></i>
-                            </div>
-                        </div>
-                        <input 
-                            type="password" 
-                            id="new_password" 
-                            name="new_password" 
-                            required
-                            minlength="6"
-                            class="w-full pl-16 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:border-amber-500 focus:bg-white focus:outline-none input-focus-glow transition-all duration-300"
-                            placeholder="Mindestens 6 Zeichen"
-                        >
-                    </div>
-                </div>
-
-                <!-- Passwort bestätigen -->
-                <div class="space-y-2">
-                    <label for="confirm_password" class="block text-sm font-semibold text-gray-700">
-                        Passwort bestätigen
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <div class="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-500 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-lock text-white text-sm"></i>
-                            </div>
-                        </div>
-                        <input 
-                            type="password" 
-                            id="confirm_password" 
-                            name="confirm_password" 
-                            required
-                            minlength="6"
-                            class="w-full pl-16 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:border-amber-500 focus:bg-white focus:outline-none input-focus-glow transition-all duration-300"
-                            placeholder="Passwort wiederholen"
-                        >
-                    </div>
-                </div>
-
-                <!-- Submit Button -->
-                <button 
-                    type="submit"
-                    name="change_password"
-                    class="w-full bg-gradient-to-r from-amber-500 to-orange-500 text-white font-bold py-4 px-6 rounded-2xl btn-glow transition-all duration-300 flex items-center justify-center gap-3 group"
-                >
-                    <span class="text-lg">Passwort ändern</span>
-                    <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center group-hover:bg-white/30 transition-colors">
-                        <i class="fas fa-check"></i>
-                    </div>
-                </button>
-            </form>
-            
-            <?php else: ?>
-            <!-- Normaler Login -->
-            <div class="text-center mb-8">
-                <h2 class="text-2xl font-bold text-gray-800 font-display">Willkommen zurück!</h2>
-                <p class="text-gray-500 mt-1">Melden Sie sich an, um fortzufahren</p>
-            </div>
-            
-            <?php if ($error): ?>
-            <div class="bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 p-4 mb-6 rounded-xl animate-pulse">
-                <div class="flex items-center">
-                    <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center mr-3">
-                        <i class="fas fa-exclamation-circle text-red-500"></i>
-                    </div>
-                    <p class="text-red-700 font-medium"><?php echo $error; ?></p>
+                    <p class="text-gray-800 text-sm font-medium"><?php echo $error; ?></p>
                 </div>
             </div>
             <?php endif; ?>
 
-            <form method="POST" action="" class="space-y-6">
+            <form method="POST" action="" class="space-y-5">
                 <!-- Username -->
-                <div class="space-y-2">
-                    <label for="username" class="block text-sm font-semibold text-gray-700">
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
                         Benutzername
                     </label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <div class="w-10 h-10 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-user text-white text-sm"></i>
-                            </div>
+                            <i class="fas fa-user text-gray-400"></i>
                         </div>
                         <input 
                             type="text" 
                             id="username" 
                             name="username" 
                             required
-                            class="w-full pl-16 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:border-green-500 focus:bg-white focus:outline-none input-focus-glow transition-all duration-300"
+                            class="input-field w-full pl-11 pr-4 py-3.5 border-2 border-gray-200 rounded-xl focus:outline-none text-gray-800"
                             placeholder="Benutzername eingeben"
                         >
                     </div>
                 </div>
 
                 <!-- Password -->
-                <div class="space-y-2">
-                    <label for="password" class="block text-sm font-semibold text-gray-700">
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
                         Passwort
                     </label>
                     <div class="relative">
                         <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <div class="w-10 h-10 bg-gradient-to-br from-purple-400 to-purple-600 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-lock text-white text-sm"></i>
-                            </div>
+                            <i class="fas fa-lock text-gray-400"></i>
                         </div>
                         <input 
                             type="password" 
                             id="password" 
                             name="password" 
                             required
-                            class="w-full pl-16 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:border-purple-500 focus:bg-white focus:outline-none input-focus-glow transition-all duration-300"
-                            placeholder="••••••••"
+                            class="input-field w-full pl-11 pr-4 py-3.5 border-2 border-gray-200 rounded-xl focus:outline-none text-gray-800"
+                            placeholder="Passwort eingeben"
                         >
                     </div>
                 </div>
@@ -402,55 +248,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['change_password'])) 
                 <!-- Submit Button -->
                 <button 
                     type="submit"
-                    class="w-full bg-gradient-to-r from-green-500 to-green-600 text-white font-bold py-4 px-6 rounded-2xl btn-glow transition-all duration-300 flex items-center justify-center gap-3 group"
+                    class="btn-login w-full text-gray-800 font-semibold py-3.5 px-6 rounded-xl shadow-lg flex items-center justify-center gap-2"
                 >
-                    <span class="text-lg">Anmelden</span>
-                    <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center group-hover:bg-white/30 transition-colors">
-                        <i class="fas fa-arrow-right"></i>
-                    </div>
+                    <i class="fas fa-sign-in-alt"></i>
+                    <span>Anmelden</span>
                 </button>
             </form>
 
-            <!-- Demo Credentials -->
-            <div class="mt-8 p-5 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100">
-                <div class="flex items-center gap-3 mb-3">
-                    <div class="w-10 h-10 bg-gradient-to-br from-blue-400 to-blue-600 rounded-xl flex items-center justify-center">
-                        <i class="fas fa-info text-white"></i>
-                    </div>
-                    <span class="font-bold text-blue-800">Demo-Zugangsdaten</span>
-                </div>
-                <div class="space-y-2 text-sm">
-                    <div class="flex items-center justify-between p-2 bg-white/50 rounded-lg">
-                        <span class="text-blue-700"><i class="fas fa-user-shield mr-2"></i>Admin:</span>
-                        <code class="bg-blue-100 px-2 py-1 rounded text-blue-800 font-mono text-xs">admin / admin123</code>
-                    </div>
-                    <div class="flex items-center justify-between p-2 bg-white/50 rounded-lg">
-                        <span class="text-blue-700"><i class="fas fa-user-graduate mr-2"></i>Schüler:</span>
-                        <code class="bg-blue-100 px-2 py-1 rounded text-blue-800 font-mono text-xs">max.mueller / student123</code>
-                    </div>
+            <!-- Demo Credentials Info -->
+            <div class="mt-6 p-4 rounded-xl border" style="background: var(--color-pastel-sky); border-color: rgba(181, 222, 255, 0.5);">
+                <p class="text-xs text-gray-700 font-semibold mb-2 flex items-center gap-2">
+                    <i class="fas fa-info-circle"></i>Demo-Zugangsdaten:
+                </p>
+                <div class="text-xs text-gray-600 space-y-1">
+                    <p><strong>Admin:</strong> admin / admin123</p>
+                    <p><strong>Schüler:</strong> max.mueller / student123</p>
                 </div>
             </div>
-            <?php endif; ?>
         </div>
 
         <!-- Footer -->
-        <div class="text-center mt-8 text-white/70 text-sm">
-            <p class="flex items-center justify-center gap-2">
-                <i class="fas fa-shield-alt"></i>
-                <span>&copy; 2026 Berufsmesse. Alle Rechte vorbehalten.</span>
-            </p>
+        <div class="text-center mt-8 text-gray-500 text-sm">
+            <p>&copy; 2026 Berufsmesse. Alle Rechte vorbehalten.</p>
         </div>
     </div>
-
+    
     <script>
-        // Add interactive effects
-        document.querySelectorAll('input').forEach(input => {
-            input.addEventListener('focus', function() {
-                this.parentElement.classList.add('scale-[1.02]');
-            });
-            input.addEventListener('blur', function() {
-                this.parentElement.classList.remove('scale-[1.02]');
-            });
+        // Add animation class on load
+        document.addEventListener('DOMContentLoaded', () => {
+            document.querySelector('.login-card').classList.add('animate');
         });
     </script>
 </body>

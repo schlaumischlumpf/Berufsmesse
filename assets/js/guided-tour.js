@@ -15,6 +15,8 @@ class GuidedTour {
         this.onComplete = options.onComplete || (() => {});
         this.onSkip = options.onSkip || (() => {});
         this.storageKey = options.storageKey || 'berufsmesse_tour_completed';
+        this.role = options.role || null; // role for role-based steps
+        this.stateKey = 'berufsmesse_tour_state';
         
         this.init();
     }
@@ -98,27 +100,18 @@ class GuidedTour {
         });
     }
     
-    start() {
+    start(startIndex = 0) {
         if (this.steps.length === 0) return;
         
-        // Only start on dashboard page
-        const currentPage = new URLSearchParams(window.location.search).get('page') || 'dashboard';
-        if (currentPage !== 'dashboard' && currentPage !== '') {
-            console.warn('Tour kann nur auf dem Dashboard gestartet werden');
-            if (typeof showToast !== 'undefined') {
-                showToast('Bitte wechsle zum Dashboard, um die Tour zu starten.', 'warning');
-            }
-            return;
-        }
-        
         this.isActive = true;
-        this.currentStep = 0;
-        this.currentTarget = null;
+        this.currentStep = startIndex || 0;
         this.overlay.classList.add('active');
         this.spotlight.classList.add('active');
         this.tooltip.classList.add('active');
         document.body.style.overflow = 'hidden';
         
+        // save initial state
+        this.saveState();
         this.showStep(this.currentStep);
     }
     
@@ -126,9 +119,16 @@ class GuidedTour {
         const step = this.steps[index];
         if (!step) return;
         
-        // Remove highlight from previous target
-        if (this.currentTarget) {
-            this.currentTarget.classList.remove('tour-highlight');
+        // Save state before trying actions
+        this.currentStep = index;
+        this.saveState();
+        
+        // Navigate to page if needed
+        if (step.page && window.location.search.indexOf('page=' + step.page) === -1) {
+            // Ensure state saved so tour can resume after navigation
+            this.saveState();
+            window.location.href = '?page=' + step.page;
+            return;
         }
         
         // Support multiple selectors separated by comma - try each one
@@ -141,7 +141,8 @@ class GuidedTour {
             }
         }
         
-        this.currentTarget = target;
+        // Remove previous highlight (if any) before updating content
+        this.clearHighlight();
         
         // Update Step Indicator
         this.tooltip.querySelector('.tour-step-indicator').textContent = 
@@ -168,8 +169,10 @@ class GuidedTour {
         
         // Position Elements
         if (target) {
-            // Add highlight class to target element
-            target.classList.add('tour-highlight');
+            // Prepare visual highlight for the target (elevate it above overlay)
+            // Pass the step object to support noBlur and highlightAll options
+            this.prepareHighlight(target, step);
+
             this.positionSpotlight(target);
             this.positionTooltip(target, step.position || 'bottom');
             this.scrollToElement(target);
@@ -187,10 +190,15 @@ class GuidedTour {
     
     positionSpotlight(target) {
         const rect = target.getBoundingClientRect();
-        const padding = 12;
+        const padding = 8;
+        
+        // Prüfe ob das Element fixed positioniert ist
+        const computedStyle = window.getComputedStyle(target);
+        const isFixed = computedStyle.position === 'fixed';
         
         this.spotlight.style.opacity = '1';
-        this.spotlight.style.top = `${rect.top - padding}px`;
+        this.spotlight.style.position = isFixed ? 'fixed' : 'absolute';
+        this.spotlight.style.top = `${rect.top + (isFixed ? 0 : window.scrollY) - padding}px`;
         this.spotlight.style.left = `${rect.left - padding}px`;
         this.spotlight.style.width = `${rect.width + padding * 2}px`;
         this.spotlight.style.height = `${rect.height + padding * 2}px`;
@@ -202,30 +210,36 @@ class GuidedTour {
         const arrow = this.tooltip.querySelector('.tour-tooltip-arrow');
         const spacing = 16;
         
+        // Prüfe ob das Element fixed positioniert ist
+        const computedStyle = window.getComputedStyle(target);
+        const isFixed = computedStyle.position === 'fixed';
+        const scrollY = isFixed ? 0 : window.scrollY;
+        
         let top, left;
         
-        // Reset arrow classes
+        // Reset arrow classes and tooltip position
         arrow.className = 'tour-tooltip-arrow';
+        this.tooltip.style.position = isFixed ? 'fixed' : 'absolute';
+        this.tooltip.style.transform = ''; // Reset transform
         
-        // Use viewport-relative positioning (fixed) since spotlight is fixed
         switch(position) {
             case 'top':
-                top = targetRect.top - tooltipRect.height - spacing;
+                top = targetRect.top + scrollY - tooltipRect.height - spacing;
                 left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
                 arrow.classList.add('arrow-bottom');
                 break;
             case 'bottom':
-                top = targetRect.bottom + spacing;
+                top = targetRect.bottom + scrollY + spacing;
                 left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
                 arrow.classList.add('arrow-top');
                 break;
             case 'left':
-                top = targetRect.top + (targetRect.height / 2) - (tooltipRect.height / 2);
+                top = targetRect.top + scrollY + (targetRect.height / 2) - (tooltipRect.height / 2);
                 left = targetRect.left - tooltipRect.width - spacing;
                 arrow.classList.add('arrow-right');
                 break;
             case 'right':
-                top = targetRect.top + (targetRect.height / 2) - (tooltipRect.height / 2);
+                top = targetRect.top + scrollY + (targetRect.height / 2) - (tooltipRect.height / 2);
                 left = targetRect.right + spacing;
                 arrow.classList.add('arrow-left');
                 break;
@@ -240,20 +254,16 @@ class GuidedTour {
             left = windowWidth - tooltipRect.width - 16;
         }
         if (top < 16) top = 16;
-        if (top + tooltipRect.height > windowHeight - 16) {
-            top = windowHeight - tooltipRect.height - 16;
-        }
         
         this.tooltip.style.top = `${top}px`;
         this.tooltip.style.left = `${left}px`;
-        this.tooltip.style.transform = 'none'; // Reset transform for fixed positioning
     }
     
     centerTooltip() {
-        const tooltipRect = this.tooltip.getBoundingClientRect();
-        this.tooltip.style.top = `${(window.innerHeight - tooltipRect.height) / 2}px`;
-        this.tooltip.style.left = `${(window.innerWidth - tooltipRect.width) / 2}px`;
-        this.tooltip.style.transform = 'none';
+        this.tooltip.style.position = 'fixed';
+        this.tooltip.style.top = '50%';
+        this.tooltip.style.left = '50%';
+        this.tooltip.style.transform = 'translate(-50%, -50%)';
     }
     
     scrollToElement(element) {
@@ -276,6 +286,7 @@ class GuidedTour {
     next() {
         if (this.currentStep < this.steps.length - 1) {
             this.currentStep++;
+            this.saveState();
             this.showStep(this.currentStep);
         } else {
             this.complete();
@@ -285,124 +296,585 @@ class GuidedTour {
     prev() {
         if (this.currentStep > 0) {
             this.currentStep--;
+            this.saveState();
             this.showStep(this.currentStep);
         }
     }
     
     skip() {
         this.end();
-        localStorage.setItem(this.storageKey, 'skipped');
+        localStorage.setItem(this.storageKey, 'true');
+        this.clearState();
         this.onSkip();
     }
     
     complete() {
         this.end();
         localStorage.setItem(this.storageKey, 'true');
+        this.clearState();
         this.onComplete();
     }
     
     end() {
         this.isActive = false;
-        
-        // Remove highlight from current target
-        if (this.currentTarget) {
-            this.currentTarget.classList.remove('tour-highlight');
-            this.currentTarget = null;
-        }
-        
         this.overlay.classList.remove('active');
         this.spotlight.classList.remove('active');
         this.tooltip.classList.remove('active');
         document.body.style.overflow = '';
+        this.clearHighlight();
     }
     
-    // Check if tour has been completed or skipped
+    // Check if tour has been completed
     hasCompleted() {
-        const status = localStorage.getItem(this.storageKey);
-        return status === 'true' || status === 'skipped';
+        return localStorage.getItem(this.storageKey) === 'true';
     }
     
     // Reset tour completion status
     reset() {
         localStorage.removeItem(this.storageKey);
+        this.clearState();
+    }
+
+    // Save/Load tour runtime state (for resuming across page navigation)
+    saveState() {
+        const state = {
+            active: this.isActive,
+            role: this.role,
+            step: this.currentStep
+        };
+        localStorage.setItem(this.stateKey, JSON.stringify(state));
+    }
+
+    loadState() {
+        try {
+            const raw = localStorage.getItem(this.stateKey);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch (e) {
+            return null;
+        }
+    }
+
+    clearState() {
+        localStorage.removeItem(this.stateKey);
+    }
+
+    // Highlight helper: elevate element(s) above overlay and mark them visually
+    prepareHighlight(element, step = {}) {
+        if (!element) return;
+
+        // Clear any previous highlight
+        this.clearHighlight();
+        
+        // Array to hold all highlighted elements
+        this._currentHighlighted = [];
+
+        // If noBlur is set, also highlight the sidebar to prevent it from being blurred
+        if (step.noBlur) {
+            const sidebar = document.getElementById('sidebar');
+            if (sidebar) {
+                this.highlightSingleElement(sidebar);
+            }
+        }
+
+        // If highlightAll is set and the selector matches multiple elements, highlight all
+        if (step.highlightAll && step.target) {
+            const allElements = document.querySelectorAll(step.target);
+            allElements.forEach(el => this.highlightSingleElement(el));
+        } else {
+            // Just highlight the primary element
+            this.highlightSingleElement(element);
+        }
+
+        // Ensure tooltip sits above the highlighted elements
+        if (this.tooltip) this.tooltip.style.zIndex = '100002';
+    }
+
+    // Helper to highlight a single element
+    highlightSingleElement(element) {
+        if (!element) return;
+
+        // Store previous inline styles to restore later
+        element.dataset.tourPrevPosition = element.style.position || '';
+        element.dataset.tourPrevZ = element.style.zIndex || '';
+        element.dataset.tourPrevTransition = element.style.transition || '';
+
+        // If element is statically positioned, make it relative so z-index applies
+        const computed = window.getComputedStyle(element);
+        if (computed.position === 'static') {
+            element.style.position = 'relative';
+        }
+
+        // Elevate and add visual class
+        element.style.zIndex = '100001';
+        element.classList.add('tour-highlight');
+
+        // Add to tracked array
+        this._currentHighlighted.push(element);
+    }
+
+    clearHighlight() {
+        try {
+            // Get all currently highlighted elements
+            const elements = this._currentHighlighted && this._currentHighlighted.length > 0 
+                ? this._currentHighlighted 
+                : Array.from(document.querySelectorAll('.tour-highlight'));
+            
+            elements.forEach(el => {
+                if (!el) return;
+
+                // restore inline styles
+                el.style.position = el.dataset.tourPrevPosition || '';
+                el.style.zIndex = el.dataset.tourPrevZ || '';
+                el.style.transition = el.dataset.tourPrevTransition || '';
+
+                // remove datasets
+                delete el.dataset.tourPrevPosition;
+                delete el.dataset.tourPrevZ;
+                delete el.dataset.tourPrevTransition;
+
+                el.classList.remove('tour-highlight');
+            });
+            
+            this._currentHighlighted = [];
+        } catch (e) {
+            // ignore
+        }
     }
 }
 
-// Default Tour Steps for Berufsmesse
-const berufsmesseTourSteps = [
-    {
-        target: null,
-        title: 'Willkommen zur Berufsmesse!',
-        description: `
-            <p>Schön, dass du da bist! Diese kurze Tour zeigt dir, 
-            wie du die Plattform optimal nutzen kannst.</p>
-            <p class="mt-2 text-sm text-gray-500">
-                Du kannst die Tour jederzeit mit <kbd>Esc</kbd> beenden oder mit den Pfeiltasten navigieren.
-            </p>
-        `,
-        position: 'center'
-    },
-    {
-        target: '#sidebar nav',
-        title: 'Navigation',
-        description: `
-            <p>Über die Seitenleiste erreichst du alle Bereiche:</p>
-            <ul class="mt-2 space-y-1 text-sm">
-                <li><i class="fas fa-calendar-alt text-primary-500 mr-1"></i> <strong>Kalender</strong> - Alle Termine auf einen Blick</li>
-                <li><i class="fas fa-building text-accent-500 mr-1"></i> <strong>Unternehmen</strong> - Alle Aussteller entdecken</li>
-                <li><i class="fas fa-clipboard-list text-blue-500 mr-1"></i> <strong>Einschreibung</strong> - Für Aussteller anmelden</li>
-                <li><i class="fas fa-check-circle text-orange-500 mr-1"></i> <strong>Meine Termine</strong> - Deine Anmeldungen</li>
-            </ul>
-            <p class="mt-2 text-sm text-gray-500">Auf Mobilgeräten erreichst du die Navigation über das Menü-Symbol.</p>
-        `,
-        position: 'right'
-    },
-    {
-        target: '.quick-action-card, .quick-actions-grid',
-        title: 'Schnellzugriff',
-        description: `
-            <p>Diese Karten bieten dir schnellen Zugriff auf wichtige Funktionen:</p>
-            <ul class="mt-2 space-y-1 text-sm">
-                <li><i class="fas fa-calendar-alt text-blue-500 mr-1"></i> <strong>Zeitplan</strong> - Alle Termine auf einen Blick</li>
-                <li><i class="fas fa-edit text-emerald-500 mr-1"></i> <strong>Einschreibung</strong> - Für Aussteller anmelden</li>
-                <li><i class="fas fa-building text-purple-500 mr-1"></i> <strong>Unternehmen</strong> - Aussteller durchsuchen</li>
-                <li><i class="fas fa-check-circle text-orange-500 mr-1"></i> <strong>Meine Slots</strong> - Anmeldungen verwalten</li>
-            </ul>
-        `,
-        position: 'bottom'
-    },
-    {
-        target: '.upcoming-schedule, .timeline-item',
-        title: 'Dein Tagesplan',
-        description: `
-            <p>Hier siehst du deinen persönlichen Zeitplan für die Berufsmesse:</p>
-            <ul class="mt-2 space-y-1 text-sm">
-                <li><i class="fas fa-circle text-emerald-500 mr-1" style="font-size:8px"></i> <strong>Grün</strong> = Du bist angemeldet</li>
-                <li><i class="fas fa-circle text-purple-500 mr-1" style="font-size:8px"></i> <strong>Lila</strong> = Freie Wahl vor Ort</li>
-                <li><i class="fas fa-circle text-gray-400 mr-1" style="font-size:8px"></i> <strong>Grau</strong> = Noch keine Zuteilung</li>
-            </ul>
-        `,
-        position: 'top'
-    },
-    {
-        target: null,
-        title: 'Bereit? Los geht\'s!',
-        description: `
-            <p>Super! Du kennst jetzt die wichtigsten Funktionen.</p>
-            <p class="mt-2"><strong>Nächste Schritte:</strong></p>
-            <ul class="mt-1 space-y-1 text-sm">
-                <li><i class="fas fa-arrow-right text-emerald-500 mr-1"></i> Entdecke die Unternehmen</li>
-                <li><i class="fas fa-arrow-right text-emerald-500 mr-1"></i> Melde dich für Zeitslots an</li>
-                <li><i class="fas fa-arrow-right text-emerald-500 mr-1"></i> Schau dir deinen Zeitplan an</li>
-            </ul>
-            <p class="mt-3 text-sm text-gray-500">
-                <i class="fas fa-lightbulb text-amber-500 mr-1"></i> Tipp: Diese Tour findest du im "Hilfe & Tour"-Button in der Seitenleiste.
-            </p>
-        `,
-        position: 'center'
+// Default Tour Steps for Berufsmesse - Dynamic Generation
+/**
+ * Generiert rollenspezifische Tour-Schritte
+ * @param {string} userRole - Die Rolle des Benutzers (student, teacher, admin)
+ * @returns {Array} Array mit Tour-Schritten
+ */
+function generateTourSteps(userRole) {
+    // Basis-Schritte für alle Rollen
+    const baseSteps = [
+        {
+            target: null,
+            title: 'Willkommen zur Berufsmesse! 🎓',
+            description: `
+                <p>Schön, dass du da bist! Diese Tour zeigt dir alle wichtigen Funktionen 
+                der Plattform passend zu deiner Rolle.</p>
+                <p class="mt-2 text-sm text-gray-500">
+                    💡 Tipp: Du kannst die Tour jederzeit mit <kbd>Esc</kbd> beenden.
+                </p>
+            `,
+            position: 'center'
+        }
+    ];
+    
+    // ADMIN-Tour
+    if (userRole === 'admin') {
+        return [
+            {
+                target: null,
+                title: '👑 Willkommen, Administrator!',
+                description: `
+                    <p>Diese umfassende Tour zeigt dir alle Admin-Funktionen der Berufsmesse.</p>
+                    <p class="mt-2 text-sm text-gray-500">
+                        Du hast Zugriff auf alle System-Verwaltungsfunktionen. Lass uns beginnen!
+                    </p>
+                `,
+                position: 'center'
+            },
+            {
+                target: '.bg-gradient-to-r.from-emerald-500',
+                title: '📊 Admin-Dashboard Übersicht',
+                description: `
+                    <p><strong>Deine Kommandozentrale:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>📈 <strong>Live-Statistiken</strong> - Alle wichtigen KPIs auf einen Blick</li>
+                        <li>👥 <strong>Benutzer-Übersicht</strong> - Gesamt, Lehrer, Schüler</li>
+                        <li>🏢 <strong>Aussteller-Status</strong> - Wie viele sind angemeldet?</li>
+                        <li>📊 <strong>Registrierungs-Statistik</strong> - Teilnahmequote und Trends</li>
+                    </ul>
+                `,
+                position: 'bottom'
+            },
+            {
+                target: '[onclick*="startGuidedTour"]',
+                title: '🎬 Tour jederzeit starten',
+                description: `
+                    <p>Mit diesem Button kannst du jederzeit eine neue Tour starten oder 
+                    die aktuelle Tour neu beginnen.</p>
+                    <p class="mt-2 text-sm text-gray-500">
+                        Praktisch für das Onboarding neuer Admin-Kollegen!
+                    </p>
+                `,
+                position: 'left'
+            },
+            {
+                target: 'a[href*="admin-users"]',
+                title: '👥 Benutzerverwaltung - Das Herzstück',
+                description: `
+                    <p><strong>Zentrale Verwaltung aller Benutzer:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>👤 <strong>Einzelne Benutzer</strong> - Anlegen, bearbeiten, löschen</li>
+                        <li>📥 <strong>CSV-Import</strong> - Hunderte Schüler auf einmal anlegen</li>
+                        <li>🔑 <strong>Passwort-Reset</strong> - Benutzer können Zugangsdaten zurücksetzen</li>
+                        <li>🎭 <strong>Rollen zuweisen</strong> - Student, Lehrer, Admin Rollen</li>
+                        <li>📧 <strong>E-Mail ändern</strong> - Kontaktdaten aktualisieren</li>
+                        <li>🔒 <strong>Sperren/Entsperren</strong> - Konto-Zugriff kontrollieren</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-amber-600">
+                        <strong>CSV-Format:</strong> firstname;lastname;email;class;role
+                    </p>
+                `,
+                position: 'right'
+            },
+            {
+                target: 'a[href*="admin-exhibitors"]',
+                title: '🏢 Ausstellerverwaltung',
+                description: `
+                    <p><strong>Alle teilnehmenden Unternehmen verwalten:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>➕ <strong>Aussteller hinzufügen</strong> - Name, Beschreibung, Logo</li>
+                        <li>🏷️ <strong>Kategorien</strong> - Industrien und Fachrichtungen</li>
+                        <li>🚪 <strong>Räume zuweisen</strong> - In welchem Raum findet die Präsentation statt?</li>
+                        <li>📄 <strong>Dokumente/Flyer</strong> - Unternehmensinformationen hochladen</li>
+                        <li>🔗 <strong>Website & Links</strong> - Externe Karriereseiten verlinken</li>
+                        <li>✅/❌ <strong>Aktivieren/Deaktivieren</strong> - Aussteller sichtbar machen</li>
+                        <li>📊 <strong>Anmeldungen anzeigen</strong> - Wie viele Schüler interessieren sich?</li>
+                    </ul>
+                `,
+                position: 'right'
+            },
+            {
+                target: 'a[href*="admin-rooms"]',
+                title: '🚪 Raumverwaltung & Kapazitäten',
+                description: `
+                    <p><strong>Räume konfigurieren und Aussteller zuordnen:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>🏗️ <strong>Räume anlegen</strong> - Raumnummer, Name, Gebäude, Etage</li>
+                        <li>👥 <strong>Kapazität festlegen</strong> - Max. Schüler pro Zeitslot</li>
+                        <li>🏢 <strong>Aussteller zuordnen</strong> - Welcher Aussteller in welchem Raum</li>
+                        <li>📊 <strong>Auslastung anzeigen</strong> - Wie voll sind die Slots?</li>
+                        <li>⚠️ <strong>Warnungen</strong> - Über- oder unterbelegte Räume</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-blue-600">
+                        <strong>💡 Automatische Berechnung:</strong> 
+                        Kapazität pro Slot = Gesamtkapazität ÷ 3 Slots
+                    </p>
+                `,
+                position: 'right'
+            },
+            {
+                target: 'a[href*="admin-print"]',
+                title: '🖨️ Druck & Export - Professionelle Reports',
+                description: `
+                    <p><strong>Verschiedene Ausgabeformate für unterschiedliche Zwecke:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>📋 <strong>Gesamtübersicht</strong> - Alle Anmeldungen nach Raum sortiert</li>
+                        <li>🎓 <strong>Klassenlisten</strong> - Pro Klasse, ideal für Lehrer und Schüler</li>
+                        <li>🚪 <strong>Raumpläne</strong> - Welche Schüler kommen in welchen Raum?</li>
+                        <li>📅 <strong>Zeitplan-Übersicht</strong> - Nach Zeitslots organisiert</li>
+                        <li>📊 <strong>Statistik-Report</strong> - Umfangreiche Analyse und Kennzahlen</li>
+                        <li>🔍 <strong>Suchfilter</strong> - Nach Klasse, Raum, Aussteller filtern</li>
+                        <li>💾 <strong>PDF/Excel Export</strong> - Zum Ausdrucken oder in Excel</li>
+                    </ul>
+                `,
+                position: 'right'
+            },
+            {
+                target: 'a[href*="admin-settings"]',
+                title: '⚙️ System-Einstellungen',
+                description: `
+                    <p><strong>Globale Konfiguration der gesamten Berufsmesse:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>📅 <strong>Messedatum</strong> - Wann findet die Messe statt?</li>
+                        <li>⏰ <strong>Öffnungszeiten</strong> - Von wann bis wann?</li>
+                        <li>🔓 <strong>Anmeldezeitraum</strong> - Start- und Enddatum für Registrierungen</li>
+                        <li>🔢 <strong>Max. Anmeldungen pro Schüler</strong> - Wie viele verwaltete Slots?</li>
+                        <li>🎨 <strong>Farben & Design</strong> - Anpassung der Oberfläche</li>
+                        <li>📧 <strong>Benachrichtigungen</strong> - E-Mail und Systembenachrichtigungen</li>
+                        <li>⚠️ <strong>WICHTIG:</strong> Änderungen hier betreffen das gesamte System!</li>
+                    </ul>
+                `,
+                position: 'right'
+            },
+            {
+                target: 'a[href*="admin-permissions"]',
+                title: '🔐 Berechtigungen & Rollen',
+                description: `
+                    <p><strong>Feinkörnige Kontrolle über Benutzerrechte:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>👑 <strong>Admin</strong> - Vollzugriff auf alle Funktionen</li>
+                        <li>👨‍🏫 <strong>Lehrer</strong> - Sehen ihre Klassenlisten und können Schüler-Status überprüfen</li>
+                        <li>🎓 <strong>Student</strong> - Können sich für Aussteller anmelden</li>
+                        <li>🔒 <strong>Gast</strong> - Nur Lesezugriff auf bestimmte Inhalte</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-gray-500">
+                        Custom-Rollen können hinzugefügt werden, falls nötig.
+                    </p>
+                `,
+                position: 'right'
+            },
+            {
+                target: null,
+                title: '✅ Admin-Tour abgeschlossen!',
+                description: `
+                    <p class="font-semibold mb-2">Du hast jetzt einen Überblick über alle Admin-Funktionen!</p>
+                    <p class="text-sm mb-3">Verwende deine Superkräfte verantwortungsvoll:</p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>✅ Schüler und Lehrer importieren</li>
+                        <li>✅ Aussteller und Räume konfigurieren</li>
+                        <li>✅ Automatische Zuteilung durchführen</li>
+                        <li>✅ Reports und Listen drucken</li>
+                        <li>✅ System-Einstellungen verwalten</li>
+                    </ul>
+                    <p class="mt-3 text-sm text-gray-500">
+                        💡 Diese Tour ist jederzeit über den "Tour starten"-Button erreichbar.
+                    </p>
+                `,
+                position: 'center'
+            }
+        ];
     }
-];
+    
+    // LEHRER-Tour
+    else if (userRole === 'teacher') {
+        return [
+            {
+                target: null,
+                title: '👨‍🏫 Willkommen, Lehrkraft!',
+                description: `
+                    <p>Diese Tour zeigt dir alle Funktionen für Lehrkräfte zur Verwaltung 
+                    deiner Schüleranmeldungen.</p>
+                    <p class="mt-2 text-sm text-gray-500">
+                        Du kannst Schüler überwachen und Listen exportieren.
+                    </p>
+                `,
+                position: 'center'
+            },
+            {
+                target: '.bg-white.rounded-xl.p-6.border-l-4',
+                title: '📊 Dein Lehrer-Dashboard',
+                description: `
+                    <p><strong>Überblick über deine Schüler:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>👥 <strong>Gesamt-Schüler</strong> - Alle Schüler in deinen Klassen</li>
+                        <li>✅ <strong>Vollständig angemeldet</strong> - Schüler mit allen 3 Slots</li>
+                        <li>⚠️ <strong>Unvollständig</strong> - Fehlen noch Slots?</li>
+                        <li>❌ <strong>Ohne Anmeldung</strong> - Wer hat sich noch nicht angemeldet?</li>
+                    </ul>
+                `,
+                position: 'bottom'
+            },
+            {
+                target: '[onclick*="startGuidedTour"]',
+                title: '🎬 Tour jederzeit wiederholen',
+                description: `
+                    <p>Du kannst diese Tour jederzeit neu starten, wenn du etwas vergessen hast.</p>
+                `,
+                position: 'left'
+            },
+            {
+                target: '.grid.grid-cols-1.md\\:grid-cols-4, [class*="grid-cols"]',
+                title: '📈 Statistik-Karten',
+                description: `
+                    <p><strong>Auf einen Blick alles wichtige:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>🔵 <strong>Gesamtzahl Schüler</strong> - Wie viele Schüler in deinen Klassen?</li>
+                        <li>🟢 <strong>Vollständig</strong> - Mit allen erforderlichen Anmeldungen</li>
+                        <li>🟠 <strong>Unvollständig</strong> - Mit nur teilweisen Anmeldungen</li>
+                        <li>🔴 <strong>Ohne Anmeldung</strong> - Benötigen deine Unterstützung</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-gray-500">Diese Zahlen aktualisieren sich in Echtzeit!</p>
+                `,
+                position: 'bottom'
+            },
+            {
+                target: 'a[href*="teacher-class"], .tabs, [role="tab"]',
+                title: '📋 Klassenlisten',
+                description: `
+                    <p><strong>Detaillierte Übersicht deiner Klassen:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>📚 <strong>Nach Klasse filtern</strong> - Schüler pro Klasse sehen</li>
+                        <li>✅ <strong>Anmeldestatus prüfen</strong> - Wer hat sich für welche Aussteller angemeldet?</li>
+                        <li>🔢 <strong>Slot-Information</strong> - Slot 1, 3 und 5 Management</li>
+                        <li>👥 <strong>Schülernamen</strong> - Vollständige Klassenliste mit allen Details</li>
+                    </ul>
+                `,
+                position: 'bottom'
+            },
+            {
+                target: 'a[href*="print"], button[class*="print"], [class*="export"]',
+                title: '🖨️ Listen drucken & exportieren',
+                description: `
+                    <p><strong>Professionelle Dokumente für deine Klassen:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>📄 <strong>Klassenliste</strong> - Alle Schüler mit Anmeldestatus</li>
+                        <li>📊 <strong>Zeitplan-Übersicht</strong> - Wo ist welcher Schüler wann?</li>
+                        <li>📋 <strong>Raumpläne</strong> - In welche Räume gehen deine Schüler?</li>
+                        <li>💾 <strong>PDF & Excel</strong> - Download für deine Unterlagen</li>
+                        <li>🎯 <strong>Filter</strong> - Nur bestimmte Klassen oder Schüler exportieren</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-gray-500">Perfekt für die Vorbereitung und Durchführung der Messe!</p>
+                `,
+                position: 'right'
+            },
+            {
+                target: 'a[href*="schedule"], a[href*="zeitplan"]',
+                title: '📅 Zeitpläne ansehen',
+                description: `
+                    <p><strong>Gesamtübersicht aller Zeitslots und Aussteller:</strong></p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>🕐 <strong>Zeitslot-Struktur</strong> - Slot 1, 3 und 5 mit Zeiten</li>
+                        <li>🏢 <strong>Aussteller pro Slot</strong> - Welche Unternehmen in welcher Zeit?</li>
+                        <li>👥 <strong>Anmeldungen pro Aussteller</strong> - Wie viele Schüler angemeldet?</li>
+                        <li>🚪 <strong>Raum-Information</strong> - Welcher Aussteller in welchem Raum?</li>
+                    </ul>
+                `,
+                position: 'right'
+            },
+            {
+                target: null,
+                title: '✅ Lehrer-Tour abgeschlossen!',
+                description: `
+                    <p class="font-semibold mb-2">Du kennst jetzt alle deine Lehrkraft-Funktionen!</p>
+                    <p class="text-sm mb-3">Mit diesen Tools kannst du:</p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>✅ Schüler-Anmeldungen überwachen</li>
+                        <li>✅ Klassenlisten prüfen</li>
+                        <li>✅ Zeitpläne anzeigen und drucken</li>
+                        <li>✅ Deine Schüler auf die Messe vorbereiten</li>
+                    </ul>
+                    <p class="mt-3 text-sm text-gray-500">
+                        💡 Tipp: Die Tour findest du jederzeit über den "Tour starten"-Button.
+                    </p>
+                `,
+                position: 'center'
+            }
+        ];
+    }
+    
+    // STUDENT-Tour (Standard)
+    else {
+        return [
+            baseSteps[0],
+            {
+                target: '#sidebar',
+                title: '📋 Navigation',
+                description: `
+                    <p>Über die Seitenleiste erreichst du alle Bereiche:</p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>🏠 <strong>Dashboard</strong> - Deine persönliche Übersicht</li>
+                        <li>🏢 <strong>Unternehmen</strong> - Alle Aussteller entdecken</li>
+                        <li>📅 <strong>Zeitplan</strong> - Dein Tagesablauf</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-gray-500">Auf Mobilgeräten erreichst du die Navigation über das Menü-Symbol.</p>
+                `,
+                position: 'right',
+                noBlur: true
+            },
+            {
+                target: '.quick-actions-grid',
+                title: '⚡ Schnellzugriff',
+                description: `
+                    <p>Diese Karten bieten dir schnellen Zugriff auf die wichtigsten Funktionen:</p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>📅 <strong>Mein Zeitplan</strong> - Alle deine Termine auf einen Blick anzeigen</li>
+                        <li>✏️ <strong>Einschreibung</strong> - Für Aussteller-Präsentationen anmelden</li>
+                        <li>🏢 <strong>Unternehmen</strong> - Alle Aussteller durchsuchen und kennenlernen</li>
+                        <li>✅ <strong>Meine Slots</strong> - Deine Anmeldungen verwalten und bearbeiten</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-gray-500">Klicke auf eine Karte, um zur jeweiligen Funktion zu gelangen.</p>
+                `,
+                position: 'bottom',
+                highlightAll: true
+            },
+            {
+                target: '.schedule-card, .upcoming-schedule',
+                title: '📆 Dein Tagesplan',
+                description: `
+                    <p>Hier siehst du deinen persönlichen Zeitplan für die Berufsmesse:</p>
+                    <ul class="mt-2 space-y-1 text-sm">
+                        <li>🟢 <strong>Grün</strong> = Du bist erfolgreich angemeldet</li>
+                        <li>🟣 <strong>Lila</strong> = Freie Wahl vor Ort (kein Slot nötig)</li>
+                        <li>⚪ <strong>Grau</strong> = Noch keine Zuteilung</li>
+                    </ul>
+                    <p class="mt-2 text-sm text-gray-500">Klicke auf "Drucken", um deinen Plan auszudrucken.</p>
+                `,
+                position: 'left'
+            },
+            {
+                target: 'a[href*="registration"], a[href*="exhibitors"]',
+                title: '✏️ Einschreibung - So funktioniert\'s',
+                description: `
+                    <p><strong>Schritt-für-Schritt zur Anmeldung:</strong></p>
+                    <ol class="mt-2 space-y-1 text-sm list-decimal list-inside">
+                        <li><strong>Unternehmen auswählen</strong> - Stöbere durch die Aussteller</li>
+                        <li><strong>Zeitslot wählen</strong> - Wähle einen freien Slot (1, 3 oder 5)</li>
+                        <li><strong>Anmelden</strong> - Klicke auf "Anmelden" beim gewünschten Aussteller</li>
+                        <li><strong>Bestätigung</strong> - Du erhältst eine Bestätigung deiner Anmeldung</li>
+                    </ol>
+                    <p class="mt-2 text-sm text-amber-600">
+                        ⚠️ Du kannst dich für max. 3 verwaltete Slots anmelden. Die Slots 2 und 4 sind freie Wahl.
+                    </p>
+                `,
+                position: 'right'
+            },
+            {
+                target: null,
+                title: 'Bereit? Los geht\'s! 🚀',
+                description: `
+                    <p>Super! Du kennst jetzt die wichtigsten Funktionen.</p>
+                    <p class="mt-2"><strong>Nächste Schritte:</strong></p>
+                    <ul class="mt-1 space-y-1 text-sm">
+                        <li>→ Entdecke die Unternehmen</li>
+                        <li>→ Melde dich für Zeitslots an</li>
+                        <li>→ Schau dir deinen Zeitplan an</li>
+                    </ul>
+                    <p class="mt-3 text-sm text-gray-500">
+                        💡 Tipp: Diese Tour findest du jederzeit im Dashboard.
+                    </p>
+                `,
+                position: 'center'
+            }
+        ];
+    }
+}
+
+// Backwards compatibility
+const berufsmesseTourSteps = generateTourSteps('student');
 
 // Export for use
 window.GuidedTour = GuidedTour;
+window.generateTourSteps = generateTourSteps;
 window.berufsmesseTourSteps = berufsmesseTourSteps;
+
+// Auto-resume tour on page load if state exists
+document.addEventListener('DOMContentLoaded', () => {
+    try {
+        const raw = localStorage.getItem('berufsmesse_tour_state');
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        if (!state || !state.active) return;
+
+        // Generate steps for role if possible
+        const role = state.role || 'student';
+        const steps = typeof generateTourSteps !== 'undefined' ? generateTourSteps(role) : (window.berufsmesseTourSteps || []);
+
+        // Create tour instance and start at saved step
+        const tour = new GuidedTour({
+            steps: steps,
+            role: role,
+            onComplete: () => {
+                if (typeof showToast !== 'undefined') showToast('Tour abgeschlossen! 🎉', 'success');
+            },
+            onSkip: () => {
+                if (typeof showToast !== 'undefined') showToast('Tour übersprungen', 'info');
+            }
+        });
+
+        // Start from saved step
+        const startStep = state.step || 0;
+        tour.start(startStep);
+        tour.showStep(startStep);
+    } catch (e) {
+        console.warn('Fehler beim Wiederherstellen der Tour:', e);
+    }
+});

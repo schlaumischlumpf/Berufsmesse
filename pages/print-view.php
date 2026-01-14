@@ -7,7 +7,6 @@
 
 // Prüfen ob direkt aufgerufen oder über index.php
 if (!isset($db)) {
-    session_start();
     require_once '../config.php';
     require_once '../functions.php';
     
@@ -16,8 +15,6 @@ if (!isset($db)) {
         header('Location: ../login.php');
         exit;
     }
-    
-    $db = getDB();
 }
 
 // Drucktyp bestimmen
@@ -58,17 +55,17 @@ foreach ($registrations as $reg) {
 
 // Tagesablauf
 $schedule = [
-    ['time' => '08:45', 'end' => '09:00', 'label' => 'Ankunft & Begrüßung', 'type' => 'info', 'slot' => null, 'icon' => 'fa-door-open'],
-    ['time' => '09:00', 'end' => '09:30', 'label' => 'Slot 1', 'type' => 'assigned', 'slot' => 1, 'icon' => 'fa-clipboard-check'],
-    ['time' => '09:30', 'end' => '09:40', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => 'fa-coffee'],
-    ['time' => '09:40', 'end' => '10:10', 'label' => 'Slot 2', 'type' => 'free', 'slot' => 2, 'icon' => 'fa-hand-pointer'],
-    ['time' => '10:10', 'end' => '10:40', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => 'fa-utensils'],
-    ['time' => '10:40', 'end' => '11:10', 'label' => 'Slot 3', 'type' => 'assigned', 'slot' => 3, 'icon' => 'fa-clipboard-check'],
-    ['time' => '11:10', 'end' => '11:20', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => 'fa-coffee'],
-    ['time' => '11:20', 'end' => '11:50', 'label' => 'Slot 4', 'type' => 'free', 'slot' => 4, 'icon' => 'fa-hand-pointer'],
-    ['time' => '11:50', 'end' => '12:20', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => 'fa-utensils'],
-    ['time' => '12:20', 'end' => '12:50', 'label' => 'Slot 5', 'type' => 'assigned', 'slot' => 5, 'icon' => 'fa-clipboard-check'],
-    ['time' => '12:50', 'end' => '13:00', 'label' => 'Verabschiedung', 'type' => 'info', 'slot' => null, 'icon' => 'fa-flag-checkered'],
+    ['time' => '08:45', 'end' => '09:00', 'label' => 'Ankunft & Begrüßung', 'type' => 'info', 'slot' => null, 'icon' => '🚪'],
+    ['time' => '09:00', 'end' => '09:30', 'label' => 'Slot 1', 'type' => 'assigned', 'slot' => 1, 'icon' => '📋'],
+    ['time' => '09:30', 'end' => '09:40', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => '☕'],
+    ['time' => '09:40', 'end' => '10:10', 'label' => 'Slot 2', 'type' => 'free', 'slot' => 2, 'icon' => '👆'],
+    ['time' => '10:10', 'end' => '10:40', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => '🍽️'],
+    ['time' => '10:40', 'end' => '11:10', 'label' => 'Slot 3', 'type' => 'assigned', 'slot' => 3, 'icon' => '📋'],
+    ['time' => '11:10', 'end' => '11:20', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => '☕'],
+    ['time' => '11:20', 'end' => '11:50', 'label' => 'Slot 4', 'type' => 'free', 'slot' => 4, 'icon' => '👆'],
+    ['time' => '11:50', 'end' => '12:20', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => '🍽️'],
+    ['time' => '12:20', 'end' => '12:50', 'label' => 'Slot 5', 'type' => 'assigned', 'slot' => 5, 'icon' => '📋'],
+    ['time' => '12:50', 'end' => '13:00', 'label' => 'Verabschiedung', 'type' => 'info', 'slot' => null, 'icon' => '🏁'],
 ];
 
 // Messedatum (kann über Einstellungen gesetzt werden)
@@ -527,7 +524,12 @@ function getPrintColor($type) {
            ============================================ */
         
         @media print {
-            .screen-controls {
+            /* Verstecke alle UI-Elemente beim Drucken */
+            .screen-controls,
+            .fas.fa-cog,
+            .fas.fa-ellipsis-v,
+            button[class*="settings"],
+            .settings-icon {
                 display: none !important;
             }
             
@@ -543,9 +545,12 @@ function getPrintColor($type) {
                 max-width: none;
             }
             
+            /* Entferne Browser-Kopf- und Fußzeilen */
             @page {
                 size: A4 portrait;
                 margin: 15mm;
+                /* Entfernt automatisch Browser-Kopf-/Fußzeilen */
+                marks: none;
             }
             
             .schedule-table {
@@ -643,7 +648,7 @@ function getPrintColor($type) {
         <!-- Header -->
         <header class="print-header">
             <div class="print-logo">
-                <div class="logo-icon"><i class="fas fa-graduation-cap"></i></div>
+                <div class="logo-icon">🎓</div>
                 <div class="logo-text">
                     <h1>Berufsmesse</h1>
                     <p>Persönlicher Zeitplan</p>
@@ -709,7 +714,7 @@ function getPrintColor($type) {
                         <td>
                             <div class="event-cell">
                                 <div class="event-icon <?php echo $item['type']; ?>">
-                                    <i class="fas <?php echo $item['icon']; ?>"></i>
+                                    <?php echo $item['icon']; ?>
                                 </div>
                                 <div class="event-content">
                                     <?php if ($hasReg): ?>

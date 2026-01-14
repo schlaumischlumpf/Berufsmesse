@@ -1,5 +1,9 @@
 <?php
-// Admin Druckfunktion für verschiedene Pläne
+/**
+ * Berufsmesse - Admin Druckansicht
+ * Professionelle Druckfunktion für Lehrkräfte und Administratoren
+ * Mit Pastel-Design und PDF-optimiertem Layout
+ */
 
 // Verschiedene Druckoptionen
 $printType = $_GET['type'] ?? 'all';
@@ -14,7 +18,7 @@ if ($printType === 'all' || $printType === 'class') {
             u.firstname, u.lastname, u.class,
             e.name as exhibitor_name,
             t.slot_name, t.slot_number, t.start_time, t.end_time,
-            r.room_number
+            r.room_number, r.room_name, r.building
         FROM registrations reg
         JOIN users u ON reg.user_id = u.id
         JOIN exhibitors e ON reg.exhibitor_id = e.id
@@ -69,233 +73,261 @@ $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 // Alle Räume für Filter
 $stmt = $db->query("SELECT id, room_number, room_name FROM rooms ORDER BY room_number");
 $rooms = $stmt->fetchAll();
+
+// Statistiken
+$stmt = $db->query("SELECT COUNT(DISTINCT user_id) as students FROM registrations");
+$totalStudents = $stmt->fetch()['students'];
+
+$stmt = $db->query("SELECT COUNT(*) as total FROM registrations");
+$totalRegistrations = $stmt->fetch()['total'];
 ?>
 
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Berufsmesse - Druckansicht</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @media print {
-            .no-print { display: none !important; }
-            body { background: white; }
-            .page-break { page-break-after: always; }
-        }
-    </style>
-</head>
-<body class="bg-white p-8">
-    <!-- Header & Controls (No Print) -->
-    <div class="no-print mb-6 bg-gray-100 p-6 rounded-lg">
-        <div class="flex justify-between items-center mb-4">
-            <h1 class="text-2xl font-bold text-gray-800">
-                <i class="fas fa-print mr-2"></i>Druckansicht
-            </h1>
-            <div class="flex gap-3">
-                <button onclick="window.print()" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition">
-                    <i class="fas fa-print mr-2"></i>Drucken
-                </button>
-                <a href="?page=admin-dashboard" class="bg-gray-600 text-white px-6 py-2 rounded-lg hover:bg-gray-700 transition">
-                    <i class="fas fa-arrow-left mr-2"></i>Zurück
+<div class="max-w-7xl mx-auto">
+    <!-- Header -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800 flex items-center gap-3">
+                    <div class="w-10 h-10 bg-gradient-to-br from-emerald-400 to-green-500 rounded-xl flex items-center justify-center text-white">
+                        <i class="fas fa-print"></i>
+                    </div>
+                    Druckzentrale
+                </h1>
+                <p class="text-gray-500 mt-1">Erstelle professionelle Druckdokumente für die Berufsmesse</p>
+            </div>
+            
+            <!-- Stats -->
+            <div class="flex items-center gap-6">
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-emerald-600"><?php echo $totalStudents; ?></div>
+                    <div class="text-xs text-gray-500">Schüler</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-purple-600"><?php echo $totalRegistrations; ?></div>
+                    <div class="text-xs text-gray-500">Anmeldungen</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-sky-600"><?php echo count($rooms); ?></div>
+                    <div class="text-xs text-gray-500">Räume</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Filter Section -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <h2 class="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <i class="fas fa-filter text-gray-400"></i>
+            Druckoptionen
+        </h2>
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <!-- Print Type -->
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Drucktyp</label>
+                <div class="relative">
+                    <select onchange="window.location.href='?page=admin-print&type='+this.value" 
+                            class="w-full appearance-none px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer">
+                        <option value="all" <?php echo $printType === 'all' ? 'selected' : ''; ?>>📋 Gesamtübersicht</option>
+                        <option value="class" <?php echo $printType === 'class' ? 'selected' : ''; ?>>🎓 Nach Klasse</option>
+                        <option value="rooms" <?php echo $printType === 'rooms' ? 'selected' : ''; ?>>🚪 Nach Raum</option>
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                </div>
+            </div>
+            
+            <!-- Class Filter (conditional) -->
+            <?php if ($printType === 'class'): ?>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Klasse filtern</label>
+                <div class="relative">
+                    <select onchange="window.location.href='?page=admin-print&type=class&class='+encodeURIComponent(this.value)" 
+                            class="w-full appearance-none px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer">
+                        <option value="">Alle Klassen</option>
+                        <?php foreach ($classes as $class): ?>
+                            <option value="<?php echo htmlspecialchars($class); ?>" <?php echo $filterClass === $class ? 'selected' : ''; ?>>
+                                <?php echo htmlspecialchars($class); ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <!-- Room Filter (conditional) -->
+            <?php if ($printType === 'rooms'): ?>
+            <div>
+                <label class="block text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Raum filtern</label>
+                <div class="relative">
+                    <select onchange="window.location.href='?page=admin-print&type=rooms&room='+this.value" 
+                            class="w-full appearance-none px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer">
+                        <option value="">Alle Räume</option>
+                        <?php foreach ($rooms as $room): ?>
+                            <option value="<?php echo $room['id']; ?>" <?php echo $filterRoom == $room['id'] ? 'selected' : ''; ?>>
+                                Raum <?php echo htmlspecialchars($room['room_number']); ?>
+                                <?php echo $room['room_name'] ? ' - ' . htmlspecialchars($room['room_name']) : ''; ?>
+                            </option>
+                        <?php endforeach; ?>
+                    </select>
+                    <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
+                </div>
+            </div>
+            <?php endif; ?>
+            
+            <!-- Print Button -->
+            <div class="flex items-end">
+                <a href="pages/admin-print-export.php?type=<?php echo $printType; ?>&class=<?php echo urlencode($filterClass); ?>&room=<?php echo $filterRoom; ?>" 
+                   target="_blank"
+                   class="w-full inline-flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-emerald-500 to-green-600 text-white font-semibold rounded-xl shadow-lg shadow-emerald-500/25 hover:shadow-xl hover:shadow-emerald-500/30 hover:from-emerald-600 hover:to-green-700 transition-all">
+                    <i class="fas fa-file-pdf"></i>
+                    Druckansicht öffnen
                 </a>
             </div>
         </div>
+    </div>
+    
+    <!-- Preview Section -->
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <h2 class="font-semibold text-gray-800 flex items-center gap-2">
+                <i class="fas fa-eye text-gray-400"></i>
+                Vorschau
+                <span class="text-sm font-normal text-gray-500">
+                    (<?php echo count($registrations ?? []); ?> Einträge)
+                </span>
+            </h2>
+        </div>
         
-        <!-- Filters -->
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Drucktyp</label>
-                <select onchange="window.location.href='?page=admin-print&type='+this.value" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    <option value="all" <?php echo $printType === 'all' ? 'selected' : ''; ?>>Gesamte Veranstaltung</option>
-                    <option value="class" <?php echo $printType === 'class' ? 'selected' : ''; ?>>Nach Klasse</option>
-                    <option value="rooms" <?php echo $printType === 'rooms' ? 'selected' : ''; ?>>Nach Raum</option>
-                </select>
-            </div>
-            
-            <?php if ($printType === 'class'): ?>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Klasse filtern</label>
-                <select onchange="window.location.href='?page=admin-print&type=class&class='+this.value" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    <option value="">Alle Klassen</option>
-                    <?php foreach ($classes as $class): ?>
-                        <option value="<?php echo htmlspecialchars($class); ?>" <?php echo $filterClass === $class ? 'selected' : ''; ?>>
-                            <?php echo htmlspecialchars($class); ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <?php endif; ?>
-            
-            <?php if ($printType === 'rooms'): ?>
-            <div>
-                <label class="block text-sm font-semibold text-gray-700 mb-2">Raum filtern</label>
-                <select onchange="window.location.href='?page=admin-print&type=rooms&room='+this.value" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
-                    <option value="">Alle Räume</option>
-                    <?php foreach ($rooms as $room): ?>
-                        <option value="<?php echo $room['id']; ?>" <?php echo $filterRoom == $room['id'] ? 'selected' : ''; ?>>
-                            Raum <?php echo htmlspecialchars($room['room_number']); ?>
-                            <?php echo $room['room_name'] ? ' - ' . htmlspecialchars($room['room_name']) : ''; ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-            <?php endif; ?>
-        </div>
-    </div>
-
-    <!-- Print Content -->
-    <div class="print-content">
-        <!-- Header -->
-        <div class="text-center mb-8">
-            <h1 class="text-3xl font-bold text-gray-900 mb-2">Berufsmesse <?php echo date('Y'); ?></h1>
-            <p class="text-lg text-gray-600">
-                <?php 
-                if ($printType === 'all') echo 'Gesamte Veranstaltung';
-                elseif ($printType === 'class') echo $filterClass ? "Klasse: $filterClass" : 'Alle Klassen';
-                elseif ($printType === 'rooms') {
-                    if ($filterRoom) {
-                        $roomData = array_filter($rooms, fn($r) => $r['id'] == $filterRoom);
-                        if (!empty($roomData)) {
-                            $roomInfo = array_values($roomData)[0];
-                            echo 'Raum ' . htmlspecialchars($roomInfo['room_number']);
-                        } else {
-                            echo 'Unbekannter Raum';
-                        }
-                    } else {
-                        echo 'Alle Räume';
+        <div class="p-6">
+            <?php if (empty($registrations)): ?>
+                <div class="text-center py-12">
+                    <div class="w-16 h-16 mx-auto bg-gray-100 rounded-2xl flex items-center justify-center mb-4">
+                        <i class="fas fa-inbox text-2xl text-gray-400"></i>
+                    </div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-2">Keine Daten gefunden</h3>
+                    <p class="text-gray-500">Für die ausgewählten Filter sind keine Registrierungen vorhanden.</p>
+                </div>
+            <?php else: ?>
+                <?php if ($printType === 'all' || $printType === 'class'): ?>
+                    <?php
+                    // Gruppieren nach Klasse
+                    $groupedByClass = [];
+                    foreach ($registrations as $reg) {
+                        $class = $reg['class'] ?: 'Keine Klasse';
+                        $groupedByClass[$class][] = $reg;
                     }
-                }
-                ?>
-            </p>
-            <p class="text-sm text-gray-500">Erstellt am <?php echo formatDateTime(date('Y-m-d H:i:s')); ?></p>
-        </div>
-
-        <?php if ($printType === 'all' || $printType === 'class'): ?>
-            <!-- Gruppiert nach Klasse -->
-            <?php
-            $groupedByClass = [];
-            foreach ($registrations as $reg) {
-                $class = $reg['class'] ?: 'Keine Klasse';
-                if (!isset($groupedByClass[$class])) {
-                    $groupedByClass[$class] = [];
-                }
-                $studentKey = $reg['lastname'] . ', ' . $reg['firstname'];
-                if (!isset($groupedByClass[$class][$studentKey])) {
-                    $groupedByClass[$class][$studentKey] = [];
-                }
-                $groupedByClass[$class][$studentKey][] = $reg;
-            }
-            ksort($groupedByClass);
-            ?>
-
-            <?php foreach ($groupedByClass as $class => $students): ?>
-                <div class="mb-8 page-break">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b-2 border-gray-300 pb-2">
-                        <?php echo htmlspecialchars($class); ?>
-                    </h2>
-                    
-                    <?php foreach ($students as $studentName => $regs): ?>
-                        <div class="mb-6 bg-gray-50 p-4 rounded">
-                            <h3 class="font-bold text-lg text-gray-900 mb-3"><?php echo htmlspecialchars($studentName); ?></h3>
-                            <table class="w-full text-sm">
-                                <thead class="bg-gray-200">
-                                    <tr>
-                                        <th class="px-3 py-2 text-left">Zeitslot</th>
-                                        <th class="px-3 py-2 text-left">Zeit</th>
-                                        <th class="px-3 py-2 text-left">Aussteller</th>
-                                        <th class="px-3 py-2 text-left">Raum</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="bg-white">
-                                    <?php 
-                                    usort($regs, fn($a, $b) => $a['slot_number'] <=> $b['slot_number']);
-                                    foreach ($regs as $reg): 
-                                    ?>
-                                        <tr class="border-b border-gray-200">
-                                            <td class="px-3 py-2 font-semibold"><?php echo htmlspecialchars($reg['slot_name']); ?></td>
-                                            <td class="px-3 py-2"><?php echo date('H:i', strtotime($reg['start_time'])) . ' - ' . date('H:i', strtotime($reg['end_time'])); ?></td>
-                                            <td class="px-3 py-2"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></td>
-                                            <td class="px-3 py-2"><?php echo htmlspecialchars($reg['room_number'] ?: '-'); ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endforeach; ?>
-
-        <?php elseif ($printType === 'rooms'): ?>
-            <!-- Gruppiert nach Raum und Zeitslot -->
-            <?php
-            $groupedByRoom = [];
-            foreach ($registrations as $reg) {
-                $roomKey = $reg['room_number'];
-                $slotKey = $reg['slot_number'];
-                if (!isset($groupedByRoom[$roomKey])) {
-                    $groupedByRoom[$roomKey] = [];
-                }
-                if (!isset($groupedByRoom[$roomKey][$slotKey])) {
-                    $groupedByRoom[$roomKey][$slotKey] = [
-                        'slot_info' => $reg,
-                        'students' => []
-                    ];
-                }
-                $groupedByRoom[$roomKey][$slotKey]['students'][] = $reg;
-            }
-            ksort($groupedByRoom);
-            ?>
-
-            <?php foreach ($groupedByRoom as $roomNum => $slots): ?>
-                <div class="mb-8 page-break">
-                    <h2 class="text-2xl font-bold text-gray-800 mb-4 border-b-2 border-gray-300 pb-2">
-                        Raum <?php echo htmlspecialchars($roomNum); ?>
-                    </h2>
-                    
-                    <?php 
-                    ksort($slots);
-                    foreach ($slots as $slotNum => $slotData): 
-                        $info = $slotData['slot_info'];
+                    ksort($groupedByClass);
                     ?>
-                        <div class="mb-6">
-                            <h3 class="font-bold text-lg text-gray-900 mb-2 bg-blue-100 p-2 rounded">
-                                <?php echo htmlspecialchars($info['slot_name']); ?> 
-                                (<?php echo date('H:i', strtotime($info['start_time'])) . ' - ' . date('H:i', strtotime($info['end_time'])); ?>)
-                                - <?php echo htmlspecialchars($info['exhibitor_name']); ?>
-                            </h3>
-                            <table class="w-full text-sm">
-                                <thead class="bg-gray-200">
-                                    <tr>
-                                        <th class="px-3 py-2 text-left">Nr.</th>
-                                        <th class="px-3 py-2 text-left">Name</th>
-                                        <th class="px-3 py-2 text-left">Klasse</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="bg-white">
-                                    <?php 
-                                    usort($slotData['students'], fn($a, $b) => strcmp($a['lastname'], $b['lastname']));
-                                    foreach ($slotData['students'] as $idx => $student): 
-                                    ?>
-                                        <tr class="border-b border-gray-200">
-                                            <td class="px-3 py-2 font-semibold"><?php echo $idx + 1; ?></td>
-                                            <td class="px-3 py-2"><?php echo htmlspecialchars($student['lastname'] . ', ' . $student['firstname']); ?></td>
-                                            <td class="px-3 py-2"><?php echo htmlspecialchars($student['class'] ?: '-'); ?></td>
-                                        </tr>
-                                    <?php endforeach; ?>
-                                </tbody>
-                            </table>
-                        </div>
-                    <?php endforeach; ?>
-                </div>
-            <?php endforeach; ?>
-        <?php endif; ?>
+                    
+                    <div class="space-y-6">
+                        <?php foreach ($groupedByClass as $class => $classRegs): ?>
+                            <div class="border border-gray-200 rounded-xl overflow-hidden">
+                                <div class="bg-gradient-to-r from-emerald-50 to-green-50 px-4 py-3 border-b border-gray-200">
+                                    <h3 class="font-bold text-gray-800 flex items-center gap-2">
+                                        <i class="fas fa-users text-emerald-600"></i>
+                                        <?php echo htmlspecialchars($class); ?>
+                                        <span class="text-sm font-normal text-gray-500">(<?php echo count($classRegs); ?> Einträge)</span>
+                                    </h3>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Schüler</th>
+                                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Slot</th>
+                                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Aussteller</th>
+                                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Raum</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-100">
+                                            <?php foreach (array_slice($classRegs, 0, 10) as $reg): ?>
+                                            <tr class="hover:bg-gray-50/50">
+                                                <td class="px-4 py-3 font-medium text-gray-800">
+                                                    <?php echo htmlspecialchars($reg['lastname'] . ', ' . $reg['firstname']); ?>
+                                                </td>
+                                                <td class="px-4 py-3">
+                                                    <span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-purple-100 text-purple-700 text-xs font-medium">
+                                                        <?php echo htmlspecialchars($reg['slot_name']); ?>
+                                                    </span>
+                                                </td>
+                                                <td class="px-4 py-3 text-gray-600"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></td>
+                                                <td class="px-4 py-3 text-gray-500"><?php echo htmlspecialchars($reg['room_number'] ?: '—'); ?></td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                            <?php if (count($classRegs) > 10): ?>
+                                            <tr>
+                                                <td colspan="4" class="px-4 py-3 text-center text-gray-500 italic">
+                                                    ... und <?php echo count($classRegs) - 10; ?> weitere Einträge
+                                                </td>
+                                            </tr>
+                                            <?php endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    
+                <?php elseif ($printType === 'rooms'): ?>
+                    <?php
+                    // Gruppieren nach Raum
+                    $groupedByRoom = [];
+                    foreach ($registrations as $reg) {
+                        $roomKey = $reg['room_number'];
+                        $groupedByRoom[$roomKey][] = $reg;
+                    }
+                    ksort($groupedByRoom);
+                    ?>
+                    
+                    <div class="space-y-6">
+                        <?php foreach ($groupedByRoom as $roomNum => $roomRegs): ?>
+                            <div class="border border-gray-200 rounded-xl overflow-hidden">
+                                <div class="bg-gradient-to-r from-sky-50 to-blue-50 px-4 py-3 border-b border-gray-200">
+                                    <h3 class="font-bold text-gray-800 flex items-center gap-2">
+                                        <i class="fas fa-door-open text-sky-600"></i>
+                                        Raum <?php echo htmlspecialchars($roomNum); ?>
+                                        <span class="text-sm font-normal text-gray-500">(<?php echo count($roomRegs); ?> Einträge)</span>
+                                    </h3>
+                                </div>
+                                <div class="overflow-x-auto">
+                                    <table class="w-full text-sm">
+                                        <thead class="bg-gray-50">
+                                            <tr>
+                                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Slot</th>
+                                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Aussteller</th>
+                                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Schüler</th>
+                                                <th class="px-4 py-3 text-left font-semibold text-gray-600">Klasse</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-gray-100">
+                                            <?php foreach (array_slice($roomRegs, 0, 10) as $reg): ?>
+                                            <tr class="hover:bg-gray-50/50">
+                                                <td class="px-4 py-3">
+                                                    <span class="inline-flex items-center px-2.5 py-1 rounded-lg bg-sky-100 text-sky-700 text-xs font-medium">
+                                                        <?php echo htmlspecialchars($reg['slot_name']); ?>
+                                                    </span>
+                                                </td>
+                                                <td class="px-4 py-3 font-medium text-gray-800"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></td>
+                                                <td class="px-4 py-3 text-gray-600"><?php echo htmlspecialchars($reg['lastname'] . ', ' . $reg['firstname']); ?></td>
+                                                <td class="px-4 py-3 text-gray-500"><?php echo htmlspecialchars($reg['class'] ?: '—'); ?></td>
+                                            </tr>
+                                            <?php endforeach; ?>
+                                            <?php if (count($roomRegs) > 10): ?>
+                                            <tr>
+                                                <td colspan="4" class="px-4 py-3 text-center text-gray-500 italic">
+                                                    ... und <?php echo count($roomRegs) - 10; ?> weitere Einträge
+                                                </td>
+                                            </tr>
+                                            <?php endif; ?>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+            <?php endif; ?>
+        </div>
     </div>
-
-    <!-- Footer -->
-    <div class="mt-8 text-center text-sm text-gray-500 border-t border-gray-300 pt-4">
-        <p>Berufsmesse <?php echo date('Y'); ?> - Erstellt am <?php echo formatDateTime(date('Y-m-d H:i:s')); ?></p>
-    </div>
-</body>
-</html>
+</div>

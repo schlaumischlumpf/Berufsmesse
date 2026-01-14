@@ -68,6 +68,26 @@ function requireLogin() {
         header('Location: ' . BASE_URL . 'login.php');
         exit();
     }
+
+    // Enforce password change if required by DB flag
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("SELECT must_change_password FROM users WHERE id = ?");
+        $stmt->execute([$_SESSION['user_id']]);
+        $res = $stmt->fetch();
+        if ($res && $res['must_change_password']) {
+            $currentScript = basename($_SERVER['PHP_SELF']);
+            // Allow the user to access only the password change page
+            if ($currentScript !== 'change-password.php') {
+                $_SESSION['force_password_change'] = true;
+                header('Location: ' . BASE_URL . 'change-password.php');
+                exit();
+            }
+        }
+    } catch (Exception $e) {
+        // If DB is temporarily unavailable, do not block access but log
+        error_log('requireLogin DB check failed: ' . $e->getMessage());
+    }
 }
 
 function requireAdmin() {
@@ -301,7 +321,7 @@ function getAvailablePermissions() {
         'manage_rooms' => 'Räume verwalten',
         'manage_settings' => 'Einstellungen verwalten (Einschreibezeiten, Event-Datum)',
         'manage_users' => 'Benutzer verwalten (Passwörter zurücksetzen, Accounts erstellen/löschen)',
-        'view_reports' => 'Druckzentrale nutzen (Berichte ansehen und drucken)',
+        'view_reports' => 'Druckzentrale nutzen (Druckzentrale ansehen und drucken)',
         'auto_assign' => 'Automatische Zuteilung durchführen'
     ];
 }

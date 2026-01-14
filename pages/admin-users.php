@@ -4,6 +4,128 @@
 // Datenbankverbindung holen
 $db = getDB();
 
+// Handle CSV Import
+$csvImportResult = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
+    if (!empty($_FILES['csv_file']['name'])) {
+        $file = $_FILES['csv_file'];
+        
+        // Prüfe ob Datei valide ist
+        if ($file['error'] === UPLOAD_ERR_OK && in_array(pathinfo($file['name'], PATHINFO_EXTENSION), ['csv', 'txt'])) {
+            $handle = fopen($file['tmp_name'], 'r');
+            if ($handle) {
+                $importResult = [
+                    'imported' => 0,
+                    'skipped' => 0,
+                    'errors' => []
+                ];
+                
+                // Erste Zeile überspringen (Header)
+                fgetcsv($handle);
+                
+                $rowNumber = 2;
+                while (($row = fgetcsv($handle)) !== false) {
+                    // Spalten: firstname, lastname, username, email, role, class, password
+                    if (count($row) < 6) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Zu wenige Spalten";
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    $firstname = sanitize(trim($row[0]));
+                    $lastname = sanitize(trim($row[1]));
+                    $username = sanitize(trim($row[2]));
+                    $email = sanitize(trim($row[3]));
+                    $role = sanitize(trim($row[4]));
+                    $class = sanitize(trim($row[5] ?? ''));
+                    
+                    // Generiere Passwort wenn nicht vorhanden oder leer
+                    if (isset($row[6]) && !empty(trim($row[6]))) {
+                        $password = trim($row[6]);
+                        $generatePassword = false;
+                    } else {
+                        // Generiere sicheres Passwort
+                        $password = bin2hex(random_bytes(6)); // 12 Zeichen hexadezimal
+                        $generatePassword = true;
+                    }
+                    
+                    // Validierungen
+                    if (empty($firstname) || empty($lastname) || empty($username) || empty($role)) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Erforderliche Felder fehlen (Vorname, Nachname, Benutzername, Rolle)";
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    // Prüfe ob Username bereits existiert
+                    $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
+                    $stmt->execute([$username]);
+                    if ($stmt->fetch()) {
+                        $importResult['skipped']++;
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    // Validiere Rolle
+                    $allowedRoles = ['student', 'teacher', 'admin'];
+                    if (!in_array($role, $allowedRoles, true)) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Ungültige Rolle '$role'";
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    // Sicherheit: Nur Admins können Admin-Accounts über CSV erstellen
+                    if ($role === 'admin' && !isAdmin()) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Nur Administratoren können Admin-Accounts erstellen";
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    // Benutzer erstellen
+                    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                    // Force password change for all admin-created/imported accounts
+                    $force_password_change = 1;
+                    
+                    try {
+                        $stmt = $db->prepare("INSERT INTO users (firstname, lastname, username, email, password, role, class, must_change_password) 
+                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                        if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change])) {
+                            $importResult['imported']++;
+                            // Speichere generiertes Passwort für Export
+                            if ($generatePassword) {
+                                if (!isset($importResult['generated_passwords'])) {
+                                    $importResult['generated_passwords'] = [];
+                                }
+                                $importResult['generated_passwords'][] = [
+                                    'username' => $username,
+                                    'firstname' => $firstname,
+                                    'lastname' => $lastname,
+                                    'password' => $password
+                                ];
+                            }
+                        }
+                    } catch (PDOException $e) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Datenbankfehler - " . $e->getMessage();
+                    }
+                    
+                    $rowNumber++;
+                }
+                
+                fclose($handle);
+                $csvImportResult = $importResult;
+                
+                // Nachricht vorbereiten
+                if ($importResult['imported'] > 0) {
+                    $message = ['type' => 'success', 'text' => $importResult['imported'] . ' Benutzer importiert, ' . $importResult['skipped'] . ' übersprungen'];
+                }
+            }
+        } else {
+            $message = ['type' => 'error', 'text' => 'Ungültige Datei. Bitte eine CSV-Datei hochladen.'];
+        }
+    } else {
+        $message = ['type' => 'error', 'text' => 'Keine Datei ausgewählt'];
+    }
+}
+
 // Handle User Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['create_user'])) {
@@ -34,11 +156,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                // Force password change on first login for admin-created accounts
                 $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password) 
-                                      VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                 try {
-                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class])) {
-                        $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt (muss Passwort beim ersten Login ändern)'];
+                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1])) {
+                        $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
                     } else {
                         // fetch error info for logging
                         $err = $stmt->errorInfo();
@@ -67,9 +190,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
             
-            $stmt = $db->prepare("UPDATE users SET password = ? WHERE id = ?");
+            $stmt = $db->prepare("UPDATE users SET password = ?, must_change_password = 1 WHERE id = ?");
             if ($stmt->execute([$hashedPassword, $userId])) {
-                $message = ['type' => 'success', 'text' => 'Passwort erfolgreich zurückgesetzt'];
+                $message = ['type' => 'success', 'text' => 'Passwort erfolgreich zurückgesetzt. Der Benutzer muss es beim nächsten Login ändern.'];
             } else {
                 $message = ['type' => 'error', 'text' => 'Fehler beim Zurücksetzen des Passworts'];
             }
@@ -102,116 +225,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = ['type' => 'error', 'text' => 'Fehler beim Löschen des Benutzers'];
             }
         }
-    } elseif (isset($_POST['import_csv']) && isset($_FILES['csv_file'])) {
-        // CSV Import
-        $file = $_FILES['csv_file'];
-        
-        if ($file['error'] !== UPLOAD_ERR_OK) {
-            $message = ['type' => 'error', 'text' => 'Fehler beim Hochladen der Datei'];
-        } elseif (pathinfo($file['name'], PATHINFO_EXTENSION) !== 'csv') {
-            $message = ['type' => 'error', 'text' => 'Bitte eine CSV-Datei hochladen'];
-        } else {
-            $handle = fopen($file['tmp_name'], 'r');
-            if ($handle === false) {
-                $message = ['type' => 'error', 'text' => 'Fehler beim Öffnen der Datei'];
-            } else {
-                $imported = 0;
-                $skipped = 0;
-                $errors = [];
-                $lineNumber = 0;
-                
-                // Header-Zeile lesen
-                $header = fgetcsv($handle, 0, ';');
-                if ($header === false) {
-                    $message = ['type' => 'error', 'text' => 'Leere oder ungültige CSV-Datei'];
-                } else {
-                    // Header normalisieren (lowercase, trim)
-                    $header = array_map(function($col) { return strtolower(trim($col)); }, $header);
-                    
-                    // Erforderliche Spalten prüfen
-                    $requiredColumns = ['username', 'password', 'firstname', 'lastname'];
-                    $missingColumns = array_diff($requiredColumns, $header);
-                    
-                    if (!empty($missingColumns)) {
-                        $message = ['type' => 'error', 'text' => 'Fehlende Spalten in CSV: ' . implode(', ', $missingColumns)];
-                    } else {
-                        while (($row = fgetcsv($handle, 0, ';')) !== false) {
-                            $lineNumber++;
-                            
-                            // Leere Zeilen überspringen
-                            if (empty(array_filter($row))) {
-                                continue;
-                            }
-                            
-                            // Zeile zu assoziativem Array machen
-                            $data = array_combine($header, array_pad($row, count($header), ''));
-                            
-                            $username = sanitize($data['username'] ?? '');
-                            $password = $data['password'] ?? '';
-                            $firstname = sanitize($data['firstname'] ?? '');
-                            $lastname = sanitize($data['lastname'] ?? '');
-                            $email = sanitize($data['email'] ?? '');
-                            $role = sanitize($data['role'] ?? 'student');
-                            $class = sanitize($data['class'] ?? '');
-                            
-                            // Validierung
-                            if (empty($username) || empty($password) || empty($firstname) || empty($lastname)) {
-                                $errors[] = "Zeile $lineNumber: Pflichtfelder fehlen";
-                                continue;
-                            }
-                            
-                            // Rolle validieren
-                            $allowedRoles = ['student', 'teacher', 'admin'];
-                            if (!in_array($role, $allowedRoles, true)) {
-                                $role = 'student';
-                            }
-                            
-                            // Nur Admins können Admin-Accounts erstellen
-                            if ($role === 'admin' && !isAdmin()) {
-                                $role = 'student';
-                            }
-                            
-                            // Prüfen ob Benutzer bereits existiert
-                            $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
-                            $stmt->execute([$username]);
-                            if ($stmt->fetch()) {
-                                $skipped++;
-                                continue; // Überspringen, nicht überschreiben
-                            }
-                            
-                            // Benutzer erstellen mit Passwort aus CSV
-                            $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-                            $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password) 
-                                                  VALUES (?, ?, ?, ?, ?, ?, ?, 1)");
-                            try {
-                                if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class])) {
-                                    $imported++;
-                                } else {
-                                    $errors[] = "Zeile $lineNumber: Datenbankfehler";
-                                }
-                            } catch (PDOException $e) {
-                                $errors[] = "Zeile $lineNumber: " . $e->getMessage();
-                            }
-                        }
-                        
-                        fclose($handle);
-                        
-                        $resultText = "$imported Benutzer importiert";
-                        if ($skipped > 0) {
-                            $resultText .= ", $skipped übersprungen (existieren bereits)";
-                        }
-                        if (!empty($errors)) {
-                            $resultText .= ". Fehler: " . count($errors);
-                        }
-                        
-                        $message = ['type' => $imported > 0 ? 'success' : 'warning', 'text' => $resultText];
-                        if (!empty($errors)) {
-                            $message['errors'] = $errors;
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -233,260 +246,141 @@ $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")
 $stats['students'] = $stmt->fetch()['count'];
 $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'teacher'");
 $stats['teachers'] = $stmt->fetch()['count'];
-$stats['total'] = $stats['admins'] + $stats['students'] + $stats['teachers'];
 ?>
 
-<style>
-@keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-fadeInUp {
-    animation: fadeInUp 0.5s ease-out forwards;
-}
-
-.stat-card {
-    position: relative;
-    overflow: hidden;
-}
-
-.stat-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 4px;
-    background: var(--gradient);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-}
-
-.stat-card:hover::before {
-    opacity: 1;
-}
-
-.stat-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 20px 40px -12px rgba(0,0,0,0.1);
-}
-
-.user-row {
-    transition: all 0.3s ease;
-}
-
-.user-row:hover {
-    background: linear-gradient(90deg, rgba(139, 92, 246, 0.05) 0%, rgba(59, 130, 246, 0.05) 100%);
-    transform: translateX(4px);
-}
-
-.action-btn {
-    transition: all 0.2s ease;
-}
-
-.action-btn:hover {
-    transform: scale(1.05);
-}
-
-.modal-content {
-    animation: modalSlideIn 0.3s ease-out;
-}
-
-@keyframes modalSlideIn {
-    from { opacity: 0; transform: scale(0.9) translateY(-20px); }
-    to { opacity: 1; transform: scale(1) translateY(0); }
-}
-
-.input-modern {
-    transition: all 0.2s ease;
-}
-
-.input-modern:focus {
-    box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
-    border-color: #8b5cf6;
-}
-</style>
-
-<div class="space-y-8">
+<div class="space-y-6">
     <?php if (isset($message)): ?>
-    <div class="animate-fadeInUp">
+    <div class="mb-4">
         <?php if ($message['type'] === 'success'): ?>
-            <div class="bg-gradient-to-r from-primary-50 to-emerald-50 border border-primary-200 p-5 rounded-2xl shadow-sm">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-primary-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-check-circle text-primary-500 text-xl"></i>
-                    </div>
-                    <p class="text-primary-700 font-semibold"><?php echo $message['text']; ?></p>
+            <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-check-circle text-emerald-500 mr-3"></i>
+                    <p class="text-emerald-700"><?php echo $message['text']; ?></p>
                 </div>
             </div>
         <?php else: ?>
-            <div class="bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 p-5 rounded-2xl shadow-sm">
-                <div class="flex items-center gap-4">
-                    <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-exclamation-circle text-red-500 text-xl"></i>
-                    </div>
-                    <p class="text-red-700 font-semibold"><?php echo $message['text']; ?></p>
+            <div class="bg-red-50 border border-red-200 p-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
+                    <p class="text-red-700"><?php echo $message['text']; ?></p>
                 </div>
             </div>
         <?php endif; ?>
     </div>
     <?php endif; ?>
 
-    <!-- Hero Header -->
-    <div class="bg-gradient-to-br from-slate-800 via-slate-900 to-purple-900 rounded-3xl p-8 shadow-2xl relative overflow-hidden animate-fadeInUp">
-        <!-- Background Pattern -->
-        <div class="absolute inset-0 opacity-10">
-            <div class="absolute top-0 left-0 w-full h-full" style="background-image: url('data:image/svg+xml,%3Csvg width=\"60\" height=\"60\" viewBox=\"0 0 60 60\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"none\" fill-rule=\"evenodd\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.4\"%3E%3Cpath d=\"M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\"/%3E%3C/g%3E%3C/g%3E%3C/svg%3E');"></div>
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-xl font-semibold text-gray-800">Nutzerverwaltung</h2>
+            <p class="text-sm text-gray-500 mt-1">Benutzer erstellen, bearbeiten und löschen</p>
         </div>
-        
-        <div class="relative flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-            <div class="flex items-center gap-5">
-                <div class="w-16 h-16 bg-gradient-to-br from-accent-500 to-purple-600 rounded-2xl flex items-center justify-center shadow-xl shadow-accent-500/30">
-                    <i class="fas fa-users-cog text-white text-2xl"></i>
-                </div>
-                <div>
-                    <h2 class="text-3xl font-extrabold text-white font-display">Nutzerverwaltung</h2>
-                    <p class="text-slate-300 mt-1">Benutzer erstellen, bearbeiten und verwalten</p>
-                </div>
-            </div>
-            <div class="flex flex-wrap gap-3">
-                <button onclick="openCsvImportModal()" class="group bg-gradient-to-r from-emerald-500 to-teal-600 text-white px-5 py-3.5 rounded-xl font-bold hover:shadow-xl hover:shadow-emerald-500/30 transition-all duration-300 flex items-center gap-3 transform hover:scale-105">
-                    <i class="fas fa-file-csv text-lg group-hover:rotate-12 transition-transform"></i>
-                    <span>CSV Import</span>
-                </button>
-                <button onclick="openCreateUserModal()" class="group bg-gradient-to-r from-accent-500 to-purple-600 text-white px-6 py-3.5 rounded-xl font-bold hover:shadow-xl hover:shadow-accent-500/30 transition-all duration-300 flex items-center gap-3 transform hover:scale-105">
-                    <i class="fas fa-user-plus text-lg group-hover:rotate-12 transition-transform"></i>
-                    <span>Neuer Benutzer</span>
-                </button>
-            </div>
+        <div class="flex gap-2">
+            <button onclick="openImportCsvModal()" class="px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center gap-2">
+                <i class="fas fa-file-upload"></i>
+                CSV Import
+            </button>
+            <button onclick="openCreateUserModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
+                <i class="fas fa-user-plus"></i>
+                Neuer Benutzer
+            </button>
         </div>
     </div>
 
-    <!-- Statistics Cards -->
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-4 animate-fadeInUp" style="animation-delay: 100ms;">
-        <div class="stat-card bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all duration-300" style="--gradient: linear-gradient(90deg, #8b5cf6, #a855f7);">
+    <!-- Statistics -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-gray-500 text-sm font-medium mb-1">Gesamt</p>
-                    <p class="text-3xl font-extrabold text-gray-800"><?php echo $stats['total']; ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Administratoren</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo $stats['admins']; ?></p>
                 </div>
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-slate-100 to-gray-200 flex items-center justify-center">
-                    <i class="fas fa-users text-xl text-gray-600"></i>
+                <div class="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                    <i class="fas fa-user-shield text-purple-500"></i>
                 </div>
             </div>
         </div>
 
-        <div class="stat-card bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all duration-300" style="--gradient: linear-gradient(90deg, #ef4444, #f97316);">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-gray-500 text-sm font-medium mb-1">Administratoren</p>
-                    <p class="text-3xl font-extrabold text-gray-800"><?php echo $stats['admins']; ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Schüler</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo $stats['students']; ?></p>
                 </div>
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-red-100 to-rose-200 flex items-center justify-center">
-                    <i class="fas fa-user-shield text-xl text-red-600"></i>
+                <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <i class="fas fa-user-graduate text-blue-500"></i>
                 </div>
             </div>
         </div>
 
-        <div class="stat-card bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all duration-300" style="--gradient: linear-gradient(90deg, #3b82f6, #06b6d4);">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-gray-500 text-sm font-medium mb-1">Schüler</p>
-                    <p class="text-3xl font-extrabold text-gray-800"><?php echo $stats['students']; ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Lehrer</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo $stats['teachers']; ?></p>
                 </div>
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-100 to-cyan-200 flex items-center justify-center">
-                    <i class="fas fa-user-graduate text-xl text-blue-600"></i>
-                </div>
-            </div>
-        </div>
-
-        <div class="stat-card bg-white rounded-2xl p-5 border border-gray-100 shadow-sm transition-all duration-300" style="--gradient: linear-gradient(90deg, #f59e0b, #f97316);">
-            <div class="flex items-center justify-between">
-                <div>
-                    <p class="text-gray-500 text-sm font-medium mb-1">Lehrer</p>
-                    <p class="text-3xl font-extrabold text-gray-800"><?php echo $stats['teachers']; ?></p>
-                </div>
-                <div class="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-200 flex items-center justify-center">
-                    <i class="fas fa-chalkboard-teacher text-xl text-amber-600"></i>
+                <div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <i class="fas fa-chalkboard-teacher text-emerald-500"></i>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Users Table -->
-    <div class="bg-white rounded-3xl border border-gray-100 shadow-lg overflow-hidden animate-fadeInUp" style="animation-delay: 200ms;">
+    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full">
-                <thead class="bg-gradient-to-r from-gray-50 to-slate-100 border-b border-gray-200">
+                <thead class="bg-gray-50 border-b border-gray-200">
                     <tr>
-                        <th class="px-6 py-5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Benutzer</th>
-                        <th class="px-6 py-5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Rolle</th>
-                        <th class="px-6 py-5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Klasse</th>
-                        <th class="px-6 py-5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Anmeldungen</th>
-                        <th class="px-6 py-5 text-left text-xs font-bold text-gray-600 uppercase tracking-wider">Erstellt</th>
-                        <th class="px-6 py-5 text-right text-xs font-bold text-gray-600 uppercase tracking-wider">Aktionen</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Benutzer</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Rolle</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Klasse</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Anmeldungen</th>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Erstellt</th>
+                        <th class="px-6 py-4 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider">Aktionen</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100">
-                    <?php foreach ($users as $index => $user): 
-                        $roleColors = [
-                            'admin' => ['from-red-500 to-rose-600', 'bg-red-50 text-red-700 border-red-200'],
-                            'teacher' => ['from-amber-500 to-orange-600', 'bg-amber-50 text-amber-700 border-amber-200'],
-                            'student' => ['from-blue-500 to-cyan-600', 'bg-blue-50 text-blue-700 border-blue-200']
-                        ];
-                        $roleColor = $roleColors[$user['role']] ?? ['from-gray-500 to-gray-600', 'bg-gray-50 text-gray-700 border-gray-200'];
-                    ?>
-                    <tr class="user-row">
-                        <td class="px-6 py-5">
-                            <div class="flex items-center gap-4">
-                                <div class="w-12 h-12 bg-gradient-to-br <?php echo $roleColor[0]; ?> rounded-xl flex items-center justify-center shadow-md">
-                                    <span class="font-bold text-sm text-white">
+                <tbody class="divide-y divide-gray-200">
+                    <?php foreach ($users as $user): ?>
+                    <tr class="hover:bg-gray-50 transition">
+                        <td class="px-6 py-4">
+                            <div class="flex items-center">
+                                <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
+                                    <span class="font-bold text-sm text-blue-600">
                                         <?php echo strtoupper(substr($user['firstname'], 0, 1) . substr($user['lastname'], 0, 1)); ?>
                                     </span>
                                 </div>
                                 <div>
-                                    <p class="font-bold text-gray-800"><?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?></p>
-                                    <p class="text-sm text-gray-500"><i class="fas fa-at mr-1 text-gray-400"></i><?php echo htmlspecialchars($user['username']); ?></p>
+                                    <p class="font-semibold text-gray-800"><?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?></p>
+                                    <p class="text-sm text-gray-500"><?php echo htmlspecialchars($user['username']); ?></p>
                                 </div>
                             </div>
                         </td>
-                        <td class="px-6 py-5">
+                        <td class="px-6 py-4">
                             <?php if ($user['role'] === 'admin'): ?>
-                                <span class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-red-50 text-red-700 border border-red-200">
-                                    <i class="fas fa-crown mr-1.5"></i>Admin
+                                <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-user-shield mr-1"></i>Admin
                                 </span>
                             <?php elseif ($user['role'] === 'teacher'): ?>
-                                <span class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                                    <i class="fas fa-chalkboard-teacher mr-1.5"></i>Lehrer
+                                <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-chalkboard-teacher mr-1"></i>Lehrer
                                 </span>
                             <?php else: ?>
-                                <span class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200">
-                                    <i class="fas fa-user-graduate mr-1.5"></i>Schüler
+                                <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-user-graduate mr-1"></i>Schüler
                                 </span>
                             <?php endif; ?>
                         </td>
-                        <td class="px-6 py-5">
-                            <?php if (!empty($user['class'])): ?>
-                                <span class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-gray-100 text-gray-700">
-                                    <i class="fas fa-school mr-1.5 text-gray-500"></i><?php echo htmlspecialchars($user['class']); ?>
-                                </span>
-                            <?php else: ?>
-                                <span class="text-gray-400">—</span>
-                            <?php endif; ?>
+                        <td class="px-6 py-4 text-gray-700">
+                            <?php echo htmlspecialchars($user['class'] ?: '-'); ?>
                         </td>
-                        <td class="px-6 py-5">
-                            <div class="flex items-center gap-2">
-                                <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-accent-50 text-accent-700 font-bold text-sm">
-                                    <?php echo $user['registration_count']; ?>
-                                </span>
-                            </div>
+                        <td class="px-6 py-4">
+                            <span class="text-gray-700 font-semibold"><?php echo $user['registration_count']; ?></span>
                         </td>
-                        <td class="px-6 py-5 text-gray-500 text-sm">
-                            <i class="far fa-calendar-alt mr-1 text-gray-400"></i>
+                        <td class="px-6 py-4 text-gray-600 text-sm">
                             <?php echo formatDate($user['created_at']); ?>
                         </td>
-                        <td class="px-6 py-5 text-right">
+                        <td class="px-6 py-4 text-right">
                             <div class="flex justify-end gap-2">
                                 <?php 
                                 // Nur Admins können Admin-Accounts bearbeiten
@@ -494,18 +388,18 @@ $stats['total'] = $stats['admins'] + $stats['students'] + $stats['teachers'];
                                 ?>
                                 <?php if ($canEdit): ?>
                                     <button onclick="openResetPasswordModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
-                                            class="action-btn px-4 py-2 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 border border-amber-200 rounded-xl hover:shadow-md text-sm font-bold">
-                                        <i class="fas fa-key mr-1.5"></i>Passwort
+                                            class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
+                                        <i class="fas fa-key mr-1"></i>Passwort
                                     </button>
                                     <?php if ($user['id'] !== $_SESSION['user_id']): ?>
                                     <button onclick="confirmDeleteUser(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
-                                            class="action-btn px-4 py-2 bg-gradient-to-r from-red-50 to-rose-50 text-red-700 border border-red-200 rounded-xl hover:shadow-md text-sm font-bold">
-                                        <i class="fas fa-trash mr-1.5"></i>Löschen
+                                            class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm font-medium">
+                                        <i class="fas fa-trash mr-1"></i>Löschen
                                     </button>
                                     <?php endif; ?>
                                 <?php else: ?>
-                                    <span class="text-gray-400 text-sm italic flex items-center gap-2">
-                                        <i class="fas fa-lock"></i>Nur für Admins
+                                    <span class="text-gray-400 text-sm italic">
+                                        <i class="fas fa-lock mr-1"></i>Nur für Admins
                                     </span>
                                 <?php endif; ?>
                             </div>
@@ -518,87 +412,161 @@ $stats['total'] = $stats['admins'] + $stats['students'] + $stats['teachers'];
     </div>
 </div>
 
-<!-- Create User Modal -->
-<div id="createUserModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-    <div class="modal-content bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div class="bg-gradient-to-r from-accent-500 via-purple-600 to-indigo-600 text-white px-8 py-6 rounded-t-3xl relative overflow-hidden">
-            <div class="absolute inset-0 bg-white/10 opacity-30" style="background-image: url('data:image/svg+xml,%3Csvg width=\"40\" height=\"40\" viewBox=\"0 0 40 40\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.3\" fill-rule=\"evenodd\"%3E%3Cpath d=\"M0 40L40 0H20L0 20M40 40V20L20 40\"/%3E%3C/g%3E%3C/svg%3E');"></div>
-            <div class="relative flex items-center gap-4">
-                <div class="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                    <i class="fas fa-user-plus text-2xl"></i>
-                </div>
-                <div>
-                    <h3 class="text-2xl font-extrabold font-display">Neuen Benutzer erstellen</h3>
-                    <p class="text-white/80 text-sm">Füllen Sie alle erforderlichen Felder aus</p>
-                </div>
-            </div>
+<!-- Import CSV Modal -->
+<div id="importCsvModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Benutzer aus CSV importieren</h3>
         </div>
         
-        <form method="POST" class="p-8 space-y-5">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-2">
-                        <i class="fas fa-user text-accent-500 mr-2"></i>Vorname *
+        <form method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p class="text-sm text-blue-900">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>CSV-Format:</strong> firstname, lastname, username, email, role, class, password (optional)
+                </p>
+                <p class="text-sm text-blue-700 mt-2">
+                    Rollen: <code class="bg-white px-2 py-1 rounded">student</code>, <code class="bg-white px-2 py-1 rounded">teacher</code>, <code class="bg-white px-2 py-1 rounded">admin</code>
+                </p>
+                <p class="text-sm text-blue-700 mt-2">
+                    Wenn kein Passwort angegeben wird, wird ein automatisches generiert und zwinging eine Passwortänderung beim Login.
+                </p>
+                <p class="text-sm text-blue-700 mt-3">
+                    <a href="../../example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
+                        <i class="fas fa-download mr-1"></i>Beispiel-CSV herunterladen
+                    </a>
+                </p>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">CSV-Datei *</label>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition">
+                    <input type="file" id="csvFile" name="csv_file" accept=".csv,.txt" required class="hidden">
+                    <label for="csvFile" class="cursor-pointer">
+                        <i class="fas fa-cloud-upload-alt text-4xl text-gray-300 mb-3"></i>
+                        <p class="text-gray-600">
+                            <span class="text-blue-600 font-semibold">Klick zum Durchsuchen</span> oder Datei hierher ziehen
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">CSV oder TXT-Datei</p>
                     </label>
-                    <input type="text" name="firstname" required placeholder="Max" class="input-modern w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white transition-all">
+                </div>
+                <p id="fileName" class="text-sm text-gray-600 mt-2"></p>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeImportCsvModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Abbrechen
+                </button>
+                <button type="submit" name="import_csv" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    <i class="fas fa-upload mr-2"></i>Importieren
+                </button>
+            </div>
+        </form>
+        
+        <?php if ($csvImportResult): ?>
+        <div class="bg-gray-50 border-t border-gray-200 p-6 space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p class="text-sm text-gray-600">Importiert</p>
+                    <p class="text-2xl font-bold text-green-600"><?php echo $csvImportResult['imported']; ?></p>
+                </div>
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p class="text-sm text-gray-600">Übersprungen</p>
+                    <p class="text-2xl font-bold text-yellow-600"><?php echo $csvImportResult['skipped']; ?></p>
+                </div>
+            </div>
+            
+            <?php if (!empty($csvImportResult['errors'])): ?>
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p class="font-semibold text-red-700 mb-2">Fehler:</p>
+                <ul class="text-sm text-red-600 space-y-1">
+                    <?php foreach (array_slice($csvImportResult['errors'], 0, 5) as $error): ?>
+                    <li><i class="fas fa-exclamation-circle mr-2"></i><?php echo htmlspecialchars($error); ?></li>
+                    <?php endforeach; ?>
+                    <?php if (count($csvImportResult['errors']) > 5): ?>
+                    <li class="text-gray-500">... und <?php echo count($csvImportResult['errors']) - 5; ?> weitere Fehler</li>
+                    <?php endif; ?>
+                </ul>
+            </div>
+            <?php endif; ?>
+            
+            <?php if (!empty($csvImportResult['generated_passwords'])): ?>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p class="font-semibold text-blue-700 mb-2">
+                    <i class="fas fa-key mr-2"></i><?php echo count($csvImportResult['generated_passwords']); ?> Passwörter generiert
+                </p>
+                <p class="text-sm text-blue-600 mb-3">Diese Benutzer müssen ihr Passwort beim ersten Login ändern.</p>
+                <button type="button" onclick="downloadPasswordsFile()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition text-sm font-medium">
+                    <i class="fas fa-download mr-2"></i>Passwörter herunterladen (CSV)
+                </button>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div id="createUserModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Neuen Benutzer erstellen</h3>
+        </div>
+        
+        <form method="POST" class="p-6 space-y-4">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Vorname *</label>
+                    <input type="text" name="firstname" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
                 <div>
-                    <label class="block text-sm font-bold text-gray-700 mb-2">Nachname *</label>
-                    <input type="text" name="lastname" required placeholder="Mustermann" class="input-modern w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white transition-all">
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Nachname *</label>
+                    <input type="text" name="lastname" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
                 </div>
             </div>
             
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-2">
-                    <i class="fas fa-at text-accent-500 mr-2"></i>Benutzername *
-                </label>
-                <input type="text" name="username" required placeholder="max.mustermann" class="input-modern w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white transition-all">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Benutzername *</label>
+                <input type="text" name="username" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
             </div>
             
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-2">
-                    <i class="fas fa-envelope text-accent-500 mr-2"></i>E-Mail
-                </label>
-                <input type="email" name="email" placeholder="max@beispiel.de" class="input-modern w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white transition-all">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">E-Mail</label>
+                <input type="email" name="email" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
             </div>
             
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-2">
-                    <i class="fas fa-lock text-accent-500 mr-2"></i>Passwort *
-                </label>
-                <input type="password" name="password" required minlength="6" placeholder="Mindestens 6 Zeichen" class="input-modern w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white transition-all">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Passwort *</label>
+                <input type="password" name="password" required minlength="6" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                <p class="text-xs text-gray-500 mt-1">Mindestens 6 Zeichen</p>
             </div>
             
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-2">
-                    <i class="fas fa-user-tag text-accent-500 mr-2"></i>Rolle *
-                </label>
-                <select name="role" id="roleSelect" required class="input-modern w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white transition-all font-medium" onchange="toggleClassField()">
-                    <option value="student">👨‍🎓 Schüler</option>
-                    <option value="teacher">👨‍🏫 Lehrer</option>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Rolle *</label>
+                <select name="role" id="roleSelect" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" onchange="toggleClassField()">
+                    <option value="student">Schüler</option>
+                    <option value="teacher">Lehrer</option>
                     <?php if (isAdmin()): ?>
-                    <option value="admin">👑 Administrator</option>
+                    <option value="admin">Administrator</option>
                     <?php endif; ?>
                 </select>
                 <?php if (!isAdmin()): ?>
-                <p class="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                    <i class="fas fa-info-circle"></i>Nur Administratoren können Admin-Accounts erstellen
+                <p class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>Nur Administratoren können Admin-Accounts erstellen
                 </p>
                 <?php endif; ?>
             </div>
             
             <div id="classField">
-                <label class="block text-sm font-bold text-gray-700 mb-2">
-                    <i class="fas fa-school text-accent-500 mr-2"></i>Klasse
-                </label>
-                <input type="text" name="class" placeholder="z.B. 10A, 11B" class="input-modern w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white transition-all">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Klasse</label>
+                <input type="text" name="class" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
             </div>
             
-            <div class="flex justify-end gap-3 pt-6 border-t border-gray-100">
-                <button type="button" onclick="closeCreateUserModal()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold">
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeCreateUserModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
                     Abbrechen
                 </button>
-                <button type="submit" name="create_user" class="px-6 py-3 bg-gradient-to-r from-accent-500 to-purple-600 text-white rounded-xl hover:shadow-lg hover:shadow-accent-500/30 transition font-bold">
+                <button type="submit" name="create_user" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
                     <i class="fas fa-user-plus mr-2"></i>Erstellen
                 </button>
             </div>
@@ -607,46 +575,31 @@ $stats['total'] = $stats['admins'] + $stats['students'] + $stats['teachers'];
 </div>
 
 <!-- Reset Password Modal -->
-<div id="resetPasswordModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-    <div class="modal-content bg-white rounded-3xl shadow-2xl max-w-md w-full">
-        <div class="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 text-white px-8 py-6 rounded-t-3xl relative overflow-hidden">
-            <div class="absolute inset-0 bg-white/10 opacity-30" style="background-image: url('data:image/svg+xml,%3Csvg width=\"40\" height=\"40\" viewBox=\"0 0 40 40\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.3\" fill-rule=\"evenodd\"%3E%3Cpath d=\"M0 40L40 0H20L0 20M40 40V20L20 40\"/%3E%3C/g%3E%3C/svg%3E');"></div>
-            <div class="relative flex items-center gap-4">
-                <div class="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                    <i class="fas fa-key text-2xl"></i>
-                </div>
-                <h3 class="text-2xl font-extrabold font-display">Passwort zurücksetzen</h3>
-            </div>
+<div id="resetPasswordModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+        <div class="bg-gradient-to-r from-yellow-600 to-orange-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Passwort zurücksetzen</h3>
         </div>
         
-        <form method="POST" class="p-8 space-y-5">
+        <form method="POST" class="p-6 space-y-4">
             <input type="hidden" name="user_id" id="resetUserId">
             
-            <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-5">
-                <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 bg-amber-100 rounded-xl flex items-center justify-center">
-                        <i class="fas fa-user text-amber-600 text-lg"></i>
-                    </div>
-                    <div>
-                        <p class="text-sm text-amber-600 font-medium">Passwort zurücksetzen für:</p>
-                        <p class="font-bold text-amber-800" id="resetUserName"></p>
-                    </div>
-                </div>
-            </div>
+            <p class="text-gray-700">
+                Passwort zurücksetzen für: <strong id="resetUserName"></strong>
+            </p>
             
             <div>
-                <label class="block text-sm font-bold text-gray-700 mb-2">
-                    <i class="fas fa-lock text-amber-500 mr-2"></i>Neues Passwort *
-                </label>
-                <input type="password" name="new_password" required minlength="6" placeholder="Mindestens 6 Zeichen" class="input-modern w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-xl focus:bg-white transition-all">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Neues Passwort *</label>
+                <input type="password" name="new_password" required minlength="6" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-yellow-500">
+                <p class="text-xs text-gray-500 mt-1">Mindestens 6 Zeichen</p>
             </div>
             
-            <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <button type="button" onclick="closeResetPasswordModal()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold">
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeResetPasswordModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
                     Abbrechen
                 </button>
-                <button type="submit" name="reset_password" class="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl hover:shadow-lg hover:shadow-amber-500/30 transition font-bold">
-                    <i class="fas fa-key mr-2"></i>Zurücksetzen
+                <button type="submit" name="reset_password" class="px-6 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition">
+                    <i class="fas fa-key mr-2"></i>Passwort zurücksetzen
                 </button>
             </div>
         </form>
@@ -654,126 +607,31 @@ $stats['total'] = $stats['admins'] + $stats['students'] + $stats['teachers'];
 </div>
 
 <!-- Delete Confirmation Modal -->
-<div id="deleteUserModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-    <div class="modal-content bg-white rounded-3xl shadow-2xl max-w-md w-full">
-        <div class="bg-gradient-to-r from-red-500 via-rose-500 to-pink-600 text-white px-8 py-6 rounded-t-3xl relative overflow-hidden">
-            <div class="absolute inset-0 bg-white/10 opacity-30" style="background-image: url('data:image/svg+xml,%3Csvg width=\"40\" height=\"40\" viewBox=\"0 0 40 40\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.3\" fill-rule=\"evenodd\"%3E%3Cpath d=\"M0 40L40 0H20L0 20M40 40V20L20 40\"/%3E%3C/g%3E%3C/svg%3E');"></div>
-            <div class="relative flex items-center gap-4">
-                <div class="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                    <i class="fas fa-exclamation-triangle text-2xl"></i>
-                </div>
-                <h3 class="text-2xl font-extrabold font-display">Benutzer löschen</h3>
-            </div>
+<div id="deleteUserModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4">
+        <div class="bg-gradient-to-r from-red-600 to-pink-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Benutzer löschen</h3>
         </div>
         
-        <form method="POST" class="p-8 space-y-5">
+        <form method="POST" class="p-6 space-y-4">
             <input type="hidden" name="user_id" id="deleteUserId">
             
-            <div class="bg-gradient-to-r from-red-50 to-rose-50 border border-red-200 rounded-2xl p-5">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-red-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-trash text-red-600 text-lg"></i>
-                    </div>
-                    <div>
-                        <p class="text-red-800 font-semibold">
-                            Möchten Sie <strong id="deleteUserName"></strong> wirklich löschen?
-                        </p>
-                        <p class="text-red-600 text-sm mt-2">
-                            <i class="fas fa-exclamation-circle mr-1"></i>
-                            Diese Aktion kann nicht rückgängig gemacht werden. Alle Anmeldungen werden ebenfalls gelöscht.
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <button type="button" onclick="closeDeleteUserModal()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold">
-                    Abbrechen
-                </button>
-                <button type="submit" name="delete_user" class="px-6 py-3 bg-gradient-to-r from-red-500 to-rose-600 text-white rounded-xl hover:shadow-lg hover:shadow-red-500/30 transition font-bold">
-                    <i class="fas fa-trash mr-2"></i>Endgültig löschen
-                </button>
-            </div>
-        </form>
-    </div>
-</div>
-
-<!-- CSV Import Modal -->
-<div id="csvImportModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm hidden items-center justify-center z-50 p-4">
-    <div class="modal-content bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div class="bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600 text-white px-8 py-6 rounded-t-3xl relative overflow-hidden">
-            <div class="absolute inset-0 bg-white/10 opacity-30" style="background-image: url('data:image/svg+xml,%3Csvg width=\"40\" height=\"40\" viewBox=\"0 0 40 40\" xmlns=\"http://www.w3.org/2000/svg\"%3E%3Cg fill=\"%23ffffff\" fill-opacity=\"0.3\" fill-rule=\"evenodd\"%3E%3Cpath d=\"M0 40L40 0H20L0 20M40 40V20L20 40\"/%3E%3C/g%3E%3C/svg%3E');"></div>
-            <div class="relative flex items-center gap-4">
-                <div class="w-14 h-14 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center">
-                    <i class="fas fa-file-csv text-2xl"></i>
-                </div>
-                <div>
-                    <h3 class="text-2xl font-extrabold font-display">Benutzer aus CSV importieren</h3>
-                    <p class="text-white/80 text-sm">Mehrere Benutzer auf einmal hinzufügen</p>
-                </div>
-            </div>
-        </div>
-        
-        <form method="POST" enctype="multipart/form-data" class="p-8 space-y-6">
-            <div class="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-5">
-                <div class="flex items-start gap-4">
-                    <div class="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
-                        <i class="fas fa-info-circle text-blue-600 text-lg"></i>
-                    </div>
-                    <div>
-                        <p class="text-blue-800 font-semibold mb-2">CSV-Format</p>
-                        <p class="text-blue-700 text-sm">
-                            Die CSV-Datei muss folgende Spalten enthalten (Semikolon-getrennt):
-                        </p>
-                        <ul class="text-blue-600 text-sm mt-2 space-y-1">
-                            <li><strong>Pflicht:</strong> username, password, firstname, lastname</li>
-                            <li><strong>Optional:</strong> email, role (student/teacher/admin), class</li>
-                        </ul>
-                        <p class="text-blue-600 text-sm mt-2 italic">
-                            <i class="fas fa-lightbulb text-amber-500 mr-1"></i>
-                            Bereits existierende Benutzer (gleicher username) werden übersprungen.
-                        </p>
-                    </div>
-                </div>
-            </div>
-            
-            <div class="bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-emerald-400 hover:bg-emerald-50/30 transition-all">
-                <div class="w-16 h-16 bg-emerald-100 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                    <i class="fas fa-cloud-upload-alt text-emerald-600 text-2xl"></i>
-                </div>
-                <label class="cursor-pointer">
-                    <span class="text-gray-600 font-medium">CSV-Datei auswählen oder hierher ziehen</span>
-                    <input type="file" name="csv_file" accept=".csv" required class="hidden" onchange="updateFileName(this)">
-                </label>
-                <p id="selectedFileName" class="text-sm text-emerald-600 mt-2 hidden">
-                    <i class="fas fa-file-csv mr-1"></i>
-                    <span></span>
+            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
+                <p class="text-red-800">
+                    <i class="fas fa-exclamation-triangle mr-2"></i>
+                    Möchten Sie den Benutzer <strong id="deleteUserName"></strong> wirklich löschen?
+                </p>
+                <p class="text-red-700 text-sm mt-2">
+                    Diese Aktion kann nicht rückgängig gemacht werden. Alle Anmeldungen des Benutzers werden ebenfalls gelöscht.
                 </p>
             </div>
             
-            <div class="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl p-4">
-                <p class="text-amber-700 text-sm flex items-center gap-2">
-                    <i class="fas fa-key text-amber-500"></i>
-                    <span>Alle importierten Benutzer müssen ihr Passwort beim ersten Login ändern.</span>
-                </p>
-            </div>
-            
-            <div class="bg-gray-100 rounded-xl p-4">
-                <p class="text-gray-600 text-sm font-medium mb-2">Beispiel-CSV:</p>
-                <code class="text-xs bg-white p-3 rounded-lg block font-mono text-gray-700 overflow-x-auto">
-username;password;firstname;lastname;email;role;class<br>
-max.mueller;pass123;Max;Müller;max@schule.de;student;10A<br>
-anna.schmidt;pass456;Anna;Schmidt;;student;10B<br>
-lehrer.meier;pass789;Hans;Meier;meier@schule.de;teacher;
-                </code>
-            </div>
-            
-            <div class="flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <button type="button" onclick="closeCsvImportModal()" class="px-6 py-3 bg-gray-100 text-gray-700 rounded-xl hover:bg-gray-200 transition font-bold">
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeDeleteUserModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
                     Abbrechen
                 </button>
-                <button type="submit" name="import_csv" class="px-6 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white rounded-xl hover:shadow-lg hover:shadow-emerald-500/30 transition font-bold">
-                    <i class="fas fa-upload mr-2"></i>Importieren
+                <button type="submit" name="delete_user" class="px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition">
+                    <i class="fas fa-trash mr-2"></i>Löschen
                 </button>
             </div>
         </form>
@@ -781,15 +639,53 @@ lehrer.meier;pass789;Hans;Meier;meier@schule.de;teacher;
 </div>
 
 <script>
-function updateFileName(input) {
-    const fileNameDisplay = document.getElementById('selectedFileName');
-    if (input.files && input.files[0]) {
-        fileNameDisplay.querySelector('span').textContent = input.files[0].name;
-        fileNameDisplay.classList.remove('hidden');
-    } else {
-        fileNameDisplay.classList.add('hidden');
+// Handle file drag and drop for CSV upload
+const csvFile = document.getElementById('csvFile');
+const fileNameDisplay = document.getElementById('fileName');
+
+if (csvFile) {
+    csvFile.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            fileNameDisplay.textContent = '✓ ' + e.target.files[0].name;
+        }
+    });
+    
+    // Drag and drop
+    const dropArea = csvFile.parentElement.parentElement;
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, () => {
+            dropArea.classList.add('border-blue-500', 'bg-blue-50');
+        }, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, () => {
+            dropArea.classList.remove('border-blue-500', 'bg-blue-50');
+        }, false);
+    });
+    
+    dropArea.addEventListener('drop', handleDrop, false);
+    
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        csvFile.files = files;
+        
+        if (files.length > 0) {
+            fileNameDisplay.textContent = '✓ ' + files[0].name;
+        }
     }
 }
+
 function openCreateUserModal() {
     document.getElementById('createUserModal').classList.remove('hidden');
     document.getElementById('createUserModal').classList.add('flex');
@@ -800,14 +696,35 @@ function closeCreateUserModal() {
     document.getElementById('createUserModal').classList.remove('flex');
 }
 
-function openCsvImportModal() {
-    document.getElementById('csvImportModal').classList.remove('hidden');
-    document.getElementById('csvImportModal').classList.add('flex');
+function openImportCsvModal() {
+    document.getElementById('importCsvModal').classList.remove('hidden');
+    document.getElementById('importCsvModal').classList.add('flex');
 }
 
-function closeCsvImportModal() {
-    document.getElementById('csvImportModal').classList.add('hidden');
-    document.getElementById('csvImportModal').classList.remove('flex');
+function closeImportCsvModal() {
+    document.getElementById('importCsvModal').classList.add('hidden');
+    document.getElementById('importCsvModal').classList.remove('flex');
+    document.getElementById('csvFile').value = '';
+}
+
+function downloadPasswordsFile(passwordsData) {
+    const passwords = <?php echo json_encode($csvImportResult['generated_passwords'] ?? []); ?>;
+    if (passwords.length === 0) return;
+    
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Benutzername,Vorname,Nachname,Passwort\n";
+    
+    passwords.forEach(user => {
+        csvContent += `${user.username},${user.firstname},${user.lastname},${user.password}\n`;
+    });
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `berufsmesse_passwörter_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 function openResetPasswordModal(userId, userName, userRole) {
@@ -865,7 +782,7 @@ document.addEventListener('keydown', function(e) {
         closeCreateUserModal();
         closeResetPasswordModal();
         closeDeleteUserModal();
-        closeCsvImportModal();
+        closeImportCsvModal();
     }
 });
 </script>

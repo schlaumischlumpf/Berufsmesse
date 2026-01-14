@@ -1,210 +1,330 @@
 <?php
-/**
- * Berufsmesse - Passwort ändern (Erzwungen beim ersten Login)
- */
 session_start();
 require_once 'config.php';
 require_once 'functions.php';
 
-// Prüfen ob der Benutzer eingeloggt ist und sein Passwort ändern muss
-if (!isset($_SESSION['user_id'])) {
-    header('Location: login.php');
+// Zugriff nur erlauben wenn angemeldet und das Flag in der DB gesetzt ist
+if (!isLoggedIn()) {
+    header('Location: ' . BASE_URL . 'login.php');
     exit();
 }
 
-if (!isset($_SESSION['force_password_change']) || !$_SESSION['force_password_change']) {
-    header('Location: index.php');
+// Prüfe DB-Flag
+$db = getDB();
+$stmt = $db->prepare("SELECT must_change_password FROM users WHERE id = ?");
+$stmt->execute([$_SESSION['user_id']]);
+$user = $stmt->fetch();
+
+if (!$user || !$user['must_change_password']) {
+    // Kein erzwungener Passwortwechsel nötig
+    header('Location: ' . BASE_URL . 'index.php');
     exit();
 }
+
+// Setze Session-Flag für Kompatibilität mit anderen Teilen der App
+$_SESSION['force_password_change'] = true;
 
 $error = '';
 $success = '';
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $newPassword = $_POST['new_password'] ?? '';
-    $confirmPassword = $_POST['confirm_password'] ?? '';
-    
-    if (empty($newPassword) || empty($confirmPassword)) {
-        $error = 'Bitte alle Felder ausfüllen';
-    } elseif (strlen($newPassword) < 6) {
-        $error = 'Das Passwort muss mindestens 6 Zeichen lang sein';
-    } elseif ($newPassword !== $confirmPassword) {
-        $error = 'Die Passwörter stimmen nicht überein';
-    } else {
-        $db = getDB();
-        $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        $newPassword = $_POST['new_password'] ?? '';
+        $confirmPassword = $_POST['confirm_password'] ?? '';
         
-        $stmt = $db->prepare("UPDATE users SET password = ?, force_password_change = 0 WHERE id = ?");
-        if ($stmt->execute([$hashedPassword, $_SESSION['user_id']])) {
-            unset($_SESSION['force_password_change']);
-            header('Location: index.php');
-            exit();
+        if (empty($newPassword) || empty($confirmPassword)) {
+            $error = 'Bitte beide Passwortfelder ausfüllen';
+        } elseif (strlen($newPassword) < 8) {
+            $error = 'Das Passwort muss mindestens 8 Zeichen lang sein';
+        } elseif ($newPassword !== $confirmPassword) {
+            $error = 'Die Passwörter stimmen nicht überein';
         } else {
-            $error = 'Fehler beim Ändern des Passworts';
+            $db = getDB();
+            $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+            $stmt = $db->prepare("UPDATE users SET password = ?, must_change_password = 0 WHERE id = ?");
+            
+            if ($stmt->execute([$hashedPassword, $_SESSION['user_id']])) {
+                $success = 'Passwort erfolgreich geändert! Du wirst weitergeleitet...';
+                unset($_SESSION['force_password_change']);
+                header('refresh:2;url=' . BASE_URL . 'index.php');
+            } else {
+                $error = 'Fehler beim Ändern des Passworts';
+            }
         }
     }
-}
 ?>
 <!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Passwort ändern - Berufsmesse 2026</title>
+    <title>Passwort ändern - Berufsmesse</title>
     
-    <!-- Google Fonts -->
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'system-ui', 'sans-serif'],
-                        display: ['Plus Jakarta Sans', 'system-ui', 'sans-serif']
-                    }
-                }
-            }
-        }
-    </script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
     <style>
+        :root {
+            --color-pastel-mint: #a8e6cf;
+            --color-pastel-mint-light: #d4f5e4;
+            --color-pastel-lavender: #c3b1e1;
+            --color-pastel-lavender-light: #e8dff5;
+        }
+        
         body {
+            margin: 0;
             font-family: 'Inter', system-ui, sans-serif;
+            background: linear-gradient(135deg, #f8fafc 0%, var(--color-pastel-mint-light) 50%, var(--color-pastel-lavender-light) 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         
-        .animated-bg {
-            background: linear-gradient(-45deg, #f59e0b, #ea580c, #dc2626, #db2777);
-            background-size: 400% 400%;
-            animation: gradient 15s ease infinite;
+        html, body {
+            height: 100%;
+            width: 100%;
         }
-        
-        @keyframes gradient {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+
+        .container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+            box-sizing: border-box;
+            width: 100%;
+            z-index: 9999;
         }
         
         .card {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(20px);
+            position: relative;
+            background: white;
+            border-radius: 1.5rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+            width: 100%;
+            max-width: 450px;
+            padding: 2.5rem;
+            margin: 0 auto;
+            max-height: calc(100vh - 40px);
+            overflow: auto;
         }
         
-        .input-focus-glow:focus {
-            box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.15), 0 10px 40px rgba(245, 158, 11, 0.1);
+        .card-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        .card-header-icon {
+            width: 60px;
+            height: 60px;
+            margin: 0 auto 1rem;
+            background: linear-gradient(135deg, var(--color-pastel-mint) 0%, var(--color-pastel-lavender) 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.75rem;
+        }
+        
+        .card-header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: #1f2937;
+            margin-bottom: 0.5rem;
+        }
+        
+        .card-header p {
+            color: #6b7280;
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+        
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        .form-group label {
+            display: block;
+            font-weight: 600;
+            color: #374151;
+            margin-bottom: 0.5rem;
+            font-size: 0.95rem;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid #e5e7eb;
+            border-radius: 0.75rem;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            font-family: 'Inter', system-ui, sans-serif;
+        }
+        
+        .form-group input:focus {
+            outline: none;
+            border-color: var(--color-pastel-mint);
+            box-shadow: 0 0 0 3px rgba(168, 230, 207, 0.1);
+        }
+        
+        .requirements {
+            margin-top: 0.75rem;
+            font-size: 0.85rem;
+            color: #6b7280;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .requirements i {
+            color: #ef4444;
+        }
+        
+        .requirements.met i {
+            color: #10b981;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 0.875rem 1.5rem;
+            background: linear-gradient(135deg, var(--color-pastel-mint) 0%, #6bc4a6 100%);
+            color: white;
+            font-weight: 600;
+            border: none;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+            margin-top: 1.5rem;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(168, 230, 207, 0.4);
+        }
+        
+        .alert {
+            padding: 1rem;
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            font-size: 0.95rem;
+        }
+        
+        .alert-error {
+            background: #fee2e2;
+            color: #991b1b;
+            border-left: 4px solid #dc2626;
+        }
+        
+        .alert-success {
+            background: #dcfce7;
+            color: #166534;
+            border-left: 4px solid #22c55e;
+        }
+        
+        .alert i {
+            flex-shrink: 0;
+            margin-top: 0.125rem;
         }
     </style>
 </head>
-<body class="min-h-screen animated-bg flex items-center justify-center p-4">
-    <div class="w-full max-w-md">
-        <!-- Header -->
-        <div class="text-center mb-10">
-            <div class="w-24 h-24 bg-white rounded-3xl flex items-center justify-center shadow-2xl mb-6 mx-auto">
-                <div class="w-20 h-20 bg-gradient-to-br from-amber-400 to-orange-600 rounded-2xl flex items-center justify-center">
-                    <i class="fas fa-key text-white text-4xl"></i>
-                </div>
-            </div>
-            <h1 class="text-3xl font-extrabold font-display text-white mb-2 drop-shadow-lg">
-                Passwort ändern
-            </h1>
-            <p class="text-white/80 text-lg font-medium">
-                Bitte wähle ein neues Passwort
-            </p>
-        </div>
-
-        <!-- Card -->
-        <div class="card rounded-3xl shadow-2xl p-8 border border-white/20">
-            <div class="bg-gradient-to-r from-amber-50 to-orange-50 border-l-4 border-amber-500 p-4 mb-6 rounded-xl">
-                <div class="flex items-center">
-                    <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center mr-3">
-                        <i class="fas fa-info-circle text-amber-500"></i>
-                    </div>
-                    <div>
-                        <p class="text-amber-800 font-semibold">Erstanmeldung</p>
-                        <p class="text-amber-700 text-sm">Du musst dein Passwort bei der ersten Anmeldung ändern.</p>
-                    </div>
-                </div>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <div class="card-header-icon">🔐</div>
+                <h1>Passwort ändern</h1>
+                <p>Willkommen! Bitte ändere dein Passwort beim ersten Login.</p>
             </div>
             
             <?php if ($error): ?>
-            <div class="bg-gradient-to-r from-red-50 to-pink-50 border-l-4 border-red-500 p-4 mb-6 rounded-xl">
-                <div class="flex items-center">
-                    <div class="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center mr-3">
-                        <i class="fas fa-exclamation-circle text-red-500"></i>
-                    </div>
-                    <p class="text-red-700 font-medium"><?php echo $error; ?></p>
+                <div class="alert alert-error">
+                    <i class="fas fa-exclamation-circle"></i>
+                    <span><?php echo htmlspecialchars($error); ?></span>
                 </div>
-            </div>
             <?php endif; ?>
-
-            <form method="POST" action="" class="space-y-6">
-                <div class="space-y-2">
-                    <label for="new_password" class="block text-sm font-semibold text-gray-700">
-                        Neues Passwort
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <div class="w-10 h-10 bg-gradient-to-br from-amber-400 to-orange-600 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-lock text-white text-sm"></i>
-                            </div>
-                        </div>
+            
+            <?php if ($success): ?>
+                <div class="alert alert-success">
+                    <i class="fas fa-check-circle"></i>
+                    <span><?php echo htmlspecialchars($success); ?></span>
+                </div>
+            <?php endif; ?>
+            
+            <?php if (!$success): ?>
+                <form method="POST">
+                    <div class="form-group">
+                        <label for="new_password">Neues Passwort</label>
                         <input 
                             type="password" 
                             id="new_password" 
                             name="new_password" 
+                            placeholder="Mindestens 8 Zeichen"
+                            onchange="checkPassword()"
+                            oninput="checkPassword()"
                             required
-                            minlength="6"
-                            class="w-full pl-16 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:border-amber-500 focus:bg-white focus:outline-none input-focus-glow transition-all duration-300"
-                            placeholder="Mindestens 6 Zeichen"
                         >
-                    </div>
-                </div>
-
-                <div class="space-y-2">
-                    <label for="confirm_password" class="block text-sm font-semibold text-gray-700">
-                        Passwort bestätigen
-                    </label>
-                    <div class="relative">
-                        <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                            <div class="w-10 h-10 bg-gradient-to-br from-orange-400 to-red-600 rounded-xl flex items-center justify-center">
-                                <i class="fas fa-check text-white text-sm"></i>
-                            </div>
+                        <div class="requirements" id="length-check">
+                            <i class="fas fa-circle"></i>
+                            <span>Mindestens 8 Zeichen</span>
                         </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="confirm_password">Passwort wiederholen</label>
                         <input 
                             type="password" 
                             id="confirm_password" 
                             name="confirm_password" 
-                            required
-                            minlength="6"
-                            class="w-full pl-16 pr-4 py-4 bg-gray-50 border-2 border-gray-200 rounded-2xl text-gray-800 placeholder-gray-400 focus:border-orange-500 focus:bg-white focus:outline-none input-focus-glow transition-all duration-300"
                             placeholder="Passwort wiederholen"
+                            oninput="checkPassword()"
+                            required
                         >
+                        <div class="requirements" id="match-check">
+                            <i class="fas fa-circle"></i>
+                            <span>Passwörter stimmen überein</span>
+                        </div>
                     </div>
-                </div>
-
-                <button 
-                    type="submit"
-                    class="w-full bg-gradient-to-r from-amber-500 to-orange-600 text-white font-bold py-4 px-6 rounded-2xl shadow-lg hover:shadow-xl transition-all duration-300 flex items-center justify-center gap-3 group"
-                >
-                    <span class="text-lg">Passwort speichern</span>
-                    <div class="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center group-hover:bg-white/30 transition-colors">
-                        <i class="fas fa-arrow-right"></i>
-                    </div>
-                </button>
-            </form>
-        </div>
-
-        <!-- Footer -->
-        <div class="text-center mt-8 text-white/70 text-sm">
-            <p class="flex items-center justify-center gap-2">
-                <i class="fas fa-shield-alt"></i>
-                <span>Angemeldet als <?php echo htmlspecialchars($_SESSION['firstname'] . ' ' . $_SESSION['lastname']); ?></span>
-            </p>
+                    
+                    <button type="submit" class="btn">
+                        <i class="fas fa-check mr-2"></i> Passwort ändern
+                    </button>
+                </form>
+            <?php endif; ?>
         </div>
     </div>
+    
+    <script>
+        function checkPassword() {
+            const password = document.getElementById('new_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            const lengthCheck = document.getElementById('length-check');
+            const matchCheck = document.getElementById('match-check');
+            
+            // Length check
+            if (password.length >= 8) {
+                lengthCheck.classList.add('met');
+            } else {
+                lengthCheck.classList.remove('met');
+            }
+            
+            // Match check
+            if (password && confirmPassword && password === confirmPassword) {
+                matchCheck.classList.add('met');
+            } else {
+                matchCheck.classList.remove('met');
+            }
+        }
+        
+        // Check on page load
+        document.addEventListener('DOMContentLoaded', checkPassword);
+    </script>
 </body>
 </html>

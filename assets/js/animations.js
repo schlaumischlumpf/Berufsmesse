@@ -197,17 +197,21 @@ function initPageTransitions() {
         link.addEventListener('click', function(e) {
             const href = this.getAttribute('href');
             
-            // Skip if modifier key is pressed
-            if (e.ctrlKey || e.metaKey || e.shiftKey) return;
+            // Skip if no href or modifier key is pressed
+            if (!href || e.ctrlKey || e.metaKey || e.shiftKey) return;
             
             e.preventDefault();
             
             // Fade out
             document.body.classList.add('page-transitioning');
             
+            // Navigate after short delay for animation
             setTimeout(() => {
-                window.location.href = href;
-            }, 200);
+                // Use full URL to ensure proper navigation
+                const currentUrl = new URL(window.location.href);
+                const newUrl = new URL(href, currentUrl.origin + currentUrl.pathname);
+                window.location.href = newUrl.href;
+            }, 150);
         });
     });
     
