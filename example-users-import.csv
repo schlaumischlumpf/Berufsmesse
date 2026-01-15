@@ -1,6 +1,0 @@
-firstname,lastname,username,email,role,class,password
-Max,Mustermann,mmustermann,max.mustermann@example.com,student,10A,SecurePass123!
-Anna,Beispiel,abeispiel,anna.beispiel@example.com,student,10B,SecurePass456!
-Peter,Lehrer,plehrer,peter.lehrer@example.com,teacher,,
-Maria,Admin,madmin,maria.admin@example.com,admin,,AdminPass789!
-Jan,Schüler,jschüler,jan.schüler@example.com,student,11C,
