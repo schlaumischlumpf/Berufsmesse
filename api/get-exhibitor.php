@@ -58,6 +58,9 @@ switch ($tab) {
     case 'contact':
         $content = generateContactTab($exhibitor);
         break;
+    case 'details':
+        $content = generateDetailsTab($exhibitor);
+        break;
 }
 
 echo json_encode([
@@ -65,6 +68,109 @@ echo json_encode([
     'exhibitor' => $exhibitor,
     'content' => $content
 ]);
+
+// Neue Funktion für Schüler-Detailansicht
+function generateDetailsTab($exhibitor) {
+    // Angebot ermitteln
+    $angebot = [];
+    $desc = strtolower($exhibitor['short_description'] . ' ' . $exhibitor['description']);
+    if (strpos($desc, 'ausbildung') !== false) $angebot[] = 'Ausbildung';
+    if (strpos($desc, 'studium') !== false || strpos($desc, 'dual') !== false) $angebot[] = 'Duales Studium';
+    if (strpos($desc, 'praktikum') !== false) $angebot[] = 'Praktikum';
+    if (empty($angebot)) $angebot[] = 'Ausbildung';
+    
+    // Berufe/Tätigkeiten (aus jobs Feld oder Description parsen)
+    $jobs = $exhibitor['jobs'] ?? '';
+    
+    // Besonderheiten
+    $besonderheiten = $exhibitor['features'] ?? '';
+    
+    ob_start();
+    ?>
+    <div class="space-y-6">
+        <!-- Firmenname und Logo -->
+        <div class="flex items-center space-x-4 pb-5 border-b border-gray-100">
+            <div class="w-16 h-16 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
+                <?php if ($exhibitor['logo']): ?>
+                    <img src="<?php echo BASE_URL . 'uploads/' . $exhibitor['logo']; ?>" 
+                         alt="<?php echo htmlspecialchars($exhibitor['name']); ?>" 
+                         class="w-14 h-14 object-contain">
+                <?php else: ?>
+                    <i class="fas fa-building text-gray-300 text-2xl"></i>
+                <?php endif; ?>
+            </div>
+            <div>
+                <h3 class="text-xl font-bold text-gray-900"><?php echo htmlspecialchars($exhibitor['name']); ?></h3>
+                <span class="inline-flex items-center px-2.5 py-1 mt-2 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700">
+                    <i class="fas fa-tag mr-1.5"></i> <?php echo htmlspecialchars($exhibitor['category'] ?? 'Allgemein'); ?>
+                </span>
+            </div>
+        </div>
+
+        <!-- Kurzbeschreibung -->
+        <?php if ($exhibitor['short_description']): ?>
+        <div>
+            <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Kurzbeschreibung</h4>
+            <p class="text-gray-700 leading-relaxed"><?php echo htmlspecialchars($exhibitor['short_description']); ?></p>
+        </div>
+        <?php endif; ?>
+
+        <!-- Branche -->
+        <div>
+            <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Branche</h4>
+            <p class="text-gray-700"><?php echo htmlspecialchars($exhibitor['category'] ?? 'Keine Angabe'); ?></p>
+        </div>
+
+        <!-- Typische Berufe/Tätigkeiten -->
+        <div>
+            <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Typische Berufe / Tätigkeiten</h4>
+            <?php if ($jobs): ?>
+                <p class="text-gray-700 leading-relaxed"><?php echo nl2br(htmlspecialchars($jobs)); ?></p>
+            <?php else: ?>
+                <p class="text-gray-400 italic">Keine Angabe</p>
+            <?php endif; ?>
+        </div>
+
+        <!-- Angebot (Ausbildung/Studium/Praktikum) -->
+        <div>
+            <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Angebot für Schüler</h4>
+            <div class="flex flex-wrap gap-2">
+                <?php foreach ($angebot as $a): ?>
+                <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700">
+                    <i class="fas fa-graduation-cap mr-2"></i> <?php echo $a; ?>
+                </span>
+                <?php endforeach; ?>
+            </div>
+        </div>
+
+        <!-- Besonderheiten -->
+        <div>
+            <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Besonderheiten</h4>
+            <?php if ($besonderheiten): ?>
+                <p class="text-gray-700 leading-relaxed"><?php echo nl2br(htmlspecialchars($besonderheiten)); ?></p>
+            <?php elseif ($exhibitor['description']): ?>
+                <p class="text-gray-700 leading-relaxed"><?php echo nl2br(htmlspecialchars($exhibitor['description'])); ?></p>
+            <?php else: ?>
+                <p class="text-gray-400 italic">Keine Angabe</p>
+            <?php endif; ?>
+        </div>
+
+        <!-- Website -->
+        <?php if ($exhibitor['website']): ?>
+        <div class="pt-4 border-t border-gray-100">
+            <a href="http://<?php echo htmlspecialchars($exhibitor['website']); ?>" 
+               target="_blank" 
+               class="inline-flex items-center text-emerald-600 hover:text-emerald-700 font-medium">
+                <i class="fas fa-globe mr-2"></i>
+                Website besuchen
+                <i class="fas fa-external-link-alt ml-2 text-xs"></i>
+            </a>
+        </div>
+        <?php endif; ?>
+    </div>
+    <?php
+    return ob_get_clean();
+}
 
 function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
     $availableSlots = $totalCapacity - $registeredCount;

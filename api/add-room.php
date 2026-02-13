@@ -38,10 +38,10 @@ try {
         exit;
     }
     
-    // Insert new room
+    // Insert new room (with equipment - Issue #17)
     $stmt = $db->prepare("
-        INSERT INTO rooms (room_number, room_name, building, floor, capacity) 
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO rooms (room_number, room_name, building, floor, capacity, equipment) 
+        VALUES (?, ?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
@@ -49,7 +49,8 @@ try {
         $data['room_name'] ?: null,
         $data['building'] ?: null,
         $data['floor'] ?: null,
-        $data['capacity']
+        $data['capacity'],
+        $data['equipment'] ?? null
     ]);
     
     echo json_encode([

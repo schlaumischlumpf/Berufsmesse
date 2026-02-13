@@ -45,16 +45,16 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
 
 <div class="space-y-6">
     <?php if (isset($message)): ?>
-    <div class="animate-pulse">
+    <div class="mb-4">
         <?php if ($message['type'] === 'success'): ?>
-            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
+            <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-lg">
                 <div class="flex items-center">
-                    <i class="fas fa-check-circle text-green-500 mr-3"></i>
-                    <p class="text-green-700"><?php echo $message['text']; ?></p>
+                    <i class="fas fa-check-circle text-emerald-500 mr-3"></i>
+                    <p class="text-emerald-700"><?php echo $message['text']; ?></p>
                 </div>
             </div>
         <?php else: ?>
-            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
+            <div class="bg-red-50 border border-red-200 p-4 rounded-lg">
                 <div class="flex items-center">
                     <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
                     <p class="text-red-700"><?php echo $message['text']; ?></p>
@@ -65,67 +65,66 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
     <?php endif; ?>
 
     <!-- Header -->
-    <div class="bg-white rounded-xl p-6 border-l-4 border-purple-600">
-        <div>
-            <h2 class="text-2xl font-bold text-gray-800 mb-2">
-                <i class="fas fa-shield-alt text-purple-600 mr-3"></i>
-                Berechtigungsverwaltung
-            </h2>
-            <p class="text-gray-600">Vergeben Sie granulare Berechtigungen an Benutzer</p>
-        </div>
+    <div>
+        <h2 class="text-xl font-semibold text-gray-800">Berechtigungsverwaltung</h2>
+        <p class="text-sm text-gray-500 mt-1">Vergeben Sie granulare Berechtigungen an Benutzer</p>
     </div>
 
     <!-- Info Box -->
-    <div class="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-lg">
+    <div class="bg-blue-50 border border-blue-100 p-5 rounded-lg">
         <div class="flex items-start">
-            <i class="fas fa-info-circle text-blue-500 text-xl mr-3 mt-1"></i>
+            <i class="fas fa-info-circle text-blue-500 text-lg mr-3 mt-0.5"></i>
             <div>
-                <h3 class="font-bold text-blue-900 mb-2">Berechtigungskonzept</h3>
-                <ul class="text-sm text-blue-800 space-y-1">
-                    <li><i class="fas fa-check mr-2"></i><strong>Administratoren</strong> haben automatisch alle Berechtigungen</li>
-                    <li><i class="fas fa-check mr-2"></i><strong>Lehrer</strong> und andere Benutzer benötigen explizite Berechtigungen</li>
-                    <li><i class="fas fa-check mr-2"></i>Berechtigungen ermöglichen Zugriff auf spezifische Funktionen</li>
-                    <li><i class="fas fa-check mr-2"></i>Mehrere Berechtigungen können kombiniert werden</li>
+                <h3 class="font-semibold text-blue-800 mb-2">Berechtigungskonzept</h3>
+                <ul class="text-sm text-blue-700 space-y-1">
+                    <li><strong>Administratoren</strong> haben automatisch alle Berechtigungen</li>
+                    <li><strong>Lehrer</strong> und andere Benutzer benötigen explizite Berechtigungen</li>
                 </ul>
             </div>
         </div>
     </div>
 
     <!-- Statistics -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-purple-100 text-sm mb-1">Benutzer mit Berechtigungen</p>
-                    <p class="text-3xl font-bold"><?php echo $stats['users_with_permissions']; ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Benutzer mit Berechtigungen</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo $stats['users_with_permissions']; ?></p>
                 </div>
-                <i class="fas fa-users text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                    <i class="fas fa-users text-purple-500"></i>
+                </div>
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-indigo-500 to-indigo-600 rounded-xl p-6 text-white">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-indigo-100 text-sm mb-1">Gesamt Berechtigungen</p>
-                    <p class="text-3xl font-bold"><?php echo $stats['total_permissions']; ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Gesamt Berechtigungen</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo $stats['total_permissions']; ?></p>
                 </div>
-                <i class="fas fa-key text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-indigo-50 flex items-center justify-center">
+                    <i class="fas fa-key text-indigo-500"></i>
+                </div>
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-blue-100 text-sm mb-1">Verfügbare Berechtigungen</p>
-                    <p class="text-3xl font-bold"><?php echo count($availablePermissions); ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Verfügbare Berechtigungen</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($availablePermissions); ?></p>
                 </div>
-                <i class="fas fa-list text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <i class="fas fa-list text-blue-500"></i>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Users List -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="bg-gray-50 border-b border-gray-200">

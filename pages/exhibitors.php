@@ -1,286 +1,259 @@
-<!-- Aussteller Übersicht mit Card-Design -->
+<?php
+// Kategorien für Filter ermitteln
+$stmt = $db->query("SELECT DISTINCT category FROM exhibitors WHERE active = 1 AND category IS NOT NULL AND category != '' ORDER BY category");
+$categories = $stmt->fetchAll(PDO::FETCH_COLUMN);
+?>
 
-<!-- Filter & Suche -->
-<div class="mb-6 bg-white rounded-xl shadow-md p-6 border border-gray-200">
-    <div class="flex flex-col md:flex-row gap-4">
-        <div class="flex-1">
-            <label class="block text-sm font-semibold text-gray-700 mb-2">
-                <i class="fas fa-search mr-2"></i>Suche nach Name
-            </label>
+<!-- Aussteller-Übersicht -->
+<div class="space-y-6">
+    <!-- Filter Tabs -->
+    <div class="flex flex-wrap items-center gap-2 mb-6">
+        <button onclick="filterCategory('')" class="filter-btn active px-4 py-2 text-sm font-medium rounded-lg transition-all" data-category="">
+            Alle Aussteller
+        </button>
+        <?php foreach ($categories as $cat): ?>
+        <button onclick="filterCategory('<?php echo htmlspecialchars($cat); ?>')" class="filter-btn px-4 py-2 text-sm font-medium rounded-lg transition-all" data-category="<?php echo htmlspecialchars($cat); ?>">
+            <?php echo htmlspecialchars($cat); ?>
+        </button>
+        <?php endforeach; ?>
+    </div>
+
+    <!-- Suchleiste und Aktionen -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="relative max-w-md w-full">
+            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
             <input type="text" id="searchInput" placeholder="Aussteller suchen..." 
-                   class="w-full h-10 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                   class="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
                    onkeyup="filterExhibitors()">
         </div>
-        <div class="flex-1">
-            <label class="block text-sm font-semibold text-gray-700 mb-2">
-                <i class="fas fa-tag mr-2"></i>Kategorie
-            </label>
-            <select id="categoryFilter" class="w-full h-10 px-4 py-2 bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                    onchange="filterExhibitors()">
-                <option value="">Alle Kategorien</option>
-                <option value="Automobilindustrie">Automobilindustrie</option>
-                <option value="Handwerk">Handwerk</option>
-                <option value="Gesundheitswesen">Gesundheitswesen</option>
-                <option value="IT & Software">IT & Software</option>
-                <option value="Dienstleistung">Dienstleistung</option>
-                <option value="Öffentlicher Dienst">Öffentlicher Dienst</option>
-                <option value="Bildung">Bildung</option>
-                <option value="Gastronomie & Hotellerie">Gastronomie & Hotellerie</option>
-                <option value="Handel & Verkauf">Handel & Verkauf</option>
-                <option value="Sonstiges">Sonstiges</option>
-            </select>
-        </div>
-    </div>
-    <div id="filterInfo" class="mt-3 text-sm text-gray-600"></div>
-</div>
-
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" id="exhibitorGrid">
-    <?php foreach ($exhibitors as $exhibitor): 
-        // Kapazität berechnen (Raum-Kapazität geteilt durch 3 Slots)
-        $stmt = $db->prepare("SELECT r.capacity FROM exhibitors e LEFT JOIN rooms r ON e.room_id = r.id WHERE e.id = ?");
-        $stmt->execute([$exhibitor['id']]);
-        $roomData = $stmt->fetch();
-        $roomCapacity = $roomData && $roomData['capacity'] ? intval($roomData['capacity']) : 0;
-        $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0; // Gesamt für 3 Slots
         
-        // Anzahl registrierter Schüler für diesen Aussteller (über alle 3 verwalteten Slots)
-        $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ?");
-        $stmt->execute([$exhibitor['id']]);
-        $registeredCount = $stmt->fetch()['count'];
-        $availableSlots = $totalCapacity - $registeredCount;
-    ?>
-    <div class="bg-white rounded-xl shadow-md cursor-pointer overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow duration-300 exhibitor-card" 
-         data-name="<?php echo strtolower(htmlspecialchars($exhibitor['name'])); ?>"
-         data-category="<?php echo htmlspecialchars($exhibitor['category'] ?? ''); ?>"
-         onclick="openExhibitorModal(<?php echo $exhibitor['id']; ?>)">
-        <!-- Card Header -->
-        <div class="h-32 bg-gray-50 relative border-b border-gray-200">
-            <div class="absolute inset-0 flex items-center justify-center">
-                <?php if ($exhibitor['logo']): ?>
-                    <img src="<?php echo BASE_URL . 'uploads/' . $exhibitor['logo']; ?>" 
-                         alt="<?php echo htmlspecialchars($exhibitor['name']); ?>" 
-                         class="h-20 w-20 object-contain bg-white rounded-lg p-2 shadow-sm">
-                <?php else: ?>
-                    <div class="h-20 w-20 bg-white rounded-lg flex items-center justify-center shadow-sm border border-gray-200">
-                        <i class="fas fa-building text-4xl text-gray-400"></i>
-                    </div>
-                <?php endif; ?>
-            </div>
-            
-            <!-- Verfügbarkeits-Badge -->
-            <div class="absolute top-3 right-3">
-                <?php if ($availableSlots > 5): ?>
-                    <span class="bg-white text-green-700 text-xs font-bold px-3 py-1 rounded-full shadow border border-green-200">
-                        Verfügbar
-                    </span>
-                <?php elseif ($availableSlots > 0): ?>
-                    <span class="bg-white text-orange-700 text-xs font-bold px-3 py-1 rounded-full shadow border border-orange-200">
-                        Wenige Plätze
-                    </span>
-                <?php else: ?>
-                    <span class="bg-white text-red-700 text-xs font-bold px-3 py-1 rounded-full shadow border border-red-200">
-                        Ausgebucht
-                    </span>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- Card Body -->
-        <div class="p-6">
-            <?php if ($exhibitor['category']): ?>
-            <div class="mb-2">
-                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-800">
-                    <i class="fas fa-tag mr-1"></i><?php echo htmlspecialchars($exhibitor['category']); ?>
-                </span>
-            </div>
-            <?php endif; ?>
-            
-            <h3 class="text-xl font-bold text-gray-800 mb-2 line-clamp-1">
-                <?php echo htmlspecialchars($exhibitor['name']); ?>
-            </h3>
-            
-            <p class="text-gray-600 text-sm mb-4 line-clamp-2">
-                <?php echo htmlspecialchars($exhibitor['short_description'] ?? ''); ?>
-            </p>
-
-            <!-- Stats -->
-            <div class="flex items-center justify-between text-sm">
-                <div class="flex items-center text-gray-500">
-                    <i class="fas fa-users mr-2"></i>
-                    <span><?php echo $registeredCount; ?> / <?php echo $totalCapacity; ?> Plätze</span>
-                </div>
-                
-                <button class="text-blue-600 font-semibold hover:text-blue-700 transition">
-                    Mehr erfahren <i class="fas fa-arrow-right ml-1"></i>
-                </button>
-            </div>
-
-            <!-- Progress Bar -->
-            <div class="mt-4">
-                <div class="w-full bg-gray-100 rounded-full h-2 border border-gray-200">
-                    <?php 
-                    $percentage = ($totalCapacity > 0) ? ($registeredCount / $totalCapacity * 100) : 0;
-                    $colorClass = $percentage >= 90 ? 'bg-gray-800' : ($percentage >= 70 ? 'bg-gray-600' : 'bg-gray-500');
-                    ?>
-                    <div class="<?php echo $colorClass; ?> h-2 rounded-full transition-all duration-500" 
-                         style="width: <?php echo min($percentage, 100); ?>%"></div>
-                </div>
-            </div>
-        </div>
-    </div>
-    <?php endforeach; ?>
-</div>
-
-<!-- Modal für Aussteller-Details -->
-<div id="exhibitorModal" class="modal fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4" onclick="closeModalOnBackdrop(event)">
-    <div class="modal-content bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onclick="event.stopPropagation()">
-        <!-- Modal Header -->
-        <div class="sticky top-0 bg-blue-600 text-white px-6 py-4 flex items-center justify-between z-10">
-            <h2 id="modalTitle" class="text-2xl font-bold">Aussteller Details</h2>
-            <button onclick="closeExhibitorModal()" class="text-white hover:bg-white/20 rounded-lg p-2 transition">
-                <i class="fas fa-times text-xl"></i>
+        <div class="flex items-center gap-2">
+            <button id="sortButton" onclick="sortExhibitors('name')" class="flex items-center px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 hover:bg-gray-50 transition">
+                <i class="fas fa-sort-alpha-down mr-2"></i> A-Z
             </button>
-        </div>
-
-        <!-- Tabs -->
-        <div class="border-b border-gray-200 bg-white sticky top-[72px] z-10">
-            <nav class="flex overflow-x-auto">
-                <button onclick="switchTab('info')" id="tab-info" class="tab-button px-6 py-4 font-semibold text-blue-600 border-b-2 border-blue-600 whitespace-nowrap">
-                    <i class="fas fa-info-circle mr-2"></i>Informationen
-                </button>
-                <button onclick="switchTab('documents')" id="tab-documents" class="tab-button px-6 py-4 font-semibold text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap">
-                    <i class="fas fa-file-download mr-2"></i>Dokumente
-                </button>
-                <button onclick="switchTab('contact')" id="tab-contact" class="tab-button px-6 py-4 font-semibold text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap">
-                    <i class="fas fa-address-card mr-2"></i>Kontakt
-                </button>
-            </nav>
-        </div>
-
-        <!-- Modal Body -->
-        <div id="modalBody" class="p-6 overflow-y-auto" style="max-height: calc(90vh - 200px);">
-            <!-- Content wird per JavaScript geladen -->
+            <?php if (isAdmin()): ?>
+            <a href="?page=admin-exhibitors&action=add" class="flex items-center px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition shadow-sm">
+                <i class="fas fa-plus mr-2"></i> Hinzufügen
+            </a>
+            <?php endif; ?>
         </div>
     </div>
+
+    <!-- Karten-Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5" id="exhibitorGrid">
+        <?php foreach ($exhibitors as $index => $exhibitor): 
+            // Branche
+            $branche = $exhibitor['category'] ?? 'Allgemein';
+            
+            // Angebot (aus short_description oder description parsen)
+            $angebot = [];
+            $desc = strtolower($exhibitor['short_description'] . ' ' . $exhibitor['description']);
+            if (strpos($desc, 'ausbildung') !== false) $angebot[] = 'Ausbildung';
+            if (strpos($desc, 'studium') !== false || strpos($desc, 'dual') !== false) $angebot[] = 'Duales Studium';
+            if (strpos($desc, 'praktikum') !== false) $angebot[] = 'Praktikum';
+            if (empty($angebot)) $angebot[] = 'Ausbildung'; // Default
+            
+            // Pastel Color variants based on index
+            $colors = ['mint', 'lavender', 'peach', 'sky'];
+            $colorIndex = $index % count($colors);
+            $colorClass = $colors[$colorIndex];
+        ?>
+        <div class="exhibitor-card bg-white rounded-xl border border-gray-100 p-5 hover:border-gray-200"
+             data-name="<?php echo strtolower(htmlspecialchars($exhibitor['name'])); ?>"
+             data-category="<?php echo htmlspecialchars($exhibitor['category'] ?? ''); ?>">
+            
+            <!-- Card Header mit Logo und Name -->
+            <div class="flex items-start space-x-4 mb-4">
+                <div class="w-14 h-14 rounded-xl flex items-center justify-center overflow-hidden flex-shrink-0 shadow-sm" style="background: linear-gradient(135deg, var(--color-pastel-<?php echo $colorClass; ?>-light, #f3f4f6) 0%, white 100%); border: 1px solid rgba(0,0,0,0.05);">
+                    <?php if ($exhibitor['logo']): ?>
+                        <img src="<?php echo BASE_URL . 'uploads/' . $exhibitor['logo']; ?>" 
+                             alt="<?php echo htmlspecialchars($exhibitor['name']); ?>" 
+                             class="w-12 h-12 object-contain">
+                    <?php else: ?>
+                        <i class="fas fa-building text-gray-300 text-2xl"></i>
+                    <?php endif; ?>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <h3 class="font-semibold text-gray-900 text-base leading-tight mb-1 truncate">
+                        <?php echo htmlspecialchars($exhibitor['name']); ?>
+                    </h3>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style="background: var(--color-pastel-<?php echo $colorClass; ?>-light, #d4f5e4); color: var(--color-pastel-<?php echo $colorClass; ?>-dark, #6bc4a6);">
+                        <?php echo htmlspecialchars($branche); ?>
+                    </span>
+                </div>
+            </div>
+
+            <!-- Angebot -->
+            <div class="mb-5">
+                <p class="text-xs uppercase tracking-wider text-gray-400 font-semibold mb-2">Angebot</p>
+                <div class="flex flex-wrap gap-1.5">
+                    <?php foreach ($angebot as $a): ?>
+                    <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200">
+                        <?php echo $a; ?>
+                    </span>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <!-- Buttons -->
+            <div class="flex items-center gap-2 pt-4 border-t border-gray-100">
+                <button onclick="openExhibitorModal(<?php echo $exhibitor['id']; ?>)" 
+                        class="flex-1 flex items-center justify-center px-3 py-2.5 bg-gray-100 text-gray-700 rounded-xl text-sm font-medium hover:bg-gray-200 transition-all duration-200 hover:shadow-sm">
+                    <i class="fas fa-info-circle mr-2"></i> Mehr Infos
+                </button>
+                <?php if (!isTeacher() && !isAdmin()): ?>
+                <a href="?page=registration&exhibitor=<?php echo $exhibitor['id']; ?>" 
+                   class="flex-1 flex items-center justify-center px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 hover:shadow-md" style="background: linear-gradient(135deg, var(--color-pastel-mint) 0%, #6bc4a6 100%); color: #1f2937;">
+                    <i class="fas fa-user-plus mr-2"></i> Einschreiben
+                </a>
+                <?php endif; ?>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+
+    <?php if (empty($exhibitors)): ?>
+    <div class="text-center py-16">
+        <i class="fas fa-building text-6xl text-gray-200 mb-4"></i>
+        <p class="text-gray-500 text-lg">Keine Aussteller gefunden</p>
+    </div>
+    <?php endif; ?>
 </div>
+
+<style>
+    /* Filter Buttons with Pastel Style */
+    .filter-btn {
+        background: white;
+        color: #6b7280;
+        border: 1px solid #e5e7eb;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    .filter-btn:hover {
+        background: linear-gradient(135deg, #d4f5e4 0%, #e8dff5 100%);
+        color: #374151;
+        border-color: #a8e6cf;
+        transform: translateY(-1px);
+    }
+    .filter-btn.active {
+        background: linear-gradient(135deg, #a8e6cf 0%, #c3b1e1 100%);
+        color: #1f2937;
+        border-color: transparent;
+        box-shadow: 0 4px 12px rgba(168, 230, 207, 0.4);
+    }
+    
+    /* Exhibitor Card Hover Animation */
+    .exhibitor-card {
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .exhibitor-card:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 24px -8px rgba(0, 0, 0, 0.12);
+        border-color: #a8e6cf;
+    }
+    
+    /* Card Animation Stagger */
+    .exhibitor-card {
+        animation: fadeInUp 0.4s ease-out forwards;
+        opacity: 0;
+    }
+    
+    .exhibitor-card:nth-child(1) { animation-delay: 0.05s; }
+    .exhibitor-card:nth-child(2) { animation-delay: 0.1s; }
+    .exhibitor-card:nth-child(3) { animation-delay: 0.15s; }
+    .exhibitor-card:nth-child(4) { animation-delay: 0.2s; }
+    .exhibitor-card:nth-child(5) { animation-delay: 0.25s; }
+    .exhibitor-card:nth-child(6) { animation-delay: 0.3s; }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
 
 <script>
-let currentExhibitorId = null;
+let currentFilter = '';
+let sortDirection = 'asc'; // Track current sort direction
 
-function openExhibitorModal(exhibitorId) {
-    currentExhibitorId = exhibitorId;
-    const modal = document.getElementById('exhibitorModal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    
-    // Animation
-    setTimeout(() => {
-        modal.style.opacity = '1';
-        modal.querySelector('.modal-content').style.transform = 'scale(1)';
-    }, 10);
-    
-    // Daten laden
-    loadExhibitorData(exhibitorId, 'info');
-    document.body.style.overflow = 'hidden';
-}
+// Filter functions
+function filterCategory(category) {
+    currentFilter = category;
 
-function closeExhibitorModal() {
-    const modal = document.getElementById('exhibitorModal');
-    modal.style.opacity = '0';
-    modal.querySelector('.modal-content').style.transform = 'scale(0.95)';
-    
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        document.body.style.overflow = 'auto';
-    }, 300);
-}
-
-function closeModalOnBackdrop(event) {
-    if (event.target.id === 'exhibitorModal') {
-        closeExhibitorModal();
-    }
-}
-
-function switchTab(tabName) {
-    // Tab-Buttons aktualisieren
-    document.querySelectorAll('.tab-button').forEach(btn => {
-        btn.classList.remove('text-blue-600', 'border-blue-600');
-        btn.classList.add('text-gray-500', 'border-transparent');
+    // Update active button
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-category') === category) {
+            btn.classList.add('active');
+        }
     });
-    
-    const activeTab = document.getElementById(`tab-${tabName}`);
-    activeTab.classList.remove('text-gray-500', 'border-transparent');
-    activeTab.classList.add('text-blue-600', 'border-blue-600');
-    
-    // Content laden
-    loadExhibitorData(currentExhibitorId, tabName);
+
+    filterExhibitors();
 }
 
-function loadExhibitorData(exhibitorId, tab) {
-    const modalBody = document.getElementById('modalBody');
-    modalBody.innerHTML = '<div class="flex items-center justify-center py-12"><i class="fas fa-spinner fa-spin text-4xl text-blue-600"></i></div>';
-    
-    fetch(`api/get-exhibitor.php?id=${exhibitorId}&tab=${tab}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('modalTitle').textContent = data.exhibitor.name;
-                modalBody.innerHTML = data.content;
-            } else {
-                modalBody.innerHTML = '<div class="text-center py-12 text-red-600">Fehler beim Laden der Daten</div>';
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            modalBody.innerHTML = '<div class="text-center py-12 text-red-600">Fehler beim Laden der Daten</div>';
-        });
-}
-
-// ESC-Taste zum Schließen
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        closeExhibitorModal();
-    }
-});
-
-// Initial Modal Style
-document.addEventListener('DOMContentLoaded', () => {
-    const modal = document.getElementById('exhibitorModal');
-    modal.style.opacity = '0';
-    modal.querySelector('.modal-content').style.transform = 'scale(0.95)';
-});
-
-// Filter-Funktion
 function filterExhibitors() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase();
-    const category = document.getElementById('categoryFilter').value;
     const cards = document.querySelectorAll('.exhibitor-card');
-    let visibleCount = 0;
-    
+
     cards.forEach(card => {
         const name = card.getAttribute('data-name');
         const cardCategory = card.getAttribute('data-category');
-        
+
         const matchesSearch = name.includes(searchTerm);
-        const matchesCategory = !category || cardCategory === category;
-        
+        const matchesCategory = !currentFilter || cardCategory === currentFilter;
+
         if (matchesSearch && matchesCategory) {
             card.style.display = 'block';
-            visibleCount++;
         } else {
             card.style.display = 'none';
         }
     });
-    
-    // Info anzeigen
-    const filterInfo = document.getElementById('filterInfo');
-    if (visibleCount === 0) {
-        filterInfo.innerHTML = '<i class="fas fa-info-circle mr-2"></i>Keine Aussteller gefunden';
-        filterInfo.classList.add('text-orange-600');
-    } else {
-        filterInfo.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${visibleCount} Aussteller gefunden`;
-        filterInfo.classList.remove('text-orange-600');
-    }
 }
+
+function sortExhibitors(by) {
+    const grid = document.getElementById('exhibitorGrid');
+    const cards = Array.from(grid.querySelectorAll('.exhibitor-card'));
+
+    // Toggle sort direction
+    sortDirection = (sortDirection === 'asc') ? 'desc' : 'asc';
+
+    // Sort with current direction
+    cards.sort((a, b) => {
+        const nameA = a.getAttribute('data-name');
+        const nameB = b.getAttribute('data-name');
+
+        if (sortDirection === 'asc') {
+            return nameA.localeCompare(nameB);
+        } else {
+            return nameB.localeCompare(nameA);
+        }
+    });
+
+    // Update button text and icon
+    const sortBtn = document.getElementById('sortButton');
+    if (sortDirection === 'asc') {
+        sortBtn.innerHTML = '<i class="fas fa-sort-alpha-down mr-2"></i> A-Z';
+    } else {
+        sortBtn.innerHTML = '<i class="fas fa-sort-alpha-up mr-2"></i> Z-A';
+    }
+
+    // Re-append cards in new order
+    cards.forEach(card => grid.appendChild(card));
+}
+
+// Initialize search input event listener when DOM is ready
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        // Use input event for real-time filtering (fires on every change)
+        searchInput.addEventListener('input', filterExhibitors);
+        // Also keep keyup for compatibility
+        searchInput.addEventListener('keyup', filterExhibitors);
+    }
+});
 </script>
