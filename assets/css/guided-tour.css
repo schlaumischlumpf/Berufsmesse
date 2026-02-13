@@ -246,12 +246,21 @@
 
 /* Tooltip Arrow */
 .tour-tooltip-arrow {
+    display: none; /* hide by default (centred/standalone tooltips don't need an arrow) */
     position: absolute;
     width: 16px;
     height: 16px;
     background: white;
     transform: rotate(45deg);
     box-shadow: -1px -1px 0 0 rgba(0, 0, 0, 0.05);
+}
+
+/* only show when a directional class is present */
+.tour-tooltip-arrow.arrow-top,
+.tour-tooltip-arrow.arrow-bottom,
+.tour-tooltip-arrow.arrow-left,
+.tour-tooltip-arrow.arrow-right {
+    display: block;
 }
 
 .tour-tooltip-arrow.arrow-top {
@@ -281,6 +290,27 @@
     margin-top: -8px;
     box-shadow: 1px -1px 0 0 rgba(0, 0, 0, 0.05);
 }
+
+/* Icons inside tour text */
+.material-icons.tour-icon {
+    font-size: 1rem;
+    vertical-align: text-bottom;
+    margin-right: 0.35rem;
+    line-height: 1;
+}
+
+/* small colored dots used in descriptions */
+.tour-dot {
+    font-size: 0.85rem;
+    vertical-align: middle;
+    margin-right: 0.35rem;
+}
+.tour-dot-green { color: #10B981; }
+.tour-dot-purple { color: #8B5CF6; }
+.tour-dot-gray { color: #9CA3AF; }
+.tour-dot-blue { color: #3B82F6; }
+.tour-dot-orange { color: #FB923C; }
+.tour-dot-red { color: #EF4444; }
 
 /* Progress Dots */
 .tour-progress {

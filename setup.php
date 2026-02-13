@@ -254,7 +254,7 @@ try {
                         <div class="flex-1">
                             <h3 class="font-bold text-blue-900 mb-2">Information</h3>
                             <p class="text-sm text-blue-800">
-                                Das Setup ist abgeschlossen. Sie können diese Seite nun schließen und zum Dashboard zurückkehren.
+                                Das Setup ist abgeschlossen. Du kannst diese Seite nun schließen und zum Dashboard zurückkehren.
                             </p>
                             <p class="text-sm text-blue-800 mt-2">
                                 <strong>Hinweis:</strong> Diese Setup-Datei kann nach erfolgreichem Abschluss aus Sicherheitsgründen gelöscht werden.

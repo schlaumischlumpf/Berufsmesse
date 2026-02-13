@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
     if (!$canModify) {
         $message = ['type' => 'error', 'text' => 'Die Einschreibung ist derzeit nicht möglich.'];
     } elseif ($userRegCount >= $maxRegistrations) {
-        $message = ['type' => 'error', 'text' => 'Sie haben bereits die maximale Anzahl an Einschreibungen erreicht.'];
+        $message = ['type' => 'error', 'text' => 'Du hast bereits die maximale Anzahl an Einschreibungen erreicht.'];
     } else {
         $exhibitorId = intval($_POST['exhibitor_id']);
         $priority = isset($_POST['priority']) ? max(1, min(3, intval($_POST['priority']))) : 2;
@@ -34,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
         $alreadyRegistered = $stmt->fetch()['count'] > 0;
         
         if ($alreadyRegistered) {
-            $message = ['type' => 'error', 'text' => 'Sie sind bereits für diesen Aussteller angemeldet.'];
+            $message = ['type' => 'error', 'text' => 'Du bist bereits für diesen Aussteller angemeldet.'];
         } else {
             try {
                 // Registrierung OHNE Slot-Zuteilung - Slot wird später automatisch zugewiesen
@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                 $stmt->execute([$_SESSION['user_id']]);
                 $userRegCount = $stmt->fetch()['count'];
             } catch (PDOException $e) {
-                $message = ['type' => 'error', 'text' => 'Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.'];
+                $message = ['type' => 'error', 'text' => 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.'];
             }
         }
     }
@@ -230,7 +230,7 @@ foreach ($stmt->fetchAll() as $row) {
                                 <button type="submit" 
                                         name="unregister" 
                                         class="px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-medium text-sm"
-                                        onclick="return confirm('Möchten Sie sich wirklich abmelden?')">
+                                        onclick="return confirm('Möchtest du dich wirklich abmelden?')">
                                     <i class="fas fa-times mr-1"></i>Abmelden
                                 </button>
                             </form>
@@ -252,7 +252,7 @@ foreach ($stmt->fetchAll() as $row) {
                                 <button type="submit" 
                                         name="register" 
                                         class="px-3 py-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm"
-                                        onclick="return confirm('Möchten Sie sich für diesen Aussteller anmelden?')">
+                                        onclick="return confirm('Möchtest du dich für diesen Aussteller anmelden?')">
                                     <i class="fas fa-user-plus mr-1"></i>Anmelden
                                 </button>
                             </form>
@@ -275,11 +275,11 @@ foreach ($stmt->fetchAll() as $row) {
         <ul class="space-y-2 text-xs text-blue-800">
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
-                <span>Sie können sich für bis zu <?php echo $maxRegistrations; ?> Aussteller anmelden.</span>
+                <span>Du kannst dich für bis zu <?php echo $maxRegistrations; ?> Aussteller anmelden.</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
-                <span>Sie können sich nur einmal pro Aussteller anmelden.</span>
+                <span>Du kannst dich nur einmal pro Aussteller anmelden.</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
@@ -287,11 +287,11 @@ foreach ($stmt->fetchAll() as $row) {
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
-                <span>Setzen Sie eine Priorität (Hoch/Mittel/Niedrig) - höhere Prioritäten werden bei der Zuteilung bevorzugt.</span>
+                <span>Setze eine Priorität (Hoch/Mittel/Niedrig) - höhere Prioritäten werden bei der Zuteilung bevorzugt.</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
-                <span>Sie können sich jederzeit wieder abmelden, solange die Einschreibung geöffnet ist.</span>
+                <span>Du kannst dich jederzeit wieder abmelden, solange das Einschreibungsfenster geöffnet ist.</span>
             </li>
         </ul>
     </div>

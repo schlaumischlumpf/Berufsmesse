@@ -239,7 +239,7 @@ $currentSettings = [
                     <div class="flex-1">
                         <h4 class="font-semibold text-gray-800 mb-3">QR-Code Vorschau</h4>
                         <p class="text-sm text-gray-600 mb-4">
-                            Scannen Sie diesen QR-Code mit einem Smartphone, um zur konfigurierten URL zu gelangen.
+                            Scanne diesen QR-Code mit einem Smartphone, um zur konfigurierten URL zu gelangen.
                         </p>
                         <div class="bg-gray-50 p-4 rounded-lg border-2 border-gray-200 inline-block">
                             <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
@@ -320,11 +320,11 @@ $currentSettings = [
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-yellow-600 mr-2 mt-1"></i>
-                <span>Nach Ablauf der Einschreibefrist sollten Sie die automatische Zuteilung durchführen.</span>
+                <span>Nach Ablauf der Einschreibefrist solltest Du die automatische Zuteilung durchführen.</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-yellow-600 mr-2 mt-1"></i>
-                <span>Stellen Sie sicher, dass genügend Ausstellerplätze für alle Schüler vorhanden sind.</span>
+                <span>Stelle sicher, dass genügend Ausstellerplätze für alle Schüler vorhanden sind.</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-yellow-600 mr-2 mt-1"></i>

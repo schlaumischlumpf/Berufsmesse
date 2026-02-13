@@ -39,7 +39,7 @@ if (!empty($token)) {
         if (!$registration) {
             $checkinResult = [
                 'type' => 'warning', 
-                'message' => 'Sie sind nicht für diesen Aussteller in diesem Zeitslot zugeteilt.',
+                'message' => 'Du bist nicht für diesen Aussteller in diesem Zeitslot zugeteilt.',
                 'exhibitor' => $qrToken
             ];
         } else {
@@ -53,7 +53,7 @@ if (!empty($token)) {
             if ($stmt->fetch()) {
                 $checkinResult = [
                     'type' => 'info', 
-                    'message' => 'Sie sind bereits als anwesend markiert.',
+                    'message' => 'Du bist bereits als anwesend markiert.',
                     'exhibitor' => $qrToken
                 ];
             } else {
@@ -87,7 +87,7 @@ if (!empty($token)) {
             <i class="fas fa-qrcode text-white text-2xl"></i>
         </div>
         <h2 class="text-xl font-semibold text-gray-800">QR-Code Check-In</h2>
-        <p class="text-sm text-gray-500 mt-1">Scannen Sie den QR-Code am Ausstellerstand</p>
+        <p class="text-sm text-gray-500 mt-1">Scanne den QR-Code am Ausstellerstand</p>
     </div>
 
     <?php if ($checkinResult): ?>
@@ -147,9 +147,9 @@ if (!empty($token)) {
                 <i class="fas fa-info-circle mr-2"></i>Wie funktioniert's?
             </h4>
             <ul class="space-y-1 text-xs text-blue-800">
-                <li><i class="fas fa-check text-blue-500 mr-1"></i> Scannen Sie den QR-Code am Ausstellerstand</li>
-                <li><i class="fas fa-check text-blue-500 mr-1"></i> Ihr Browser öffnet automatisch die Check-in Seite</li>
-                <li><i class="fas fa-check text-blue-500 mr-1"></i> Ihre Anwesenheit wird automatisch erfasst</li>
+                <li><i class="fas fa-check text-blue-500 mr-1"></i> Scanne den QR-Code am Ausstellerstand</li>
+                <li><i class="fas fa-check text-blue-500 mr-1"></i> Dein Browser öffnet automatisch die Check-in Seite</li>
+                <li><i class="fas fa-check text-blue-500 mr-1"></i> Deine Anwesenheit wird automatisch erfasst</li>
             </ul>
         </div>
     <?php endif; ?>

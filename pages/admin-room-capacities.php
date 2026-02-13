@@ -72,7 +72,7 @@ foreach ($stmt->fetchAll() as $cap) {
                 <i class="fas fa-table text-indigo-600 mr-3"></i>
                 Raumkapazitäten pro Zeitslot
             </h2>
-            <p class="text-gray-600">Definieren Sie individuelle Kapazitäten für jeden Raum und Zeitslot</p>
+            <p class="text-gray-600">Definiere die individuelle Kapazitäten für jeden Raum und Zeitslot</p>
         </div>
     </div>
 
@@ -84,7 +84,7 @@ foreach ($stmt->fetchAll() as $cap) {
                 <h3 class="font-bold text-blue-900 mb-2">Hinweise zur Nutzung</h3>
                 <ul class="text-sm text-blue-800 space-y-1">
                     <li><i class="fas fa-check mr-2"></i>Die Standardkapazität entspricht der vollen Raumkapazität für jeden Slot</li>
-                    <li><i class="fas fa-check mr-2"></i>Sie können für jeden Slot individuelle Werte festlegen</li>
+                    <li><i class="fas fa-check mr-2"></i>Du kannst für jeden Slot individuelle Werte festlegen</li>
                     <li><i class="fas fa-check mr-2"></i>Leere Felder verwenden die Standardkapazität</li>
                     <li><i class="fas fa-check mr-2"></i>Diese Einstellungen beeinflussen die automatische Zuteilung</li>
                 </ul>
@@ -210,7 +210,7 @@ foreach ($stmt->fetchAll() as $cap) {
 
 <script>
 function resetToDefaults() {
-    if (confirm('Möchten Sie wirklich alle Werte auf die Standardwerte zurücksetzen?')) {
+    if (confirm('Möchtest Du wirklich alle Werte auf die Standardwerte zurücksetzen?')) {
         document.querySelectorAll('input[type="number"]').forEach(input => {
             input.value = '';
         });

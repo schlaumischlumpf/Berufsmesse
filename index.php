@@ -328,6 +328,9 @@ $regEnd = getSetting('registration_end');
     <!-- Font Awesome -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
+    <!-- Material Icons (genutzt in der Guided Tour) -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
     <!-- Custom Design System -->
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/design-system.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/guided-tour.css">

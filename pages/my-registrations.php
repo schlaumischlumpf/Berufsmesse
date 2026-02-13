@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
     <div class="bg-white rounded-xl border border-gray-100 p-12 text-center">
         <i class="fas fa-calendar-times text-5xl text-gray-200 mb-4"></i>
         <h3 class="text-lg font-semibold text-gray-700 mb-2">Noch keine Anmeldungen</h3>
-        <p class="text-gray-500 mb-6 text-sm">Sie haben sich noch für keinen Aussteller eingeschrieben.</p>
+        <p class="text-gray-500 mb-6 text-sm">Du hast dich noch für keinen Aussteller eingeschrieben.</p>
         <a href="?page=registration" class="inline-flex items-center px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
             <i class="fas fa-plus-circle mr-2"></i>
             Jetzt einschreiben
@@ -161,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                             </button>
                             
                             <?php if ($reg['registration_type'] === 'manual' && getRegistrationStatus() === 'open'): ?>
-                            <form method="POST" class="inline" onsubmit="return confirm('Möchten Sie sich wirklich abmelden?')">
+                            <form method="POST" class="inline" onsubmit="return confirm('Möchtest Du dich wirklich abmelden?')">
                                 <input type="hidden" name="registration_id" value="<?php echo $reg['id']; ?>">
                                 <button type="submit" 
                                         name="unregister"
@@ -196,11 +196,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Bitte erscheinen Sie pünktlich zu Ihren gebuchten Terminen.</span>
+                <span>Bitte erscheine pünktlich zu Deinen gebuchten Terminen.</span>
             </li>
             <li class="flex items-start">
                 <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Notieren Sie sich die Uhrzeiten der einzelnen Zeitslots.</span>
+                <span>Notiere Dir die Uhrzeiten der einzelnen Zeitslots.</span>
             </li>
         </ul>
     </div>

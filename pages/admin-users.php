@@ -619,7 +619,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
             <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
                 <p class="text-red-800">
                     <i class="fas fa-exclamation-triangle mr-2"></i>
-                    Möchten Sie den Benutzer <strong id="deleteUserName"></strong> wirklich löschen?
+                    Möchtest Du den Benutzer <strong id="deleteUserName"></strong> wirklich löschen?
                 </p>
                 <p class="text-red-700 text-sm mt-2">
                     Diese Aktion kann nicht rückgängig gemacht werden. Alle Anmeldungen des Benutzers werden ebenfalls gelöscht.
@@ -730,7 +730,7 @@ function downloadPasswordsFile(passwordsData) {
 function openResetPasswordModal(userId, userName, userRole) {
     // Warnung für Admin-Accounts anzeigen
     if (userRole === 'admin') {
-        if (!confirm('WARNUNG: Sie ändern das Passwort eines Administrator-Accounts. Möchten Sie fortfahren?')) {
+        if (!confirm('WARNUNG: Du änderst das Passwort eines Administrator-Accounts. Möchtest Du fortfahren?')) {
             return;
         }
     }
@@ -749,7 +749,7 @@ function closeResetPasswordModal() {
 function confirmDeleteUser(userId, userName, userRole) {
     // Extra Warnung für Admin-Accounts
     if (userRole === 'admin') {
-        if (!confirm('WARNUNG: Sie löschen einen Administrator-Account! Dies ist eine sensible Aktion. Sind Sie absolut sicher?')) {
+        if (!confirm('WARNUNG: Du löschst einen Administrator-Account! Dies ist eine sensible Aktion. Bist Du absolut sicher?')) {
             return;
         }
     }

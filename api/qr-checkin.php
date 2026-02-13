@@ -58,7 +58,7 @@ try {
         if (!$registration) {
             echo json_encode([
                 'success' => false,
-                'message' => 'Sie sind nicht für ' . $qrToken['exhibitor_name'] . ' in ' . $qrToken['slot_name'] . ' registriert.'
+                'message' => 'Du bist nicht für ' . $qrToken['exhibitor_name'] . ' in ' . $qrToken['slot_name'] . ' registriert.'
             ]);
             exit;
         }
@@ -74,7 +74,7 @@ try {
     if ($stmt->fetch()) {
         echo json_encode([
             'success' => true, 
-            'message' => 'Sie sind bereits als anwesend markiert bei ' . $qrToken['exhibitor_name'] . '.',
+            'message' => 'Du bist bereits als anwesend markiert bei ' . $qrToken['exhibitor_name'] . '.',
             'already_checked_in' => true
         ]);
         exit;

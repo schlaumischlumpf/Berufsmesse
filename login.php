@@ -81,54 +81,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             min-height: 100vh;
         }
         
-        /* Animated Background Shapes */
-        .bg-shapes {
-            position: fixed;
-            inset: 0;
-            overflow: hidden;
-            z-index: 0;
-            pointer-events: none;
-        }
-        
-        .bg-shape {
-            position: absolute;
-            border-radius: 50%;
-            opacity: 0.4;
-            animation: float 6s ease-in-out infinite;
-        }
-        
-        .bg-shape-1 {
-            width: 300px;
-            height: 300px;
-            background: var(--color-pastel-mint);
-            top: -100px;
-            right: -50px;
-            animation-delay: 0s;
-        }
-        
-        .bg-shape-2 {
-            width: 200px;
-            height: 200px;
-            background: var(--color-pastel-lavender);
-            bottom: 10%;
-            left: -50px;
-            animation-delay: 2s;
-        }
-        
-        .bg-shape-3 {
-            width: 150px;
-            height: 150px;
-            background: var(--color-pastel-peach);
-            top: 40%;
-            right: 10%;
-            animation-delay: 4s;
-        }
-        
-        @keyframes float {
-            0%, 100% { transform: translateY(0) rotate(0deg); }
-            50% { transform: translateY(-20px) rotate(5deg); }
-        }
-        
         /* Card Animation */
         .login-card {
             animation: slideUp 0.6s ease-out;
@@ -172,13 +124,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     </style>
 </head>
 <body class="min-h-screen flex items-center justify-center p-4">
-    <!-- Background Shapes -->
-    <div class="bg-shapes">
-        <div class="bg-shape bg-shape-1"></div>
-        <div class="bg-shape bg-shape-2"></div>
-        <div class="bg-shape bg-shape-3"></div>
-    </div>
-    
     <div class="w-full max-w-md relative z-10">
         <!-- Logo/Header -->
         <div class="text-center mb-8 animate-fade-in">
@@ -254,17 +199,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     <span>Anmelden</span>
                 </button>
             </form>
-
-            <!-- Demo Credentials Info -->
-            <div class="mt-6 p-4 rounded-xl border" style="background: var(--color-pastel-sky); border-color: rgba(181, 222, 255, 0.5);">
-                <p class="text-xs text-gray-700 font-semibold mb-2 flex items-center gap-2">
-                    <i class="fas fa-info-circle"></i>Demo-Zugangsdaten:
-                </p>
-                <div class="text-xs text-gray-600 space-y-1">
-                    <p><strong>Admin:</strong> admin / admin123</p>
-                    <p><strong>Schüler:</strong> max.mueller / student123</p>
-                </div>
-            </div>
         </div>
 
         <!-- Footer -->

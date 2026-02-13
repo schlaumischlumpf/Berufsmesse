@@ -263,10 +263,10 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
             <div>
                 <h4 class="font-bold text-yellow-900 mb-2">Tipps für Lehrer</h4>
                 <ul class="text-sm text-yellow-800 space-y-1">
-                    <li><i class="fas fa-check mr-2"></i>Nutzen Sie die Klassenlisten, um den Überblick über Schüleranmeldungen zu behalten</li>
-                    <li><i class="fas fa-check mr-2"></i>Drucken Sie die Pläne aus, um sie im Unterricht zu besprechen</li>
-                    <li><i class="fas fa-check mr-2"></i>Sprechen Sie Schüler mit fehlenden Anmeldungen an</li>
-                    <li><i class="fas fa-check mr-2"></i>Bei Fragen zur Registrierung wenden Sie sich an die Administratoren</li>
+                    <li><i class="fas fa-check mr-2"></i>Nutze die Klassenlisten, um den Überblick über Schüleranmeldungen zu behalten</li>
+                    <li><i class="fas fa-check mr-2"></i>Drucke die Pläne aus, um sie im Unterricht zu besprechen</li>
+                    <li><i class="fas fa-check mr-2"></i>Sprich Schüler mit fehlenden Anmeldungen an</li>
+                    <li><i class="fas fa-check mr-2"></i>Bei Fragen zur Registrierung wende dich an die Administratoren</li>
                 </ul>
                 <button onclick="startGuidedTour()" class="mt-4 text-sm text-amber-600 hover:text-amber-700 font-medium transition">
                     <i class="fas fa-play-circle mr-1"></i>Tour starten
@@ -277,12 +277,12 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
 </div>
 
 <script>
-// Start guided tour
+// Start der Tour mit rollenbasierten Schritten
 function startGuidedTour() {
-    const userRole = '<?php echo $_SESSION["role"] ?? "teacher"; ?>';
+    const userRole = <?php echo json_encode($_SESSION['role'] ?? 'teacher'); ?>;
     
     if (typeof GuidedTour !== 'undefined') {
-        // Generate role-based steps
+        // Generiere Schritte basierend auf der Rolle oder verwende vordefinierte Schritte
         const steps = typeof generateTourSteps !== 'undefined' 
             ? generateTourSteps(userRole)
             : (window.berufsmesseTourSteps || []);
@@ -290,15 +290,13 @@ function startGuidedTour() {
         const tour = new GuidedTour({
             steps: steps,
             role: userRole,
-                }
-            },
             onSkip: () => {
                 if (typeof showToast !== 'undefined') {
                     showToast('Tour übersprungen', 'info');
                 }
             }
         });
-        tour.reset(); // Allow restart
+        tour.reset(); // Neustart der Tour, falls sie bereits einmal gestartet wurde
         tour.start();
     } else {
         console.warn('GuidedTour nicht geladen');
@@ -309,9 +307,9 @@ function startGuidedTour() {
 document.addEventListener('DOMContentLoaded', () => {
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('start_tour') === '1') {
-        // Remove parameter from URL
+        // Entferne den Parameter aus der URL, damit die Tour nicht erneut startet, wenn die Seite neu geladen wird
         window.history.replaceState({}, '', window.location.pathname + '?page=teacher-dashboard');
-        // Start tour after a short delay
+        // Start nach einer kurzen Verzögerung, um sicherzustellen, dass alles geladen ist
         setTimeout(() => {
             startGuidedTour();
         }, 500);

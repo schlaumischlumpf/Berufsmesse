@@ -370,7 +370,7 @@ function generateContactTab($exhibitor) {
                     </div>
                     <div>
                         <h4 class="font-semibold text-gray-800">E-Mail</h4>
-                        <p class="text-sm text-gray-600">Kontaktieren Sie uns</p>
+                        <p class="text-sm text-gray-600">Kontaktiere uns</p>
                     </div>
                 </div>
                 <a href="mailto:<?php echo htmlspecialchars($exhibitor['email']); ?>" 
@@ -389,7 +389,7 @@ function generateContactTab($exhibitor) {
                     </div>
                     <div>
                         <h4 class="font-semibold text-gray-800">Telefon</h4>
-                        <p class="text-sm text-gray-600">Rufen Sie an</p>
+                        <p class="text-sm text-gray-600">Rufe uns an</p>
                     </div>
                 </div>
                 <a href="tel:<?php echo htmlspecialchars($exhibitor['phone']); ?>" 
@@ -428,8 +428,8 @@ function generateContactTab($exhibitor) {
                 Hinweis
             </h4>
             <p class="text-gray-600">
-                Bei Fragen oder Interesse können Sie den Aussteller direkt über die oben angegebenen Kontaktdaten erreichen. 
-                Nutzen Sie die Berufsmesse, um sich persönlich zu informieren und Ihre Fragen direkt zu stellen.
+                Bei Fragen oder Interesse kannst Du den Aussteller direkt über die oben angegebenen Kontaktdaten erreichen. 
+                Nutze die Berufsmesse, um Dich persönlich zu informieren und deine Fragen direkt zu stellen.
             </p>
         </div>
     </div>

@@ -39,7 +39,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt = $db->prepare("INSERT INTO users (username, password, firstname, lastname, class, role) VALUES (?, ?, ?, ?, ?, ?)");
             
             if ($stmt->execute([$username, $hashedPassword, $firstname, $lastname, $class, $role])) {
-                $message = "Benutzer erfolgreich angelegt! Sie können sich jetzt mit '$username' anmelden.";
+                $message = "Benutzer erfolgreich angelegt! Du kannst dich jetzt mit '$username' anmelden.";
                 $messageType = 'success';
                 
                 // Formular zurücksetzen

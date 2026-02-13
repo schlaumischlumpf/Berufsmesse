@@ -249,7 +249,7 @@ $recentRegistrations = $stmt->fetchAll();
                             Pläne drucken
                         </h3>
                         <p class="text-sm text-gray-600">
-                            Drucken Sie verschiedene Übersichten: Gesamtplan, Klassenpläne oder Raumpläne
+                            Drucke verschiedene Übersichten: Gesamtplan, Klassenpläne oder Raumpläne
                         </p>
                     </div>
                     <div class="flex-shrink-0">
@@ -483,7 +483,7 @@ function switchTab(tabName) {
 
 // Auto-Assignment Function
 function runAutoAssign() {
-    if (!confirm('Möchten Sie die automatische Zuteilung wirklich durchführen?\n\nDies wird alle Schüler, die noch nicht für alle 3 Slots registriert sind, automatisch auf Aussteller verteilen.')) {
+    if (!confirm('Möchtest Du die automatische Zuteilung wirklich durchführen?\n\nDies wird alle Schüler, die noch nicht für alle 3 Slots registriert sind, automatisch auf Aussteller verteilen.')) {
         return;
     }
     

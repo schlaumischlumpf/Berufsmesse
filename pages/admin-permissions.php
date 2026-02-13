@@ -67,7 +67,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
     <!-- Header -->
     <div>
         <h2 class="text-xl font-semibold text-gray-800">Berechtigungsverwaltung</h2>
-        <p class="text-sm text-gray-500 mt-1">Vergeben Sie granulare Berechtigungen an Benutzer</p>
+        <p class="text-sm text-gray-500 mt-1">Vergib hier granulare Berechtigungen an Benutzer</p>
     </div>
 
     <!-- Info Box -->
@@ -235,7 +235,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
             
             <div class="space-y-3">
                 <label class="block text-sm font-semibold text-gray-700 mb-3">
-                    Wählen Sie die Berechtigungen aus:
+                    Wähle die Berechtigungen aus:
                 </label>
                 
                 <?php foreach ($availablePermissions as $key => $description): ?>
@@ -317,7 +317,7 @@ function openPermissionModal(userId, userName, currentPermissions) {
         }
     } catch(err) {
         console.error('Fehler beim Öffnen des Modals:', err);
-        alert('Fehler beim Öffnen des Berechtigungsfensters. Bitte versuchen Sie es erneut.');
+        alert('Fehler beim Öffnen des Berechtigungsfensters. Bitte versuche es erneut.');
     }
 }
 

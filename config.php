@@ -1,9 +1,9 @@
 <?php
 // Datenbankkonfiguration
-define('DB_HOST', 'localhost');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_NAME', 'berufsmesse');
+define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+define('DB_USER', getenv('DB_USER') ?: 'root');
+define('DB_PASS', getenv('DB_PASS') ?: '');
+define('DB_NAME', getenv('DB_NAME') ?: 'berufsmesse');
 
 // Zeitzone
 date_default_timezone_set('Europe/Berlin');
@@ -26,7 +26,7 @@ define('MAX_FILE_SIZE', 10485760); // 10 MB
 define('ALLOWED_FILE_TYPES', ['pdf', 'doc', 'docx', 'ppt', 'pptx', 'jpg', 'jpeg', 'png', 'gif']);
 
 // Base URL
-define('BASE_URL', '/berufsmesse/');
+define('BASE_URL', '/');
 
 // Error Reporting (auf Production auf 0 setzen)
 error_reporting(E_ALL);

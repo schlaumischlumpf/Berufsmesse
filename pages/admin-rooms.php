@@ -40,7 +40,7 @@ foreach ($exhibitors as $ex) {
     <div class="flex items-center justify-between">
         <div>
             <h2 class="text-xl font-semibold text-gray-800">Raum-Zuteilung</h2>
-            <p class="text-sm text-gray-500 mt-1">Ziehen Sie Aussteller auf Räume, um sie zuzuordnen</p>
+            <p class="text-sm text-gray-500 mt-1">Ziehe Aussteller auf Räume, um sie zuzuordnen</p>
         </div>
         <button onclick="openAddRoomModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
             <i class="fas fa-plus"></i>
@@ -209,7 +209,7 @@ foreach ($exhibitors as $ex) {
                             <?php else: ?>
                                 <p class="text-center text-gray-400 text-sm py-4">
                                     <i class="fas fa-arrow-down mb-2"></i><br>
-                                    Ziehen Sie Aussteller hierher
+                                    Ziehe die Aussteller hierher
                                 </p>
                             <?php endif; ?>
                         </div>
@@ -491,7 +491,7 @@ function assignExhibitorToRoom(exhibitorId, roomId, exhibitorName) {
 
 // Remove Assignment
 function removeAssignment(exhibitorId) {
-    if (!confirm('Möchten Sie die Raum-Zuordnung wirklich entfernen?')) {
+    if (!confirm('Möchtest Du die Raum-Zuordnung wirklich entfernen?')) {
         return;
     }
     
@@ -522,7 +522,7 @@ function removeAssignment(exhibitorId) {
 
 // Clear All Assignments
 function clearAllAssignments() {
-    if (!confirm('Möchten Sie wirklich ALLE Raum-Zuordnungen löschen? Diese Aktion kann nicht rückgängig gemacht werden!')) {
+    if (!confirm('Möchtest Du wirklich ALLE Raum-Zuordnungen löschen? Diese Aktion kann nicht rückgängig gemacht werden!')) {
         return;
     }
     
@@ -546,7 +546,7 @@ function clearAllAssignments() {
 
 // Delete Unused Room
 function deleteRoom(roomId, roomNumber) {
-    if (!confirm(`Möchten Sie den ungenutzten Raum "${roomNumber}" wirklich löschen?\n\nDieser Raum hat keine zugeordneten Aussteller und kann sicher gelöscht werden.`)) {
+    if (!confirm(`Möchtest Du den ungenutzten Raum "${roomNumber}" wirklich löschen?\n\nDieser Raum hat keine zugeordneten Aussteller und kann sicher gelöscht werden.`)) {
         return;
     }
     

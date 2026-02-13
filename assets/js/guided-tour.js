@@ -158,7 +158,7 @@ class GuidedTour {
             `Schritt ${index + 1} von ${this.steps.length}`;
         
         // Update Content
-        this.tooltip.querySelector('.tour-title').textContent = step.title;
+        this.tooltip.querySelector('.tour-title').innerHTML = step.title;
         this.tooltip.querySelector('.tour-description').innerHTML = step.description;
         
         // Update Navigation Buttons
@@ -479,12 +479,12 @@ function generateTourSteps(userRole) {
     const baseSteps = [
         {
             target: null,
-            title: 'Willkommen zur Berufsmesse! 🎓',
+            title: 'Willkommen zur Berufsmesse! <span class="material-icons tour-icon">school</span>',
             description: `
                 <p>Schön, dass du da bist! Diese Tour zeigt dir alle wichtigen Funktionen 
                 der Plattform passend zu deiner Rolle.</p>
                 <p class="mt-2 text-sm text-gray-500">
-                    💡 Tipp: Du kannst die Tour jederzeit mit <kbd>Esc</kbd> beenden.
+                    <span class="material-icons tour-icon">lightbulb</span> Tipp: Du kannst die Tour jederzeit mit <kbd>Esc</kbd> beenden.
                 </p>
             `,
             position: 'center'
@@ -496,7 +496,7 @@ function generateTourSteps(userRole) {
         return [
             {
                 target: null,
-                title: '👑 Willkommen, Administrator!',
+                title: '<span class="material-icons tour-icon">admin_panel_settings</span> Willkommen, Administrator!',
                 description: `
                     <p>Diese umfassende Tour zeigt dir alle Admin-Funktionen der Berufsmesse.</p>
                     <p class="mt-2 text-sm text-gray-500">
@@ -507,21 +507,21 @@ function generateTourSteps(userRole) {
             },
             {
                 target: '.bg-gradient-to-r.from-emerald-500',
-                title: '📊 Admin-Dashboard Übersicht',
+                title: '<span class="material-icons tour-icon">bar_chart</span> Admin-Dashboard Übersicht',
                 description: `
                     <p><strong>Deine Kommandozentrale:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>📈 <strong>Live-Statistiken</strong> - Alle wichtigen KPIs auf einen Blick</li>
-                        <li>👥 <strong>Benutzer-Übersicht</strong> - Gesamt, Lehrer, Schüler</li>
-                        <li>🏢 <strong>Aussteller-Status</strong> - Wie viele sind angemeldet?</li>
-                        <li>📊 <strong>Registrierungs-Statistik</strong> - Teilnahmequote und Trends</li>
+                        <li><span class="material-icons tour-icon">bar_chart</span> <strong>Live-Statistiken</strong> - Alle wichtigen KPIs auf einen Blick</li>
+                        <li><span class="material-icons tour-icon">group</span> <strong>Benutzer-Übersicht</strong> - Gesamt, Lehrer, Schüler</li>
+                        <li><span class="material-icons tour-icon">apartment</span> <strong>Aussteller-Status</strong> - Wie viele sind angemeldet?</li>
+                        <li><span class="material-icons tour-icon">bar_chart</span> <strong>Registrierungs-Statistik</strong> - Teilnahmequote und Trends</li>
                     </ul>
                 `,
                 position: 'bottom'
             },
             {
                 target: '[onclick*="startGuidedTour"]',
-                title: '🎬 Tour jederzeit starten',
+                title: '<span class="material-icons tour-icon">play_circle</span> Tour jederzeit starten',
                 description: `
                     <p>Mit diesem Button kannst du jederzeit eine neue Tour starten oder 
                     die aktuelle Tour neu beginnen.</p>
@@ -534,16 +534,16 @@ function generateTourSteps(userRole) {
             },
             {
                 target: 'a[href*="admin-users"]',
-                title: '👥 Benutzerverwaltung - Das Herzstück',
+                title: '<span class="material-icons tour-icon">group</span> Benutzerverwaltung - Das Herzstück',
                 description: `
                     <p><strong>Zentrale Verwaltung aller Benutzer:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>👤 <strong>Einzelne Benutzer</strong> - Anlegen, bearbeiten, löschen</li>
-                        <li>📥 <strong>CSV-Import</strong> - Hunderte Schüler auf einmal anlegen</li>
-                        <li>🔑 <strong>Passwort-Reset</strong> - Benutzer können Zugangsdaten zurücksetzen</li>
-                        <li>🎭 <strong>Rollen zuweisen</strong> - Student, Lehrer, Admin Rollen</li>
-                        <li>📧 <strong>E-Mail ändern</strong> - Kontaktdaten aktualisieren</li>
-                        <li>🔒 <strong>Sperren/Entsperren</strong> - Konto-Zugriff kontrollieren</li>
+                        <li><span class="material-icons tour-icon">person</span> <strong>Einzelne Benutzer</strong> - Anlegen, bearbeiten, löschen</li>
+                        <li><span class="material-icons tour-icon">file_upload</span> <strong>CSV-Import</strong> - Hunderte Schüler auf einmal anlegen</li>
+                        <li><span class="material-icons tour-icon">vpn_key</span> <strong>Passwort-Reset</strong> - Benutzer können Zugangsdaten zurücksetzen</li>
+                        <li><span class="material-icons tour-icon">supervisor_account</span> <strong>Rollen zuweisen</strong> - Student, Lehrer, Admin Rollen</li>
+                        <li><span class="material-icons tour-icon">email</span> <strong>E-Mail ändern</strong> - Kontaktdaten aktualisieren</li>
+                        <li><span class="material-icons tour-icon">lock</span> <strong>Sperren/Entsperren</strong> - Konto-Zugriff kontrollieren</li>
                     </ul>
                     <p class="mt-2 text-sm text-amber-600">
                         <strong>CSV-Format:</strong> firstname;lastname;email;class;role
@@ -554,17 +554,17 @@ function generateTourSteps(userRole) {
             },
             {
                 target: 'a[href*="admin-exhibitors"]',
-                title: '🏢 Ausstellerverwaltung',
+                title: '<span class="material-icons tour-icon">apartment</span> Ausstellerverwaltung',
                 description: `
                     <p><strong>Alle teilnehmenden Unternehmen verwalten:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
                         <li>➕ <strong>Aussteller hinzufügen</strong> - Name, Beschreibung, Logo</li>
-                        <li>🏷️ <strong>Kategorien</strong> - Industrien und Fachrichtungen</li>
-                        <li>🚪 <strong>Räume zuweisen</strong> - In welchem Raum findet die Präsentation statt?</li>
-                        <li>📄 <strong>Dokumente/Flyer</strong> - Unternehmensinformationen hochladen</li>
-                        <li>🔗 <strong>Website & Links</strong> - Externe Karriereseiten verlinken</li>
+                        <li><span class="material-icons tour-icon">label</span> <strong>Kategorien</strong> - Industrien und Fachrichtungen</li>
+                        <li><span class="material-icons tour-icon">meeting_room</span> <strong>Räume zuweisen</strong> - In welchem Raum findet die Präsentation statt?</li>
+                        <li><span class="material-icons tour-icon">description</span> <strong>Dokumente/Flyer</strong> - Unternehmensinformationen hochladen</li>
+                        <li><span class="material-icons tour-icon">link</span> <strong>Website & Links</strong> - Externe Karriereseiten verlinken</li>
                         <li>✅/❌ <strong>Aktivieren/Deaktivieren</strong> - Aussteller sichtbar machen</li>
-                        <li>📊 <strong>Anmeldungen anzeigen</strong> - Wie viele Schüler interessieren sich?</li>
+                        <li><span class="material-icons tour-icon">bar_chart</span> <strong>Anmeldungen anzeigen</strong> - Wie viele Schüler interessieren sich?</li>
                     </ul>
                 `,
                 position: 'right',
@@ -572,18 +572,18 @@ function generateTourSteps(userRole) {
             },
             {
                 target: 'a[href*="admin-rooms"]',
-                title: '🚪 Raumverwaltung & Kapazitäten',
+                title: '<span class="material-icons tour-icon">meeting_room</span> Raumverwaltung & Kapazitäten',
                 description: `
                     <p><strong>Räume konfigurieren und Aussteller zuordnen:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>🏗️ <strong>Räume anlegen</strong> - Raumnummer, Name, Gebäude, Etage</li>
-                        <li>👥 <strong>Kapazität festlegen</strong> - Max. Schüler pro Zeitslot</li>
-                        <li>🏢 <strong>Aussteller zuordnen</strong> - Welcher Aussteller in welchem Raum</li>
-                        <li>📊 <strong>Auslastung anzeigen</strong> - Wie voll sind die Slots?</li>
+                        <li><span class="material-icons tour-icon">meeting_room</span> <strong>Räume anlegen</strong> - Raumnummer, Name, Gebäude, Etage</li>
+                        <li><span class="material-icons tour-icon">group</span> <strong>Kapazität festlegen</strong> - Max. Schüler pro Zeitslot</li>
+                        <li><span class="material-icons tour-icon">apartment</span> <strong>Aussteller zuordnen</strong> - Welcher Aussteller in welchem Raum</li>
+                        <li><span class="material-icons tour-icon">bar_chart</span> <strong>Auslastung anzeigen</strong> - Wie voll sind die Slots?</li>
                         <li>⚠️ <strong>Warnungen</strong> - Über- oder unterbelegte Räume</li>
                     </ul>
                     <p class="mt-2 text-sm text-blue-600">
-                        <strong>💡 Automatische Berechnung:</strong> 
+                        <strong><span class="material-icons tour-icon">lightbulb</span> Automatische Berechnung:</strong> 
                         Kapazität pro Slot = Gesamtkapazität ÷ 3 Slots
                     </p>
                 `,
@@ -592,17 +592,17 @@ function generateTourSteps(userRole) {
             },
             {
                 target: 'a[href*="admin-print"]',
-                title: '🖨️ Druck & Export - Professionelle Reports',
+                title: '<span class="material-icons tour-icon">print</span> Druck & Export - Professionelle Reports',
                 description: `
                     <p><strong>Verschiedene Ausgabeformate für unterschiedliche Zwecke:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>📋 <strong>Gesamtübersicht</strong> - Alle Anmeldungen nach Raum sortiert</li>
-                        <li>🎓 <strong>Klassenlisten</strong> - Pro Klasse, ideal für Lehrer und Schüler</li>
-                        <li>🚪 <strong>Raumpläne</strong> - Welche Schüler kommen in welchen Raum?</li>
-                        <li>📅 <strong>Zeitplan-Übersicht</strong> - Nach Zeitslots organisiert</li>
-                        <li>📊 <strong>Statistik-Report</strong> - Umfangreiche Analyse und Kennzahlen</li>
-                        <li>🔍 <strong>Suchfilter</strong> - Nach Klasse, Raum, Aussteller filtern</li>
-                        <li>💾 <strong>PDF/Excel Export</strong> - Zum Ausdrucken oder in Excel</li>
+                        <li><span class="material-icons tour-icon">assignment</span> <strong>Gesamtübersicht</strong> - Alle Anmeldungen nach Raum sortiert</li>
+                        <li><span class="material-icons tour-icon">school</span> <strong>Klassenlisten</strong> - Pro Klasse, ideal für Lehrer und Schüler</li>
+                        <li><span class="material-icons tour-icon">meeting_room</span> <strong>Raumpläne</strong> - Welche Schüler kommen in welchen Raum?</li>
+                        <li><span class="material-icons tour-icon">event</span> <strong>Zeitplan-Übersicht</strong> - Nach Zeitslots organisiert</li>
+                        <li><span class="material-icons tour-icon">bar_chart</span> <strong>Statistik-Report</strong> - Umfangreiche Analyse und Kennzahlen</li>
+                        <li><span class="material-icons tour-icon">search</span> <strong>Suchfilter</strong> - Nach Klasse, Raum, Aussteller filtern</li>
+                        <li><span class="material-icons tour-icon">download</span> <strong>PDF/Excel Export</strong> - Zum Ausdrucken oder in Excel</li>
                     </ul>
                 `,
                 position: 'right',
@@ -614,12 +614,12 @@ function generateTourSteps(userRole) {
                 description: `
                     <p><strong>Globale Konfiguration der gesamten Berufsmesse:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>📅 <strong>Messedatum</strong> - Wann findet die Messe statt?</li>
+                        <li><span class="material-icons tour-icon">event</span> <strong>Messedatum</strong> - Wann findet die Messe statt?</li>
                         <li>⏰ <strong>Öffnungszeiten</strong> - Von wann bis wann?</li>
-                        <li>🔓 <strong>Anmeldezeitraum</strong> - Start- und Enddatum für Registrierungen</li>
-                        <li>🔢 <strong>Max. Anmeldungen pro Schüler</strong> - Wie viele verwaltete Slots?</li>
-                        <li>🎨 <strong>Farben & Design</strong> - Anpassung der Oberfläche</li>
-                        <li>📧 <strong>Benachrichtigungen</strong> - E-Mail und Systembenachrichtigungen</li>
+                        <li><span class="material-icons tour-icon">calendar_month</span> <strong>Anmeldezeitraum</strong> - Start- und Enddatum für Registrierungen</li>
+                        <li><span class="material-icons tour-icon">format_list_numbered</span> <strong>Max. Anmeldungen pro Schüler</strong> - Wie viele verwaltete Slots?</li>
+                        <li><span class="material-icons tour-icon">palette</span> <strong>Farben & Design</strong> - Anpassung der Oberfläche</li>
+                        <li><span class="material-icons tour-icon">notifications</span> <strong>Benachrichtigungen</strong> - E-Mail und Systembenachrichtigungen</li>
                         <li>⚠️ <strong>WICHTIG:</strong> Änderungen hier betreffen das gesamte System!</li>
                     </ul>
                 `,
@@ -628,14 +628,14 @@ function generateTourSteps(userRole) {
             },
             {
                 target: 'a[href*="admin-permissions"]',
-                title: '🔐 Berechtigungen & Rollen',
+                title: '<span class="material-icons tour-icon">lock</span> Berechtigungen & Rollen',
                 description: `
                     <p><strong>Feinkörnige Kontrolle über Benutzerrechte:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>👑 <strong>Admin</strong> - Vollzugriff auf alle Funktionen</li>
-                        <li>👨‍🏫 <strong>Lehrer</strong> - Sehen ihre Klassenlisten und können Schüler-Status überprüfen</li>
-                        <li>🎓 <strong>Student</strong> - Können sich für Aussteller anmelden</li>
-                        <li>🔒 <strong>Gast</strong> - Nur Lesezugriff auf bestimmte Inhalte</li>
+                        <li><span class="material-icons tour-icon">admin_panel_settings</span> <strong>Admin</strong> - Vollzugriff auf alle Funktionen</li>
+                        <li><span class="material-icons tour-icon">school</span> <strong>Lehrer</strong> - Sehen ihre Klassenlisten und können Schüler-Status überprüfen</li>
+                        <li><span class="material-icons tour-icon">school</span> <strong>Student</strong> - Können sich für Aussteller anmelden</li>
+                        <li><span class="material-icons tour-icon">lock</span> <strong>Gast</strong> - Nur Lesezugriff auf bestimmte Inhalte</li>
                     </ul>
                     <p class="mt-2 text-sm text-gray-500">
                         Custom-Rollen können hinzugefügt werden, falls nötig.
@@ -658,7 +658,7 @@ function generateTourSteps(userRole) {
                         <li>✅ System-Einstellungen verwalten</li>
                     </ul>
                     <p class="mt-3 text-sm text-gray-500">
-                        💡 Diese Tour ist jederzeit über den "Tour starten"-Button erreichbar.
+                        <span class="material-icons tour-icon">lightbulb</span> Diese Tour ist jederzeit über den "Tour starten"-Button erreichbar.
                     </p>
                 `,
                 position: 'center'
@@ -671,7 +671,7 @@ function generateTourSteps(userRole) {
         return [
             {
                 target: null,
-                title: '👨‍🏫 Willkommen, Lehrkraft!',
+                title: '<span class="material-icons tour-icon">school</span> Willkommen, Lehrkraft!',
                 description: `
                     <p>Diese Tour zeigt dir alle Funktionen für Lehrkräfte zur Verwaltung 
                     deiner Schüleranmeldungen.</p>
@@ -683,11 +683,11 @@ function generateTourSteps(userRole) {
             },
             {
                 target: '.bg-white.rounded-xl.p-6.border-l-4',
-                title: '📊 Dein Lehrer-Dashboard',
+                title: '<span class="material-icons tour-icon">bar_chart</span> Dein Lehrer-Dashboard',
                 description: `
                     <p><strong>Überblick über deine Schüler:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>👥 <strong>Gesamt-Schüler</strong> - Alle Schüler in deinen Klassen</li>
+                        <li><span class="material-icons tour-icon">group</span> <strong>Gesamt-Schüler</strong> - Alle Schüler in deinen Klassen</li>
                         <li>✅ <strong>Vollständig angemeldet</strong> - Schüler mit allen 3 Slots</li>
                         <li>⚠️ <strong>Unvollständig</strong> - Fehlen noch Slots?</li>
                         <li>❌ <strong>Ohne Anmeldung</strong> - Wer hat sich noch nicht angemeldet?</li>
@@ -697,7 +697,7 @@ function generateTourSteps(userRole) {
             },
             {
                 target: '[onclick*="startGuidedTour"]',
-                title: '🎬 Tour jederzeit wiederholen',
+                title: '<span class="material-icons tour-icon">play_circle</span> Tour jederzeit wiederholen',
                 description: `
                     <p>Du kannst diese Tour jederzeit neu starten, wenn du etwas vergessen hast.</p>
                 `,
@@ -705,14 +705,14 @@ function generateTourSteps(userRole) {
             },
             {
                 target: '.grid.grid-cols-1.md\\:grid-cols-4, [class*="grid-cols"]',
-                title: '📈 Statistik-Karten',
+                title: '<span class="material-icons tour-icon">bar_chart</span> Statistik-Karten',
                 description: `
                     <p><strong>Auf einen Blick alles wichtige:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>🔵 <strong>Gesamtzahl Schüler</strong> - Wie viele Schüler in deinen Klassen?</li>
-                        <li>🟢 <strong>Vollständig</strong> - Mit allen erforderlichen Anmeldungen</li>
-                        <li>🟠 <strong>Unvollständig</strong> - Mit nur teilweisen Anmeldungen</li>
-                        <li>🔴 <strong>Ohne Anmeldung</strong> - Benötigen deine Unterstützung</li>
+                        <li><span class="material-icons tour-dot tour-dot-blue">fiber_manual_record</span> <strong>Gesamtzahl Schüler</strong> - Wie viele Schüler in deinen Klassen?</li>
+                        <li><span class="material-icons tour-dot tour-dot-green">fiber_manual_record</span> <strong>Vollständig</strong> - Mit allen erforderlichen Anmeldungen</li>
+                        <li><span class="material-icons tour-dot tour-dot-orange">fiber_manual_record</span> <strong>Unvollständig</strong> - Mit nur teilweisen Anmeldungen</li>
+                        <li><span class="material-icons tour-dot tour-dot-red">fiber_manual_record</span> <strong>Ohne Anmeldung</strong> - Benötigen deine Unterstützung</li>
                     </ul>
                     <p class="mt-2 text-sm text-gray-500">Diese Zahlen aktualisieren sich in Echtzeit!</p>
                 `,
@@ -720,29 +720,29 @@ function generateTourSteps(userRole) {
             },
             {
                 target: 'a[href*="teacher-class"], .tabs, [role="tab"]',
-                title: '📋 Klassenlisten',
+                title: '<span class="material-icons tour-icon">assignment</span> Klassenlisten',
                 description: `
                     <p><strong>Detaillierte Übersicht deiner Klassen:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>📚 <strong>Nach Klasse filtern</strong> - Schüler pro Klasse sehen</li>
+                        <li><span class="material-icons tour-icon">menu_book</span> <strong>Nach Klasse filtern</strong> - Schüler pro Klasse sehen</li>
                         <li>✅ <strong>Anmeldestatus prüfen</strong> - Wer hat sich für welche Aussteller angemeldet?</li>
-                        <li>🔢 <strong>Slot-Information</strong> - Slot 1, 3 und 5 Management</li>
-                        <li>👥 <strong>Schülernamen</strong> - Vollständige Klassenliste mit allen Details</li>
+                        <li><span class="material-icons tour-icon">schedule</span> <strong>Slot-Information</strong> - Slot 1, 3 und 5 Management</li>
+                        <li><span class="material-icons tour-icon">group</span> <strong>Schülernamen</strong> - Vollständige Klassenliste mit allen Details</li>
                     </ul>
                 `,
                 position: 'bottom'
             },
             {
                 target: 'a[href*="print"], button[class*="print"], [class*="export"]',
-                title: '🖨️ Listen drucken & exportieren',
+                title: '<span class="material-icons tour-icon">print</span> Listen drucken & exportieren',
                 description: `
                     <p><strong>Professionelle Dokumente für deine Klassen:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>📄 <strong>Klassenliste</strong> - Alle Schüler mit Anmeldestatus</li>
-                        <li>📊 <strong>Zeitplan-Übersicht</strong> - Wo ist welcher Schüler wann?</li>
-                        <li>📋 <strong>Raumpläne</strong> - In welche Räume gehen deine Schüler?</li>
-                        <li>💾 <strong>PDF & Excel</strong> - Download für deine Unterlagen</li>
-                        <li>🎯 <strong>Filter</strong> - Nur bestimmte Klassen oder Schüler exportieren</li>
+                        <li><span class="material-icons tour-icon">description</span> <strong>Klassenliste</strong> - Alle Schüler mit Anmeldestatus</li>
+                        <li><span class="material-icons tour-icon">bar_chart</span> <strong>Zeitplan-Übersicht</strong> - Wo ist welcher Schüler wann?</li>
+                        <li><span class="material-icons tour-icon">map</span> <strong>Raumpläne</strong> - In welche Räume gehen deine Schüler?</li>
+                        <li><span class="material-icons tour-icon">download</span> <strong>PDF & Excel</strong> - Download für deine Unterlagen</li>
+                        <li><span class="material-icons tour-icon">filter_alt</span> <strong>Filter</strong> - Nur bestimmte Klassen oder Schüler exportieren</li>
                     </ul>
                     <p class="mt-2 text-sm text-gray-500">Perfekt für die Vorbereitung und Durchführung der Messe!</p>
                 `,
@@ -750,14 +750,14 @@ function generateTourSteps(userRole) {
             },
             {
                 target: 'a[href*="schedule"], a[href*="zeitplan"]',
-                title: '📅 Zeitpläne ansehen',
+                title: '<span class="material-icons tour-icon">event</span> Zeitpläne ansehen',
                 description: `
                     <p><strong>Gesamtübersicht aller Zeitslots und Aussteller:</strong></p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>🕐 <strong>Zeitslot-Struktur</strong> - Slot 1, 3 und 5 mit Zeiten</li>
-                        <li>🏢 <strong>Aussteller pro Slot</strong> - Welche Unternehmen in welcher Zeit?</li>
-                        <li>👥 <strong>Anmeldungen pro Aussteller</strong> - Wie viele Schüler angemeldet?</li>
-                        <li>🚪 <strong>Raum-Information</strong> - Welcher Aussteller in welchem Raum?</li>
+                        <li><span class="material-icons tour-icon">access_time</span> <strong>Zeitslot-Struktur</strong> - Slot 1, 3 und 5 mit Zeiten</li>
+                        <li><span class="material-icons tour-icon">apartment</span> <strong>Aussteller pro Slot</strong> - Welche Unternehmen in welcher Zeit?</li>
+                        <li><span class="material-icons tour-icon">group</span> <strong>Anmeldungen pro Aussteller</strong> - Wie viele Schüler angemeldet?</li>
+                        <li><span class="material-icons tour-icon">meeting_room</span> <strong>Raum-Information</strong> - Welcher Aussteller in welchem Raum?</li>
                     </ul>
                 `,
                 position: 'right'
@@ -775,7 +775,7 @@ function generateTourSteps(userRole) {
                         <li>✅ Deine Schüler auf die Messe vorbereiten</li>
                     </ul>
                     <p class="mt-3 text-sm text-gray-500">
-                        💡 Tipp: Die Tour findest du jederzeit über den "Tour starten"-Button.
+                        <span class="material-icons tour-icon">lightbulb</span> Tipp: Die Tour findest du jederzeit über den "Tour starten"-Button.
                     </p>
                 `,
                 position: 'center'
@@ -789,13 +789,13 @@ function generateTourSteps(userRole) {
             baseSteps[0],
             {
                 target: '#sidebar',
-                title: '📋 Navigation',
+                title: '<span class="material-icons tour-icon">menu</span> Navigation',
                 description: `
                     <p>Über die Seitenleiste erreichst du alle Bereiche:</p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>🏠 <strong>Dashboard</strong> - Deine persönliche Übersicht</li>
-                        <li>🏢 <strong>Unternehmen</strong> - Alle Aussteller entdecken</li>
-                        <li>📅 <strong>Zeitplan</strong> - Dein Tagesablauf</li>
+                        <li><span class="material-icons tour-icon">home</span> <strong>Dashboard</strong> - Deine persönliche Übersicht</li>
+                        <li><span class="material-icons tour-icon">apartment</span> <strong>Unternehmen</strong> - Alle Aussteller entdecken</li>
+                        <li><span class="material-icons tour-icon">event</span> <strong>Zeitplan</strong> - Dein Tagesablauf</li>
                     </ul>
                     <p class="mt-2 text-sm text-gray-500">Auf Mobilgeräten erreichst du die Navigation über das Menü-Symbol.</p>
                 `,
@@ -804,13 +804,13 @@ function generateTourSteps(userRole) {
             },
             {
                 target: '.quick-actions-grid',
-                title: '⚡ Schnellzugriff',
+                title: '<span class="material-icons tour-icon">flash_on</span> Schnellzugriff',
                 description: `
                     <p>Diese Karten bieten dir schnellen Zugriff auf die wichtigsten Funktionen:</p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>📅 <strong>Mein Zeitplan</strong> - Alle deine Termine auf einen Blick anzeigen</li>
-                        <li>✏️ <strong>Einschreibung</strong> - Für Aussteller-Präsentationen anmelden</li>
-                        <li>🏢 <strong>Unternehmen</strong> - Alle Aussteller durchsuchen und kennenlernen</li>
+                        <li><span class="material-icons tour-icon">event</span> <strong>Mein Zeitplan</strong> - Alle deine Termine auf einen Blick anzeigen</li>
+                        <li><span class="material-icons tour-icon">edit</span> <strong>Einschreibung</strong> - Für Aussteller-Präsentationen anmelden</li>
+                        <li><span class="material-icons tour-icon">apartment</span> <strong>Unternehmen</strong> - Alle Aussteller durchsuchen und kennenlernen</li>
                         <li>✅ <strong>Meine Slots</strong> - Deine Anmeldungen verwalten und bearbeiten</li>
                     </ul>
                     <p class="mt-2 text-sm text-gray-500">Klicke auf eine Karte, um zur jeweiligen Funktion zu gelangen.</p>
@@ -820,13 +820,13 @@ function generateTourSteps(userRole) {
             },
             {
                 target: '.schedule-card, .upcoming-schedule',
-                title: '📆 Dein Tagesplan',
+                title: '<span class="material-icons tour-icon">event</span> Dein Tagesplan',
                 description: `
                     <p>Hier siehst du deinen persönlichen Zeitplan für die Berufsmesse:</p>
                     <ul class="mt-2 space-y-1 text-sm">
-                        <li>🟢 <strong>Grün</strong> = Du bist erfolgreich angemeldet</li>
-                        <li>🟣 <strong>Lila</strong> = Freie Wahl vor Ort (kein Slot nötig)</li>
-                        <li>⚪ <strong>Grau</strong> = Noch keine Zuteilung</li>
+                        <li><span class="material-icons tour-dot tour-dot-green">fiber_manual_record</span> <strong>Grün</strong> = Du bist erfolgreich angemeldet</li>
+                        <li><span class="material-icons tour-dot tour-dot-purple">fiber_manual_record</span> <strong>Lila</strong> = Freie Wahl vor Ort (kein Slot nötig)</li>
+                        <li><span class="material-icons tour-dot tour-dot-gray">fiber_manual_record</span> <strong>Grau</strong> = Noch keine Zuteilung</li>
                     </ul>
                     <p class="mt-2 text-sm text-gray-500">Klicke auf "Drucken", um deinen Plan auszudrucken.</p>
                 `,
@@ -834,7 +834,7 @@ function generateTourSteps(userRole) {
             },
             {
                 target: 'a[href*="registration"], a[href*="exhibitors"]',
-                title: '✏️ Einschreibung - So funktioniert\'s',
+                title: '<span class="material-icons tour-icon">edit</span> Einschreibung - So funktioniert\'s',
                 description: `
                     <p><strong>Schritt-für-Schritt zur Anmeldung:</strong></p>
                     <ol class="mt-2 space-y-1 text-sm list-decimal list-inside">
@@ -851,7 +851,7 @@ function generateTourSteps(userRole) {
             },
             {
                 target: null,
-                title: 'Bereit? Los geht\'s! 🚀',
+                title: 'Bereit? Los geht\'s! <span class="material-icons tour-icon">rocket_launch</span>',
                 description: `
                     <p>Super! Du kennst jetzt die wichtigsten Funktionen.</p>
                     <p class="mt-2"><strong>Nächste Schritte:</strong></p>
@@ -861,7 +861,7 @@ function generateTourSteps(userRole) {
                         <li>→ Schau dir deinen Zeitplan an</li>
                     </ul>
                     <p class="mt-3 text-sm text-gray-500">
-                        💡 Tipp: Diese Tour findest du jederzeit im Dashboard.
+                        <span class="material-icons tour-icon">lightbulb</span> Tipp: Diese Tour findest du jederzeit im Dashboard.
                     </p>
                 `,
                 position: 'center'
@@ -895,7 +895,7 @@ document.addEventListener('DOMContentLoaded', () => {
             steps: steps,
             role: role,
             onComplete: () => {
-                if (typeof showToast !== 'undefined') showToast('Tour abgeschlossen! 🎉', 'success');
+                if (typeof showToast !== 'undefined') showToast('Tour abgeschlossen! <span class="material-icons tour-icon">celebration</span>', 'success');
                 window.currentGuidedTour = null;
             },
             onSkip: () => {
