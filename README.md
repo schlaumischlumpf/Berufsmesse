@@ -42,7 +42,7 @@ Zuerst müssen Sie sich an der GitHub Container Registry anmelden (falls das Ima
 
 ```bash
 # Beispiel für öffentliches Image
-docker pull ghcr.io/username/berufsmesse:latest
+docker pull ghcr.io/schlaumischlumpf/berufsmesse:latest
 ```
 
 *Ersetzen Sie `username` durch den tatsächlichen GitHub-Benutzernamen oder die Organisation.*
