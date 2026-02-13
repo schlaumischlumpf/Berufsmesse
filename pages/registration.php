@@ -5,6 +5,9 @@ $regStatus = getRegistrationStatus();
 $regStart = getSetting('registration_start');
 $regEnd = getSetting('registration_end');
 
+// Admins dürfen auch nach Einschreibeschluss Änderungen vornehmen (Issue #12)
+$canModify = ($regStatus === 'open') || isAdmin();
+
 // Nur verwaltete Timeslots laden (Slots 1, 3, 5) - Slots 2 und 4 sind freie Wahl vor Ort
 $stmt = $db->query("SELECT * FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");
 $timeslots = $stmt->fetchAll();
@@ -17,192 +20,154 @@ $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
 
 // Handle Registration Form
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
-    if ($regStatus !== 'open') {
+    if (!$canModify) {
         $message = ['type' => 'error', 'text' => 'Die Einschreibung ist derzeit nicht möglich.'];
     } elseif ($userRegCount >= $maxRegistrations) {
         $message = ['type' => 'error', 'text' => 'Sie haben bereits die maximale Anzahl an Einschreibungen erreicht.'];
     } else {
         $exhibitorId = intval($_POST['exhibitor_id']);
+        $priority = isset($_POST['priority']) ? max(1, min(3, intval($_POST['priority']))) : 2;
         
-        // Verfügbare Slots für diesen Aussteller ermitteln
-        $availableSlots = getAvailableSlots($db, $exhibitorId, $_SESSION['user_id']);
+        // Prüfen ob User bereits für diesen Aussteller registriert ist
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+        $stmt->execute([$_SESSION['user_id'], $exhibitorId]);
+        $alreadyRegistered = $stmt->fetch()['count'] > 0;
         
-        if (empty($availableSlots)) {
-            $message = ['type' => 'error', 'text' => 'Für diesen Aussteller sind keine Plätze mehr verfügbar.'];
+        if ($alreadyRegistered) {
+            $message = ['type' => 'error', 'text' => 'Sie sind bereits für diesen Aussteller angemeldet.'];
         } else {
-            // Den Slot mit den wenigsten Anmeldungen wählen (automatische gleichmäßige Verteilung)
-            $selectedSlot = $availableSlots[0]['timeslot_id'];
-            
             try {
-                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'manual')");
-                $stmt->execute([$_SESSION['user_id'], $exhibitorId, $selectedSlot]);
+                // Registrierung OHNE Slot-Zuteilung - Slot wird später automatisch zugewiesen
+                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority) VALUES (?, ?, NULL, 'manual', ?)");
+                $stmt->execute([$_SESSION['user_id'], $exhibitorId, $priority]);
                 
-                $message = ['type' => 'success', 'text' => 'Erfolgreich eingeschrieben! Sie wurden automatisch dem Slot mit den wenigsten Teilnehmern zugewiesen.'];
+                $message = ['type' => 'success', 'text' => 'Erfolgreich angemeldet! Der Zeitslot wird später automatisch zugeteilt.'];
                 
                 // Counter aktualisieren
                 $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ?");
                 $stmt->execute([$_SESSION['user_id']]);
                 $userRegCount = $stmt->fetch()['count'];
             } catch (PDOException $e) {
-                if ($e->getCode() == 23000) {
-                    $message = ['type' => 'error', 'text' => 'Sie sind bereits für einen Aussteller in diesem Zeitslot angemeldet.'];
-                } else {
-                    $message = ['type' => 'error', 'text' => 'Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.'];
-                }
+                $message = ['type' => 'error', 'text' => 'Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.'];
             }
         }
     }
 }
 
-// Funktion zur Ermittlung verfügbarer Slots mit gleichmäßiger Verteilung
-function getAvailableSlots($db, $exhibitorId, $userId) {
-    // Raum-Kapazität abrufen
-    $stmt = $db->prepare("
-        SELECT r.capacity 
-        FROM exhibitors e 
-        LEFT JOIN rooms r ON e.room_id = r.id 
-        WHERE e.id = ?
-    ");
-    $stmt->execute([$exhibitorId]);
-    $roomData = $stmt->fetch();
+// Handle Abmeldung - Admins/Lehrer können immer abmelden, Schüler nur bei offener Einschreibung (Issue #12)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
+    $exhibitorId = intval($_POST['exhibitor_id']);
     
-    if (!$roomData || !$roomData['capacity']) return [];
+    // Prüfen ob die Registrierung dem User gehört
+    $stmt = $db->prepare("SELECT * FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+    $stmt->execute([$_SESSION['user_id'], $exhibitorId]);
+    $registration = $stmt->fetch();
     
-    $roomCapacity = intval($roomData['capacity']);
-    $slotsPerTimeslot = floor($roomCapacity / 3); // Kapazität pro Slot (abgerundet)
-    
-    if ($slotsPerTimeslot <= 0) return [];
-    
-    // Nur verwaltete Slots (1, 3, 5) - Slots 2 und 4 sind freie Wahl vor Ort
-    $stmt = $db->query("SELECT id, slot_number FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");
-    $timeslots = $stmt->fetchAll();
-    
-    $availableSlots = [];
-    
-    foreach ($timeslots as $slot) {
-        // Prüfen ob User bereits in diesem Slot registriert ist
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND timeslot_id = ?");
-        $stmt->execute([$userId, $slot['id']]);
-        $userInSlot = $stmt->fetch()['count'];
-        
-        if ($userInSlot > 0) {
-            continue; // User bereits in diesem Slot registriert
+    if ($registration && $canModify) {
+        $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+        if ($stmt->execute([$_SESSION['user_id'], $exhibitorId])) {
+            $message = ['type' => 'success', 'text' => 'Erfolgreich abgemeldet'];
+            
+            // Counter aktualisieren
+            $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ?");
+            $stmt->execute([$_SESSION['user_id']]);
+            $userRegCount = $stmt->fetch()['count'];
+        } else {
+            $message = ['type' => 'error', 'text' => 'Fehler beim Abmelden'];
         }
-        
-        // Anzahl der Registrierungen für diesen Aussteller in diesem Slot
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
-        $stmt->execute([$exhibitorId, $slot['id']]);
-        $registrations = $stmt->fetch()['count'];
-        
-        if ($registrations < $slotsPerTimeslot) {
-            $availableSlots[] = [
-                'timeslot_id' => $slot['id'],
-                'registrations' => $registrations,
-                'capacity' => $slotsPerTimeslot
-            ];
-        }
+    } elseif (!$canModify) {
+        $message = ['type' => 'error', 'text' => 'Die Einschreibung ist geschlossen. Nur Admins können Änderungen vornehmen.'];
     }
-    
-    // Nach Anzahl der Registrierungen sortieren (aufsteigend)
-    usort($availableSlots, function($a, $b) {
-        return $a['registrations'] - $b['registrations'];
-    });
-    
-    return $availableSlots;
 }
 
-// Aussteller mit verfügbaren Plätzen laden
-$exhibitorsWithSlots = [];
-foreach ($exhibitors as $exhibitor) {
-    $availableSlots = getAvailableSlots($db, $exhibitor['id'], $_SESSION['user_id']);
-    if (!empty($availableSlots)) {
-        $exhibitor['available_slots_count'] = array_sum(array_column($availableSlots, 'capacity')) - array_sum(array_column($availableSlots, 'registrations'));
-        $exhibitorsWithSlots[] = $exhibitor;
-    }
+// Prüfe für jeden Aussteller ob der User bereits registriert ist
+$userRegistrations = [];
+$stmt = $db->prepare("SELECT exhibitor_id, priority FROM registrations WHERE user_id = ?");
+$stmt->execute([$_SESSION['user_id']]);
+foreach ($stmt->fetchAll() as $row) {
+    $userRegistrations[$row['exhibitor_id']] = $row['priority'] ?? 2;
 }
 ?>
 
-<div class="max-w-4xl mx-auto">
+<div class="max-w-4xl mx-auto space-y-6">
     <!-- Status Banner -->
-    <div class="mb-6">
-        <?php if ($regStatus === 'open'): ?>
-            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
-                <div class="flex items-center">
-                    <i class="fas fa-check-circle text-green-500 text-2xl mr-4"></i>
-                    <div class="flex-1">
-                        <h3 class="font-semibold text-green-800">Einschreibung ist geöffnet</h3>
-                        <p class="text-sm text-green-700 mt-1">
-                            Noch bis zum <?php echo formatDateTime($regEnd); ?>
-                        </p>
-                    </div>
+    <?php if ($regStatus === 'open'): ?>
+        <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
+            <div class="flex items-center">
+                <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center mr-3">
+                    <i class="fas fa-check-circle text-emerald-600"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-emerald-800 text-sm">Einschreibung geöffnet</h3>
+                    <p class="text-xs text-emerald-600">Bis <?php echo formatDateTime($regEnd); ?></p>
                 </div>
             </div>
-        <?php elseif ($regStatus === 'upcoming'): ?>
-            <div class="bg-yellow-50 border-l-4 border-yellow-500 p-4 rounded-lg">
-                <div class="flex items-center">
-                    <i class="fas fa-clock text-yellow-500 text-2xl mr-4"></i>
-                    <div class="flex-1">
-                        <h3 class="font-semibold text-yellow-800">Einschreibung startet bald</h3>
-                        <p class="text-sm text-yellow-700 mt-1">
-                            Ab dem <?php echo formatDateTime($regStart); ?>
-                        </p>
-                    </div>
+        </div>
+    <?php elseif ($regStatus === 'upcoming'): ?>
+        <div class="bg-amber-50 border border-amber-200 p-4 rounded-xl">
+            <div class="flex items-center">
+                <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center mr-3">
+                    <i class="fas fa-clock text-amber-600"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-amber-800 text-sm">Einschreibung startet bald</h3>
+                    <p class="text-xs text-amber-600">Ab <?php echo formatDateTime($regStart); ?></p>
                 </div>
             </div>
-        <?php else: ?>
-            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
-                <div class="flex items-center">
-                    <i class="fas fa-lock text-red-500 text-2xl mr-4"></i>
-                    <div class="flex-1">
-                        <h3 class="font-semibold text-red-800">Einschreibung ist geschlossen</h3>
-                        <p class="text-sm text-red-700 mt-1">
-                            Die Einschreibefrist ist am <?php echo formatDateTime($regEnd); ?> abgelaufen.
-                        </p>
-                    </div>
+        </div>
+    <?php else: ?>
+        <div class="bg-red-50 border border-red-200 p-4 rounded-xl">
+            <div class="flex items-center">
+                <div class="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center mr-3">
+                    <i class="fas fa-lock text-red-600"></i>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-red-800 text-sm">Einschreibung geschlossen</h3>
+                    <p class="text-xs text-red-600">Endete am <?php echo formatDateTime($regEnd); ?></p>
                 </div>
             </div>
-        <?php endif; ?>
-    </div>
+        </div>
+    <?php endif; ?>
 
     <!-- Fortschrittsanzeige -->
-    <div class="bg-white rounded-xl shadow-md p-6 mb-6">
-        <h3 class="text-lg font-semibold text-gray-800 mb-4">Ihr Fortschritt</h3>
+    <div class="bg-white rounded-xl border border-gray-100 p-5">
+        <h3 class="text-sm font-semibold text-gray-800 mb-3">Ihr Fortschritt</h3>
         <div class="flex items-center justify-between mb-2">
-            <span class="text-sm text-gray-600">Einschreibungen</span>
-            <span class="text-sm font-semibold text-gray-800">
+            <span class="text-xs text-gray-500">Einschreibungen</span>
+            <span class="text-xs font-semibold text-gray-700">
                 <?php echo $userRegCount; ?> / <?php echo $maxRegistrations; ?>
             </span>
         </div>
-        <div class="w-full bg-gray-200 rounded-full h-3">
+        <div class="w-full bg-gray-200 rounded-full h-2">
             <?php 
             $progress = ($maxRegistrations > 0) ? ($userRegCount / $maxRegistrations * 100) : 0;
             ?>
-            <div class="bg-blue-600 h-3 rounded-full transition-all duration-500" 
+            <div class="bg-emerald-500 h-2 rounded-full transition-all" 
                  style="width: <?php echo min($progress, 100); ?>%"></div>
         </div>
-        <p class="text-xs text-gray-500 mt-2">
+        <p class="text-xs text-gray-400 mt-2">
             <?php if ($userRegCount >= $maxRegistrations): ?>
-                Sie haben alle verfügbaren Einschreibungen genutzt.
+                Alle Einschreibungen genutzt.
             <?php else: ?>
-                Sie können sich noch für <?php echo $maxRegistrations - $userRegCount; ?> weitere(n) Aussteller einschreiben.
+                Noch <?php echo $maxRegistrations - $userRegCount; ?> verfügbar
             <?php endif; ?>
         </p>
     </div>
 
     <?php if (isset($message)): ?>
-    <div class="mb-6 animate-pulse">
+    <div class="animate-pulse">
         <?php if ($message['type'] === 'success'): ?>
-            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
+            <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
                 <div class="flex items-center">
-                    <i class="fas fa-check-circle text-green-500 mr-3"></i>
-                    <p class="text-green-700"><?php echo $message['text']; ?></p>
+                    <i class="fas fa-check-circle text-emerald-500 mr-3"></i>
+                    <p class="text-emerald-700 text-sm"><?php echo $message['text']; ?></p>
                 </div>
             </div>
         <?php else: ?>
-            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
+            <div class="bg-red-50 border border-red-200 p-4 rounded-xl">
                 <div class="flex items-center">
                     <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
-                    <p class="text-red-700"><?php echo $message['text']; ?></p>
+                    <p class="text-red-700 text-sm"><?php echo $message['text']; ?></p>
                 </div>
             </div>
         <?php endif; ?>
@@ -210,57 +175,88 @@ foreach ($exhibitors as $exhibitor) {
     <?php endif; ?>
 
     <!-- Aussteller Liste -->
-    <div class="bg-white rounded-xl shadow-md p-6">
-        <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
-            <i class="fas fa-clipboard-list text-blue-600 mr-3"></i>
+    <div class="bg-white rounded-xl border border-gray-100 p-5">
+        <h3 class="text-base font-semibold text-gray-800 mb-4 flex items-center">
+            <i class="fas fa-clipboard-list text-emerald-500 mr-2"></i>
             Verfügbare Aussteller
         </h3>
 
-        <?php if (empty($exhibitorsWithSlots)): ?>
+        <?php if (empty($exhibitors)): ?>
             <div class="text-center py-12">
                 <i class="fas fa-inbox text-6xl text-gray-300 mb-4"></i>
-                <p class="text-gray-500 text-lg">Derzeit sind keine Aussteller mit verfügbaren Plätzen vorhanden.</p>
+                <p class="text-gray-500 text-sm">Derzeit sind keine Aussteller verfügbar.</p>
             </div>
         <?php else: ?>
-            <div class="space-y-4">
-                <?php foreach ($exhibitorsWithSlots as $exhibitor): ?>
-                <div class="border border-gray-200 rounded-lg p-4 hover:border-blue-300 hover:shadow-md transition">
+            <div class="space-y-3">
+                <?php foreach ($exhibitors as $exhibitor): ?>
+                <div class="border border-gray-100 rounded-xl p-4 hover:border-emerald-200 hover:bg-gray-50 transition">
                     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                         <div class="flex-1">
-                            <h4 class="font-semibold text-gray-800 text-lg mb-1">
+                            <h4 class="font-semibold text-gray-800 mb-1">
                                 <?php echo htmlspecialchars($exhibitor['name']); ?>
                             </h4>
-                            <p class="text-sm text-gray-600 mb-2">
+                            <p class="text-sm text-gray-500 mb-2">
                                 <?php echo htmlspecialchars(substr($exhibitor['short_description'] ?? '', 0, 100)); ?>...
                             </p>
-                            <div class="flex flex-wrap gap-2 text-sm">
-                                <span class="inline-flex items-center px-3 py-1 rounded-full bg-green-100 text-green-800">
-                                    <i class="fas fa-check-circle mr-1"></i>
-                                    <?php echo $exhibitor['available_slots_count']; ?> Plätze verfügbar
-                                </span>
-                                <span class="inline-flex items-center px-3 py-1 rounded-full bg-blue-100 text-blue-800">
-                                    <i class="fas fa-users mr-1"></i>
-                                    Automatische Zuteilung
+                            <?php if (!empty($exhibitor['category'])): ?>
+                            <div class="flex flex-wrap gap-2 text-xs">
+                                <span class="inline-flex items-center px-2 py-1 rounded-md bg-blue-50 text-blue-700">
+                                    <i class="fas fa-tag mr-1"></i>
+                                    <?php echo htmlspecialchars($exhibitor['category']); ?>
                                 </span>
                             </div>
+                            <?php endif; ?>
                         </div>
                         
                         <div class="flex flex-col sm:flex-row gap-2">
                             <button onclick="openExhibitorModal(<?php echo $exhibitor['id']; ?>)" 
-                                    class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
-                                <i class="fas fa-info-circle mr-2"></i>Details
+                                    class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm">
+                                <i class="fas fa-info-circle mr-1"></i>Details
                             </button>
                             
-                            <?php if ($regStatus === 'open' && $userRegCount < $maxRegistrations): ?>
+                            <?php if (isset($userRegistrations[$exhibitor['id']])): ?>
+                            <!-- Bereits angemeldet - Priorität & Abmelde-Button -->
+                            <?php 
+                                $currentPriority = $userRegistrations[$exhibitor['id']];
+                                $priorityLabels = [1 => 'Hoch', 2 => 'Mittel', 3 => 'Niedrig'];
+                                $priorityColors = [1 => 'text-red-600 bg-red-50', 2 => 'text-amber-600 bg-amber-50', 3 => 'text-gray-600 bg-gray-100'];
+                            ?>
+                            <span class="px-2 py-1 rounded-md text-xs font-medium <?php echo $priorityColors[$currentPriority] ?? $priorityColors[2]; ?>">
+                                <i class="fas fa-star mr-1"></i>Prio: <?php echo $priorityLabels[$currentPriority] ?? 'Mittel'; ?>
+                            </span>
+                            <?php if ($canModify): ?>
                             <form method="POST" class="inline">
                                 <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                                 <button type="submit" 
-                                        name="register" 
-                                        class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold whitespace-nowrap"
-                                        onclick="return confirm('Möchten Sie sich für diesen Aussteller einschreiben? Sie werden automatisch dem Slot mit den wenigsten Teilnehmern zugewiesen.')">
-                                    <i class="fas fa-check mr-2"></i>Einschreiben
+                                        name="unregister" 
+                                        class="px-3 py-1.5 bg-red-500 text-white rounded-lg hover:bg-red-600 transition font-medium text-sm"
+                                        onclick="return confirm('Möchten Sie sich wirklich abmelden?')">
+                                    <i class="fas fa-times mr-1"></i>Abmelden
                                 </button>
                             </form>
+                            <?php else: ?>
+                            <span class="px-3 py-1.5 bg-green-100 text-green-700 rounded-lg text-sm font-medium">
+                                <i class="fas fa-check mr-1"></i>Angemeldet
+                            </span>
+                            <?php endif; ?>
+                            <?php else: ?>
+                            <!-- Noch nicht angemeldet - Anmelde-Button -->
+                            <?php if ($canModify && $userRegCount < $maxRegistrations): ?>
+                            <form method="POST" class="inline flex items-center gap-2">
+                                <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
+                                <select name="priority" class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-emerald-300">
+                                    <option value="1">Prio: Hoch</option>
+                                    <option value="2" selected>Prio: Mittel</option>
+                                    <option value="3">Prio: Niedrig</option>
+                                </select>
+                                <button type="submit" 
+                                        name="register" 
+                                        class="px-3 py-1.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm"
+                                        onclick="return confirm('Möchten Sie sich für diesen Aussteller anmelden?')">
+                                    <i class="fas fa-user-plus mr-1"></i>Anmelden
+                                </button>
+                            </form>
+                            <?php endif; ?>
                             <?php endif; ?>
                         </div>
                     </div>
@@ -271,155 +267,33 @@ foreach ($exhibitors as $exhibitor) {
     </div>
 
     <!-- Info Box -->
-    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-6">
-        <h4 class="font-semibold text-blue-900 mb-3 flex items-center">
+    <div class="bg-blue-50 border border-blue-100 rounded-xl p-5">
+        <h4 class="font-semibold text-blue-900 mb-3 flex items-center text-sm">
             <i class="fas fa-info-circle mr-2"></i>
             Wie funktioniert die Einschreibung?
         </h4>
-        <ul class="space-y-2 text-sm text-blue-800">
+        <ul class="space-y-2 text-xs text-blue-800">
             <li class="flex items-start">
-                <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Sie können sich für bis zu <?php echo $maxRegistrations; ?> Aussteller einschreiben.</span>
+                <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
+                <span>Sie können sich für bis zu <?php echo $maxRegistrations; ?> Aussteller anmelden.</span>
             </li>
             <li class="flex items-start">
-                <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Die Einschreibung gilt für die <strong>Slots 1, 3 und 5</strong> (09:00-09:30, 10:40-11:10, 12:20-12:50).</span>
+                <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
+                <span>Sie können sich nur einmal pro Aussteller anmelden.</span>
             </li>
             <li class="flex items-start">
-                <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span><strong>Slots 2 und 4 sind zur freien Wahl vor Ort</strong> - keine vorherige Anmeldung erforderlich.</span>
+                <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
+                <span>Die Zuteilung zu den Zeitslots (1, 3, 5) erfolgt automatisch durch das System.</span>
             </li>
             <li class="flex items-start">
-                <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Das System verteilt Sie automatisch auf den Zeitslot mit den wenigsten Anmeldungen für den gewählten Aussteller.</span>
+                <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
+                <span>Setzen Sie eine Priorität (Hoch/Mittel/Niedrig) - höhere Prioritäten werden bei der Zuteilung bevorzugt.</span>
             </li>
             <li class="flex items-start">
-                <i class="fas fa-check text-blue-600 mr-2 mt-1"></i>
-                <span>Bei Fristversäumnis erfolgt eine automatische Zuteilung zu Ausstellern mit freien Plätzen.</span>
+                <i class="fas fa-check text-blue-500 mr-2 mt-0.5"></i>
+                <span>Sie können sich jederzeit wieder abmelden, solange die Einschreibung geöffnet ist.</span>
             </li>
         </ul>
     </div>
 </div>
 
-<!-- Modal für Aussteller-Details (gleich wie in exhibitors.php) -->
-<div id="exhibitorModal" class="modal fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4" onclick="closeModalOnBackdrop(event)">
-    <div class="modal-content bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden" onclick="event.stopPropagation()">
-        <!-- Modal Header -->
-        <div class="sticky top-0 bg-blue-600 text-white px-6 py-4 flex items-center justify-between z-10">
-            <h2 id="modalTitle" class="text-2xl font-bold">Aussteller Details</h2>
-            <button onclick="closeExhibitorModal()" class="text-white hover:bg-white/20 rounded-lg p-2 transition">
-                <i class="fas fa-times text-xl"></i>
-            </button>
-        </div>
-
-        <!-- Tabs -->
-        <div class="border-b border-gray-200 bg-white sticky top-[72px] z-10">
-            <nav class="flex overflow-x-auto">
-                <button onclick="switchTab('info')" id="tab-info" class="tab-button px-6 py-4 font-semibold text-blue-600 border-b-2 border-blue-600 whitespace-nowrap">
-                    <i class="fas fa-info-circle mr-2"></i>Informationen
-                </button>
-                <button onclick="switchTab('documents')" id="tab-documents" class="tab-button px-6 py-4 font-semibold text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap">
-                    <i class="fas fa-file-download mr-2"></i>Dokumente
-                </button>
-                <button onclick="switchTab('contact')" id="tab-contact" class="tab-button px-6 py-4 font-semibold text-gray-500 hover:text-gray-700 border-b-2 border-transparent whitespace-nowrap">
-                    <i class="fas fa-address-card mr-2"></i>Kontakt
-                </button>
-            </nav>
-        </div>
-
-        <!-- Modal Body -->
-        <div id="modalBody" class="p-6 overflow-y-auto" style="max-height: calc(90vh - 200px);">
-            <!-- Content wird per JavaScript geladen -->
-        </div>
-    </div>
-</div>
-
-<script>
-let currentExhibitorId = null;
-
-function openExhibitorModal(exhibitorId) {
-    currentExhibitorId = exhibitorId;
-    const modal = document.getElementById('exhibitorModal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    
-    // Animation
-    setTimeout(() => {
-        modal.style.opacity = '1';
-        modal.querySelector('.modal-content').style.transform = 'scale(1)';
-    }, 10);
-    
-    // Daten laden
-    loadExhibitorData(exhibitorId, 'info');
-    document.body.style.overflow = 'hidden';
-}
-
-function closeExhibitorModal() {
-    const modal = document.getElementById('exhibitorModal');
-    modal.style.opacity = '0';
-    modal.querySelector('.modal-content').style.transform = 'scale(0.95)';
-    
-    setTimeout(() => {
-        modal.classList.add('hidden');
-        modal.classList.remove('flex');
-        document.body.style.overflow = 'auto';
-    }, 300);
-}
-
-function closeModalOnBackdrop(event) {
-    if (event.target.id === 'exhibitorModal') {
-        closeExhibitorModal();
-    }
-}
-
-function switchTab(tabName) {
-    // Tab-Buttons aktualisieren
-    document.querySelectorAll('.tab-button').forEach(btn => {
-        btn.classList.remove('text-blue-600', 'border-blue-600');
-        btn.classList.add('text-gray-500', 'border-transparent');
-    });
-    
-    const activeTab = document.getElementById(`tab-${tabName}`);
-    activeTab.classList.remove('text-gray-500', 'border-transparent');
-    activeTab.classList.add('text-blue-600', 'border-blue-600');
-    
-    // Content laden
-    loadExhibitorData(currentExhibitorId, tabName);
-}
-
-function loadExhibitorData(exhibitorId, tab) {
-    const modalBody = document.getElementById('modalBody');
-    modalBody.innerHTML = '<div class="flex items-center justify-center py-12"><i class="fas fa-spinner fa-spin text-4xl text-blue-600"></i></div>';
-    
-    fetch(`api/get-exhibitor.php?id=${exhibitorId}&tab=${tab}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('modalTitle').textContent = data.exhibitor.name;
-                modalBody.innerHTML = data.content;
-            } else {
-                modalBody.innerHTML = '<div class="text-center py-12 text-red-600">Fehler beim Laden der Daten</div>';
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            modalBody.innerHTML = '<div class="text-center py-12 text-red-600">Fehler beim Laden der Daten</div>';
-        });
-}
-
-// ESC-Taste zum Schließen
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        closeExhibitorModal();
-    }
-});
-
-// Initial Modal Style
-document.addEventListener('DOMContentLoaded', () => {
-    const modal = document.getElementById('exhibitorModal');
-    if (modal) {
-        modal.style.opacity = '0';
-        modal.querySelector('.modal-content').style.transform = 'scale(0.95)';
-    }
-});
-</script>

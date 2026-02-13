@@ -15,6 +15,24 @@ SET visible_fields = JSON_ARRAY('name', 'short_description', 'description', 'cat
 WHERE visible_fields IS NULL;
 
 -- ===========================================================================
+-- Neue Felder für erweiterte Aussteller-Infos
+-- ===========================================================================
+ALTER TABLE exhibitors 
+ADD COLUMN IF NOT EXISTS jobs TEXT DEFAULT NULL COMMENT 'Typische Berufe/Tätigkeiten im Unternehmen';
+
+ALTER TABLE exhibitors 
+ADD COLUMN IF NOT EXISTS features TEXT DEFAULT NULL COMMENT 'Besonderheiten des Unternehmens';
+
+ALTER TABLE exhibitors 
+ADD COLUMN IF NOT EXISTS offer_types VARCHAR(255) DEFAULT NULL COMMENT 'Angebote: Ausbildung, Studium, Praktikum etc.';
+
+-- ===========================================================================
+-- Logo-Upload für Aussteller
+-- ===========================================================================
+ALTER TABLE exhibitors 
+ADD COLUMN IF NOT EXISTS logo VARCHAR(255) DEFAULT NULL COMMENT 'Pfad zum Logo-Bild des Ausstellers';
+
+-- ===========================================================================
 -- Issue #4: Raumkapazitäten pro Slot
 -- ===========================================================================
 -- Neue Tabelle für slot-spezifische Raumkapazitäten
@@ -77,3 +95,29 @@ ALTER TABLE users MODIFY role VARCHAR(50) NOT NULL DEFAULT 'student';
 -- SHOW TABLES LIKE 'user_permissions';
 -- SELECT * FROM room_slot_capacities LIMIT 5;
 -- SELECT * FROM user_permissions LIMIT 5;
+
+-- ===========================================================================
+-- Issue: Passwortänderung beim ersten Login erzwingen
+-- ===========================================================================
+ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password TINYINT(1) DEFAULT 0 COMMENT 'Erzwingt Passwortänderung beim nächsten Login';
+
+-- Setze must_change_password für alle neuen Benutzer standardmäßig auf 1
+-- Bereits bestehende Benutzer müssen ihr Passwort nicht ändern
+
+-- ===========================================================================
+-- Migration: Erlaube NULL für timeslot_id in registrations
+-- Datum: 15.01.2026
+-- Beschreibung: Ermöglicht Registrierungen ohne sofortige Slot-Zuteilung
+-- ===========================================================================
+
+-- 1. Entferne die alte UNIQUE constraint (user_id, timeslot_id)
+ALTER TABLE `registrations` DROP INDEX IF EXISTS `unique_user_timeslot`;
+
+-- 2. Ändere timeslot_id zu NULL erlaubend
+ALTER TABLE `registrations` MODIFY `timeslot_id` int(11) DEFAULT NULL;
+
+-- 3. Füge neue UNIQUE constraint hinzu: Ein User kann sich nur einmal pro Aussteller anmelden
+ALTER TABLE `registrations` ADD UNIQUE KEY `unique_user_exhibitor` (`user_id`, `exhibitor_id`);
+
+-- 4. Optional: Füge einen Index für bessere Performance bei Slot-Queries hinzu
+ALTER TABLE `registrations` ADD INDEX IF NOT EXISTS `idx_user_timeslot` (`user_id`, `timeslot_id`);

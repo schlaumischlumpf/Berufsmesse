@@ -1,13 +1,13 @@
 <?php
 // Meine Anmeldungen Seite
 
-// Registrierungen des Benutzers mit Details laden
+// Registrierungen des Benutzers mit Details laden (LEFT JOIN für NULL timeslot_id)
 $stmt = $db->prepare("
     SELECT r.*, e.name as exhibitor_name, e.short_description, t.slot_name, t.slot_number, t.start_time, t.end_time,
            r.registration_type
     FROM registrations r 
     JOIN exhibitors e ON r.exhibitor_id = e.id 
-    JOIN timeslots t ON r.timeslot_id = t.id 
+    LEFT JOIN timeslots t ON r.timeslot_id = t.id 
     WHERE r.user_id = ?
     ORDER BY t.slot_number ASC
 ");
@@ -30,13 +30,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
             if ($stmt->execute([$registrationId])) {
                 $message = ['type' => 'success', 'text' => 'Abmeldung erfolgreich'];
                 
-                // Registrierungen neu laden
+                // Registrierungen neu laden (LEFT JOIN für NULL timeslot_id)
                 $stmt = $db->prepare("
                     SELECT r.*, e.name as exhibitor_name, e.short_description, t.slot_name, t.slot_number, t.start_time, t.end_time,
                            r.registration_type
                     FROM registrations r 
                     JOIN exhibitors e ON r.exhibitor_id = e.id 
-                    JOIN timeslots t ON r.timeslot_id = t.id 
+                    LEFT JOIN timeslots t ON r.timeslot_id = t.id 
                     WHERE r.user_id = ?
                     ORDER BY t.slot_number ASC
                 ");
@@ -74,33 +74,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
     <?php endif; ?>
 
     <!-- Übersicht Card -->
-    <div class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl shadow-lg p-6 mb-6 text-white">
+    <div class="bg-white rounded-xl border border-gray-100 p-6 mb-6">
         <div class="flex items-center justify-between flex-wrap gap-4">
             <div>
-                <h2 class="text-2xl font-bold mb-2">Ihre Anmeldungen</h2>
-                <p class="text-purple-100">Übersicht aller gebuchten Messetermine</p>
+                <h2 class="text-xl font-bold text-gray-800 mb-1">Ihre Anmeldungen</h2>
+                <p class="text-gray-500 text-sm">Übersicht aller gebuchten Messetermine</p>
             </div>
-            <div class="bg-white/20 backdrop-blur-sm rounded-lg px-6 py-4">
-                <div class="text-3xl font-bold"><?php echo count($myRegistrations); ?></div>
-                <div class="text-sm text-purple-100">Termine</div>
+            <div class="bg-emerald-50 rounded-xl px-5 py-3 text-center">
+                <div class="text-2xl font-bold text-emerald-600"><?php echo count($myRegistrations); ?></div>
+                <div class="text-xs text-emerald-600">Termine</div>
             </div>
         </div>
     </div>
 
     <?php if (empty($myRegistrations)): ?>
     <!-- Keine Anmeldungen -->
-    <div class="bg-white rounded-xl shadow-md p-12 text-center">
-        <i class="fas fa-calendar-times text-6xl text-gray-300 mb-4"></i>
-        <h3 class="text-xl font-semibold text-gray-700 mb-2">Noch keine Anmeldungen</h3>
-        <p class="text-gray-500 mb-6">Sie haben sich noch für keinen Aussteller eingeschrieben.</p>
-        <a href="?page=registration" class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-lg hover:from-purple-700 hover:to-indigo-700 transition font-semibold">
+    <div class="bg-white rounded-xl border border-gray-100 p-12 text-center">
+        <i class="fas fa-calendar-times text-5xl text-gray-200 mb-4"></i>
+        <h3 class="text-lg font-semibold text-gray-700 mb-2">Noch keine Anmeldungen</h3>
+        <p class="text-gray-500 mb-6 text-sm">Sie haben sich noch für keinen Aussteller eingeschrieben.</p>
+        <a href="?page=registration" class="inline-flex items-center px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
             <i class="fas fa-plus-circle mr-2"></i>
             Jetzt einschreiben
         </a>
     </div>
     <?php else: ?>
     <!-- Registrierungen nach Zeitslot -->
-    <div class="space-y-6">
+    <div class="space-y-4">
         <?php 
         // Nach Slot gruppieren
         $slotGroups = [];
@@ -111,59 +111,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
         foreach ($slotGroups as $slotNumber => $registrations):
             $slot = $registrations[0];
         ?>
-        <div class="bg-white rounded-xl shadow-md overflow-hidden">
+        <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
             <!-- Slot Header -->
-            <div class="bg-gradient-to-r from-purple-500 to-indigo-500 text-white px-6 py-4">
+            <div class="bg-gray-50 border-b border-gray-100 px-5 py-3">
                 <div class="flex items-center justify-between flex-wrap gap-2">
                     <div class="flex items-center">
-                        <div class="w-12 h-12 bg-white/20 backdrop-blur-sm rounded-lg flex items-center justify-center mr-4">
-                            <i class="fas fa-clock text-2xl"></i>
+                        <div class="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center mr-3">
+                            <i class="fas fa-clock text-emerald-600"></i>
                         </div>
                         <div>
-                            <h3 class="text-xl font-bold"><?php echo htmlspecialchars($slot['slot_name']); ?></h3>
-                            <p class="text-sm text-purple-100">
+                            <h3 class="font-semibold text-gray-800"><?php echo htmlspecialchars($slot['slot_name']); ?></h3>
+                            <p class="text-xs text-gray-500">
                                 <?php echo date('H:i', strtotime($slot['start_time'])); ?> - 
                                 <?php echo date('H:i', strtotime($slot['end_time'])); ?> Uhr
                             </p>
                         </div>
                     </div>
-                    <div class="bg-white/20 backdrop-blur-sm rounded-lg px-4 py-2">
-                        <span class="text-sm font-semibold"><?php echo count($registrations); ?> Anmeldung(en)</span>
-                    </div>
+                    <span class="text-xs font-medium text-gray-500 bg-gray-200 px-2 py-1 rounded">
+                        <?php echo count($registrations); ?> Anmeldung(en)
+                    </span>
                 </div>
             </div>
 
             <!-- Slot Content -->
-            <div class="p-6 space-y-4">
+            <div class="p-5 space-y-3">
                 <?php foreach ($registrations as $reg): ?>
-                <div class="border border-gray-200 rounded-lg p-4 hover:border-purple-300 hover:shadow-md transition">
+                <div class="border border-gray-100 rounded-lg p-4 hover:border-emerald-200 hover:bg-gray-50 transition">
                     <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div class="flex-1">
-                            <div class="flex items-center gap-3 mb-2">
-                                <h4 class="text-lg font-semibold text-gray-800">
+                            <div class="flex items-center gap-2 mb-1">
+                                <h4 class="font-semibold text-gray-800">
                                     <?php echo htmlspecialchars($reg['exhibitor_name']); ?>
                                 </h4>
                                 <?php if ($reg['registration_type'] === 'automatic'): ?>
-                                    <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-800">
-                                        <i class="fas fa-robot mr-1"></i>Automatisch zugeteilt
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                                        <i class="fas fa-robot mr-1"></i>Auto
                                     </span>
                                 <?php endif; ?>
                             </div>
-                            <p class="text-sm text-gray-600 mb-3">
+                            <p class="text-sm text-gray-500">
                                 <?php echo htmlspecialchars($reg['short_description'] ?? ''); ?>
                             </p>
-                            <div class="flex flex-wrap gap-2 text-xs text-gray-500">
-                                <span class="flex items-center">
-                                    <i class="fas fa-calendar-alt mr-1"></i>
-                                    Angemeldet am <?php echo formatDateTime($reg['registered_at']); ?>
-                                </span>
-                            </div>
                         </div>
 
                         <div class="flex flex-col sm:flex-row gap-2">
                             <button onclick="openExhibitorModal(<?php echo $reg['exhibitor_id']; ?>)" 
-                                    class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition whitespace-nowrap">
-                                <i class="fas fa-info-circle mr-2"></i>Details
+                                    class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm">
+                                <i class="fas fa-info-circle mr-1"></i>Details
                             </button>
                             
                             <?php if ($reg['registration_type'] === 'manual' && getRegistrationStatus() === 'open'): ?>
@@ -171,8 +165,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                                 <input type="hidden" name="registration_id" value="<?php echo $reg['id']; ?>">
                                 <button type="submit" 
                                         name="unregister"
-                                        class="px-4 py-2 bg-red-100 text-red-700 rounded-lg hover:bg-red-200 transition whitespace-nowrap">
-                                    <i class="fas fa-times-circle mr-2"></i>Abmelden
+                                        class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition text-sm">
+                                    <i class="fas fa-times-circle mr-1"></i>Abmelden
                                 </button>
                             </form>
                             <?php endif; ?>
@@ -186,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
     </div>
 
     <!-- Info Box -->
-    <div class="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-6">
+    <div class="mt-6 bg-blue-50 border border-blue-100 rounded-xl p-5">
         <h4 class="font-semibold text-blue-900 mb-3 flex items-center">
             <i class="fas fa-info-circle mr-2"></i>
             Wichtige Hinweise

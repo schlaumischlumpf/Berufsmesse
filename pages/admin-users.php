@@ -4,6 +4,128 @@
 // Datenbankverbindung holen
 $db = getDB();
 
+// Handle CSV Import
+$csvImportResult = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
+    if (!empty($_FILES['csv_file']['name'])) {
+        $file = $_FILES['csv_file'];
+        
+        // Prüfe ob Datei valide ist
+        if ($file['error'] === UPLOAD_ERR_OK && in_array(pathinfo($file['name'], PATHINFO_EXTENSION), ['csv', 'txt'])) {
+            $handle = fopen($file['tmp_name'], 'r');
+            if ($handle) {
+                $importResult = [
+                    'imported' => 0,
+                    'skipped' => 0,
+                    'errors' => []
+                ];
+                
+                // Erste Zeile überspringen (Header)
+                fgetcsv($handle);
+                
+                $rowNumber = 2;
+                while (($row = fgetcsv($handle)) !== false) {
+                    // Spalten: firstname, lastname, username, email, role, class, password
+                    if (count($row) < 6) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Zu wenige Spalten";
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    $firstname = sanitize(trim($row[0]));
+                    $lastname = sanitize(trim($row[1]));
+                    $username = sanitize(trim($row[2]));
+                    $email = sanitize(trim($row[3]));
+                    $role = sanitize(trim($row[4]));
+                    $class = sanitize(trim($row[5] ?? ''));
+                    
+                    // Generiere Passwort wenn nicht vorhanden oder leer
+                    if (isset($row[6]) && !empty(trim($row[6]))) {
+                        $password = trim($row[6]);
+                        $generatePassword = false;
+                    } else {
+                        // Generiere sicheres Passwort
+                        $password = bin2hex(random_bytes(6)); // 12 Zeichen hexadezimal
+                        $generatePassword = true;
+                    }
+                    
+                    // Validierungen
+                    if (empty($firstname) || empty($lastname) || empty($username) || empty($role)) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Erforderliche Felder fehlen (Vorname, Nachname, Benutzername, Rolle)";
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    // Prüfe ob Username bereits existiert
+                    $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
+                    $stmt->execute([$username]);
+                    if ($stmt->fetch()) {
+                        $importResult['skipped']++;
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    // Validiere Rolle
+                    $allowedRoles = ['student', 'teacher', 'admin'];
+                    if (!in_array($role, $allowedRoles, true)) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Ungültige Rolle '$role'";
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    // Sicherheit: Nur Admins können Admin-Accounts über CSV erstellen
+                    if ($role === 'admin' && !isAdmin()) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Nur Administratoren können Admin-Accounts erstellen";
+                        $rowNumber++;
+                        continue;
+                    }
+                    
+                    // Benutzer erstellen
+                    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                    // Force password change for all admin-created/imported accounts
+                    $force_password_change = 1;
+                    
+                    try {
+                        $stmt = $db->prepare("INSERT INTO users (firstname, lastname, username, email, password, role, class, must_change_password) 
+                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                        if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change])) {
+                            $importResult['imported']++;
+                            // Speichere generiertes Passwort für Export
+                            if ($generatePassword) {
+                                if (!isset($importResult['generated_passwords'])) {
+                                    $importResult['generated_passwords'] = [];
+                                }
+                                $importResult['generated_passwords'][] = [
+                                    'username' => $username,
+                                    'firstname' => $firstname,
+                                    'lastname' => $lastname,
+                                    'password' => $password
+                                ];
+                            }
+                        }
+                    } catch (PDOException $e) {
+                        $importResult['errors'][] = "Zeile $rowNumber: Datenbankfehler - " . $e->getMessage();
+                    }
+                    
+                    $rowNumber++;
+                }
+                
+                fclose($handle);
+                $csvImportResult = $importResult;
+                
+                // Nachricht vorbereiten
+                if ($importResult['imported'] > 0) {
+                    $message = ['type' => 'success', 'text' => $importResult['imported'] . ' Benutzer importiert, ' . $importResult['skipped'] . ' übersprungen'];
+                }
+            }
+        } else {
+            $message = ['type' => 'error', 'text' => 'Ungültige Datei. Bitte eine CSV-Datei hochladen.'];
+        }
+    } else {
+        $message = ['type' => 'error', 'text' => 'Keine Datei ausgewählt'];
+    }
+}
+
 // Handle User Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['create_user'])) {
@@ -34,10 +156,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class) 
-                                      VALUES (?, ?, ?, ?, ?, ?, ?)");
+                // Force password change on first login for admin-created accounts
+                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                 try {
-                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class])) {
+                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1])) {
                         $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
                     } else {
                         // fetch error info for logging
@@ -67,9 +190,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
             
-            $stmt = $db->prepare("UPDATE users SET password = ? WHERE id = ?");
+            $stmt = $db->prepare("UPDATE users SET password = ?, must_change_password = 1 WHERE id = ?");
             if ($stmt->execute([$hashedPassword, $userId])) {
-                $message = ['type' => 'success', 'text' => 'Passwort erfolgreich zurückgesetzt'];
+                $message = ['type' => 'success', 'text' => 'Passwort erfolgreich zurückgesetzt. Der Benutzer muss es beim nächsten Login ändern.'];
             } else {
                 $message = ['type' => 'error', 'text' => 'Fehler beim Zurücksetzen des Passworts'];
             }
@@ -127,16 +250,16 @@ $stats['teachers'] = $stmt->fetch()['count'];
 
 <div class="space-y-6">
     <?php if (isset($message)): ?>
-    <div class="animate-pulse">
+    <div class="mb-4">
         <?php if ($message['type'] === 'success'): ?>
-            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
+            <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-lg">
                 <div class="flex items-center">
-                    <i class="fas fa-check-circle text-green-500 mr-3"></i>
-                    <p class="text-green-700"><?php echo $message['text']; ?></p>
+                    <i class="fas fa-check-circle text-emerald-500 mr-3"></i>
+                    <p class="text-emerald-700"><?php echo $message['text']; ?></p>
                 </div>
             </div>
         <?php else: ?>
-            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
+            <div class="bg-red-50 border border-red-200 p-4 rounded-lg">
                 <div class="flex items-center">
                     <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
                     <p class="text-red-700"><?php echo $message['text']; ?></p>
@@ -147,16 +270,17 @@ $stats['teachers'] = $stmt->fetch()['count'];
     <?php endif; ?>
 
     <!-- Header -->
-    <div class="bg-white rounded-xl p-6 border-l-4 border-blue-600">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-            <div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-2">
-                    <i class="fas fa-users text-blue-600 mr-3"></i>
-                    Nutzerverwaltung
-                </h2>
-                <p class="text-gray-600">Benutzer erstellen, bearbeiten und löschen</p>
-            </div>
-            <button onclick="openCreateUserModal()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold flex items-center gap-2">
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-xl font-semibold text-gray-800">Nutzerverwaltung</h2>
+            <p class="text-sm text-gray-500 mt-1">Benutzer erstellen, bearbeiten und löschen</p>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="openImportCsvModal()" class="px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center gap-2">
+                <i class="fas fa-file-upload"></i>
+                CSV Import
+            </button>
+            <button onclick="openCreateUserModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
                 <i class="fas fa-user-plus"></i>
                 Neuer Benutzer
             </button>
@@ -164,40 +288,46 @@ $stats['teachers'] = $stmt->fetch()['count'];
     </div>
 
     <!-- Statistics -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-purple-100 text-sm mb-1">Administratoren</p>
-                    <p class="text-3xl font-bold"><?php echo $stats['admins']; ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Administratoren</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo $stats['admins']; ?></p>
                 </div>
-                <i class="fas fa-user-shield text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                    <i class="fas fa-user-shield text-purple-500"></i>
+                </div>
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-blue-100 text-sm mb-1">Schüler</p>
-                    <p class="text-3xl font-bold"><?php echo $stats['students']; ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Schüler</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo $stats['students']; ?></p>
                 </div>
-                <i class="fas fa-user-graduate text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <i class="fas fa-user-graduate text-blue-500"></i>
+                </div>
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-green-100 text-sm mb-1">Lehrer</p>
-                    <p class="text-3xl font-bold"><?php echo $stats['teachers']; ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Lehrer</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo $stats['teachers']; ?></p>
                 </div>
-                <i class="fas fa-chalkboard-teacher text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <i class="fas fa-chalkboard-teacher text-emerald-500"></i>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- Users Table -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="bg-gray-50 border-b border-gray-200">
@@ -279,6 +409,100 @@ $stats['teachers'] = $stmt->fetch()['count'];
                 </tbody>
             </table>
         </div>
+    </div>
+</div>
+
+<!-- Import CSV Modal -->
+<div id="importCsvModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Benutzer aus CSV importieren</h3>
+        </div>
+        
+        <form method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p class="text-sm text-blue-900">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    <strong>CSV-Format:</strong> firstname, lastname, username, email, role, class, password (optional)
+                </p>
+                <p class="text-sm text-blue-700 mt-2">
+                    Rollen: <code class="bg-white px-2 py-1 rounded">student</code>, <code class="bg-white px-2 py-1 rounded">teacher</code>, <code class="bg-white px-2 py-1 rounded">admin</code>
+                </p>
+                <p class="text-sm text-blue-700 mt-2">
+                    Wenn kein Passwort angegeben wird, wird ein automatisches generiert und zwinging eine Passwortänderung beim Login.
+                </p>
+                <p class="text-sm text-blue-700 mt-3">
+                    <a href="../../example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
+                        <i class="fas fa-download mr-1"></i>Beispiel-CSV herunterladen
+                    </a>
+                </p>
+            </div>
+            
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">CSV-Datei *</label>
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition">
+                    <input type="file" id="csvFile" name="csv_file" accept=".csv,.txt" required class="hidden">
+                    <label for="csvFile" class="cursor-pointer">
+                        <i class="fas fa-cloud-upload-alt text-4xl text-gray-300 mb-3"></i>
+                        <p class="text-gray-600">
+                            <span class="text-blue-600 font-semibold">Klick zum Durchsuchen</span> oder Datei hierher ziehen
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">CSV oder TXT-Datei</p>
+                    </label>
+                </div>
+                <p id="fileName" class="text-sm text-gray-600 mt-2"></p>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeImportCsvModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Abbrechen
+                </button>
+                <button type="submit" name="import_csv" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    <i class="fas fa-upload mr-2"></i>Importieren
+                </button>
+            </div>
+        </form>
+        
+        <?php if ($csvImportResult): ?>
+        <div class="bg-gray-50 border-t border-gray-200 p-6 space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+                <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <p class="text-sm text-gray-600">Importiert</p>
+                    <p class="text-2xl font-bold text-green-600"><?php echo $csvImportResult['imported']; ?></p>
+                </div>
+                <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                    <p class="text-sm text-gray-600">Übersprungen</p>
+                    <p class="text-2xl font-bold text-yellow-600"><?php echo $csvImportResult['skipped']; ?></p>
+                </div>
+            </div>
+            
+            <?php if (!empty($csvImportResult['errors'])): ?>
+            <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                <p class="font-semibold text-red-700 mb-2">Fehler:</p>
+                <ul class="text-sm text-red-600 space-y-1">
+                    <?php foreach (array_slice($csvImportResult['errors'], 0, 5) as $error): ?>
+                    <li><i class="fas fa-exclamation-circle mr-2"></i><?php echo htmlspecialchars($error); ?></li>
+                    <?php endforeach; ?>
+                    <?php if (count($csvImportResult['errors']) > 5): ?>
+                    <li class="text-gray-500">... und <?php echo count($csvImportResult['errors']) - 5; ?> weitere Fehler</li>
+                    <?php endif; ?>
+                </ul>
+            </div>
+            <?php endif; ?>
+            
+            <?php if (!empty($csvImportResult['generated_passwords'])): ?>
+            <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p class="font-semibold text-blue-700 mb-2">
+                    <i class="fas fa-key mr-2"></i><?php echo count($csvImportResult['generated_passwords']); ?> Passwörter generiert
+                </p>
+                <p class="text-sm text-blue-600 mb-3">Diese Benutzer müssen ihr Passwort beim ersten Login ändern.</p>
+                <button type="button" onclick="downloadPasswordsFile()" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition text-sm font-medium">
+                    <i class="fas fa-download mr-2"></i>Passwörter herunterladen (CSV)
+                </button>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
     </div>
 </div>
 
@@ -415,6 +639,53 @@ $stats['teachers'] = $stmt->fetch()['count'];
 </div>
 
 <script>
+// Handle file drag and drop for CSV upload
+const csvFile = document.getElementById('csvFile');
+const fileNameDisplay = document.getElementById('fileName');
+
+if (csvFile) {
+    csvFile.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) {
+            fileNameDisplay.textContent = '✓ ' + e.target.files[0].name;
+        }
+    });
+    
+    // Drag and drop
+    const dropArea = csvFile.parentElement.parentElement;
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false);
+    });
+    
+    function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+    }
+    
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, () => {
+            dropArea.classList.add('border-blue-500', 'bg-blue-50');
+        }, false);
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, () => {
+            dropArea.classList.remove('border-blue-500', 'bg-blue-50');
+        }, false);
+    });
+    
+    dropArea.addEventListener('drop', handleDrop, false);
+    
+    function handleDrop(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        csvFile.files = files;
+        
+        if (files.length > 0) {
+            fileNameDisplay.textContent = '✓ ' + files[0].name;
+        }
+    }
+}
+
 function openCreateUserModal() {
     document.getElementById('createUserModal').classList.remove('hidden');
     document.getElementById('createUserModal').classList.add('flex');
@@ -423,6 +694,37 @@ function openCreateUserModal() {
 function closeCreateUserModal() {
     document.getElementById('createUserModal').classList.add('hidden');
     document.getElementById('createUserModal').classList.remove('flex');
+}
+
+function openImportCsvModal() {
+    document.getElementById('importCsvModal').classList.remove('hidden');
+    document.getElementById('importCsvModal').classList.add('flex');
+}
+
+function closeImportCsvModal() {
+    document.getElementById('importCsvModal').classList.add('hidden');
+    document.getElementById('importCsvModal').classList.remove('flex');
+    document.getElementById('csvFile').value = '';
+}
+
+function downloadPasswordsFile(passwordsData) {
+    const passwords = <?php echo json_encode($csvImportResult['generated_passwords'] ?? []); ?>;
+    if (passwords.length === 0) return;
+    
+    let csvContent = "data:text/csv;charset=utf-8,";
+    csvContent += "Benutzername,Vorname,Nachname,Passwort\n";
+    
+    passwords.forEach(user => {
+        csvContent += `${user.username},${user.firstname},${user.lastname},${user.password}\n`;
+    });
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `berufsmesse_passwörter_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
 }
 
 function openResetPasswordModal(userId, userName, userRole) {
@@ -480,6 +782,7 @@ document.addEventListener('keydown', function(e) {
         closeCreateUserModal();
         closeResetPasswordModal();
         closeDeleteUserModal();
+        closeImportCsvModal();
     }
 });
 </script>

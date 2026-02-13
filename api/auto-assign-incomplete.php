@@ -1,8 +1,11 @@
 <?php
 /**
  * Auto-Zuweisung für unvollständige Registrierungen
- * Verteilt Schüler, die sich nicht für alle 3 Slots registriert haben,
- * automatisch auf die Aussteller mit den wenigsten Teilnehmern
+ * 
+ * PHASE 1: Schüler mit Anmeldungen (timeslot_id = NULL) 
+ *          → Slots bei ihren gewählten Ausstellern zuweisen
+ * PHASE 2: Schüler ohne vollständige Slots 
+ *          → auf beliebige Aussteller verteilen
  */
 
 session_start();
@@ -25,12 +28,28 @@ try {
     $assignedCount = 0;
     $errors = [];
     
-    // Alle aktiven Schüler laden
-    $stmt = $db->query("SELECT id FROM users WHERE role = 'student'");
-    $students = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    // ============================================================
+    // PHASE 1: Schüler mit Anmeldungen (timeslot_id = NULL) 
+    //          → Slots bei ihren gewählten Ausstellern zuweisen
+    // ============================================================
     
-    foreach ($students as $studentId) {
-        // Prüfen, für welche verwalteten Slots der Schüler bereits registriert ist
+    $stmt = $db->query("
+        SELECT r.id as registration_id, r.user_id, r.exhibitor_id, e.name as exhibitor_name, e.room_id
+        FROM registrations r
+        JOIN exhibitors e ON r.exhibitor_id = e.id
+        WHERE r.timeslot_id IS NULL
+        AND e.active = 1
+        AND e.room_id IS NOT NULL
+        ORDER BY r.registered_at ASC
+    ");
+    $pendingRegistrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    foreach ($pendingRegistrations as $reg) {
+        $studentId = $reg['user_id'];
+        $exhibitorId = $reg['exhibitor_id'];
+        $roomId = $reg['room_id'];
+        
+        // Welche Slots hat der Schüler bereits?
         $stmt = $db->prepare("
             SELECT t.slot_number 
             FROM registrations r
@@ -38,86 +57,129 @@ try {
             WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
         ");
         $stmt->execute([$studentId]);
-        $registeredSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $usedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
-        // Fehlende Slots ermitteln
-        $missingSlots = array_diff($managedSlots, $registeredSlots);
+        $availableSlots = array_diff($managedSlots, $usedSlots);
         
-        if (empty($missingSlots)) {
-            continue; // Schüler hat alle 3 Slots
+        if (empty($availableSlots)) {
+            $stmt = $db->prepare("DELETE FROM registrations WHERE id = ?");
+            $stmt->execute([$reg['registration_id']]);
+            $errors[] = "Schüler $studentId hat bereits 3 Slots - überschüssige Anmeldung entfernt";
+            continue;
         }
         
-        // Für jeden fehlenden Slot den Aussteller mit den wenigsten Teilnehmern finden
-        foreach ($missingSlots as $slotNumber) {
-            // Timeslot ID ermitteln
+        // Besten verfügbaren Slot finden
+        $bestSlot = null;
+        $lowestCount = PHP_INT_MAX;
+        
+        foreach ($availableSlots as $slotNumber) {
             $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
             $stmt->execute([$slotNumber]);
             $timeslotId = $stmt->fetchColumn();
             
-            if (!$timeslotId) {
-                $errors[] = "Slot $slotNumber nicht gefunden";
-                continue;
-            }
+            if (!$timeslotId) continue;
             
-            // Aussteller mit wenigsten Teilnehmern in diesem Slot finden
-            // die noch nicht ihre Kapazität erreicht haben
+            $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
+            $stmt->execute([$exhibitorId, $timeslotId]);
+            $currentCount = $stmt->fetchColumn();
+            
+            $slotCapacity = getRoomSlotCapacity($roomId, $timeslotId);
+            
+            if ($slotCapacity > 0 && $currentCount < $slotCapacity && $currentCount < $lowestCount) {
+                $bestSlot = ['slot_number' => $slotNumber, 'timeslot_id' => $timeslotId];
+                $lowestCount = $currentCount;
+            }
+        }
+        
+        if ($bestSlot) {
+            $stmt = $db->prepare("UPDATE registrations SET timeslot_id = ?, registration_type = 'automatic' WHERE id = ?");
+            if ($stmt->execute([$bestSlot['timeslot_id'], $reg['registration_id']])) {
+                $assignedCount++;
+            }
+        } else {
+            $errors[] = "Kein freier Slot für Schüler $studentId bei {$reg['exhibitor_name']}";
+        }
+    }
+    
+    // ============================================================
+    // PHASE 2: Schüler ohne vollständige Slots verteilen
+    // ============================================================
+    
+    $stmt = $db->query("
+        SELECT u.id,
+               COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number IN (1,3,5) THEN 1 ELSE 0 END), 0) as assigned_count
+        FROM users u
+        LEFT JOIN registrations r ON u.id = r.user_id
+        LEFT JOIN timeslots t ON r.timeslot_id = t.id
+        WHERE u.role = 'student'
+        GROUP BY u.id
+        HAVING assigned_count < 3
+        ORDER BY assigned_count DESC
+    ");
+    $studentsNeedingSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    
+    foreach ($studentsNeedingSlots as $student) {
+        $studentId = $student['id'];
+        
+        $stmt = $db->prepare("
+            SELECT t.slot_number 
+            FROM registrations r
+            JOIN timeslots t ON r.timeslot_id = t.id
+            WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+        ");
+        $stmt->execute([$studentId]);
+        $assignedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ?");
+        $stmt->execute([$studentId]);
+        $existingExhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        $missingSlots = array_diff($managedSlots, $assignedSlots);
+        
+        foreach ($missingSlots as $slotNumber) {
+            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
+            $stmt->execute([$slotNumber]);
+            $timeslotId = $stmt->fetchColumn();
+            
+            if (!$timeslotId) continue;
+            
             $stmt = $db->prepare("
-                SELECT e.id, e.name, e.room_id,
-                       COUNT(DISTINCT reg.user_id) as current_count
+                SELECT e.id, e.name, e.room_id, COUNT(DISTINCT reg.user_id) as current_count
                 FROM exhibitors e
-                LEFT JOIN rooms r ON e.room_id = r.id
                 LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
                 WHERE e.active = 1 AND e.room_id IS NOT NULL
-                GROUP BY e.id
+                GROUP BY e.id, e.name, e.room_id
                 ORDER BY current_count ASC, RAND()
             ");
             $stmt->execute([$timeslotId]);
             $exhibitors = $stmt->fetchAll();
             
-            $exhibitor = null;
+            $selectedExhibitor = null;
             
-            // Aussteller finden, der noch Kapazität hat und Schüler noch nicht hat
             foreach ($exhibitors as $ex) {
-                // Prüfen ob Schüler bereits bei diesem Aussteller ist
-                $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
-                $stmt->execute([$studentId, $ex['id']]);
-                if ($stmt->fetchColumn() > 0) {
-                    continue; // Schüler bereits bei diesem Aussteller
-                }
+                if (in_array($ex['id'], $existingExhibitors)) continue;
                 
-                // Kapazität für diesen Slot prüfen (Issue #4)
                 $slotCapacity = getRoomSlotCapacity($ex['room_id'], $timeslotId);
                 if ($slotCapacity > 0 && $ex['current_count'] < $slotCapacity) {
-                    $exhibitor = $ex;
+                    $selectedExhibitor = $ex;
                     break;
                 }
             }
             
-            if (!$exhibitor) {
-                $errors[] = "Kein verfügbarer Aussteller für Slot $slotNumber (Schüler ID: $studentId)";
-                continue;
-            }
-            
-            // Registrierung erstellen
-            $stmt = $db->prepare("
-                INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type)
-                VALUES (?, ?, ?, 'automatic')
-            ");
-            
-            if ($stmt->execute([$studentId, $exhibitor['id'], $timeslotId])) {
-                $assignedCount++;
+            if ($selectedExhibitor) {
+                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'automatic')");
+                if ($stmt->execute([$studentId, $selectedExhibitor['id'], $timeslotId])) {
+                    $assignedCount++;
+                    $existingExhibitors[] = $selectedExhibitor['id'];
+                }
             } else {
-                $errors[] = "Fehler bei Zuweisung: Schüler $studentId zu " . $exhibitor['name'] . " (Slot $slotNumber)";
+                $errors[] = "Kein verfügbarer Aussteller für Slot $slotNumber (Schüler $studentId)";
             }
         }
     }
     
     // Statistik erstellen
-    $stmt = $db->query("
-        SELECT COUNT(*) as total
-        FROM users 
-        WHERE role = 'student'
-    ");
+    $stmt = $db->query("SELECT COUNT(*) FROM users WHERE role = 'student'");
     $totalStudents = $stmt->fetchColumn();
     
     $stmt = $db->query("

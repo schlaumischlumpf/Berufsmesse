@@ -37,59 +37,52 @@ foreach ($exhibitors as $ex) {
 
 <div class="space-y-6">
     <!-- Header -->
-    <div class="bg-white rounded-xl p-6 border-l-4 border-blue-600">
-        <div class="flex items-center justify-between flex-wrap gap-4">
-            <div>
-                <h2 class="text-2xl font-bold text-gray-800 mb-2">
-                    <i class="fas fa-map-marker-alt text-blue-600 mr-3"></i>
-                    Raum-Zuteilung
-                </h2>
-                <p class="text-gray-600">Ziehen Sie Aussteller auf Räume, um sie zuzuordnen</p>
-            </div>
-            <div class="flex items-center gap-4">
-                <div class="text-right">
-                    <div class="text-3xl font-bold text-blue-600">
-                        <?php echo count($rooms); ?>
-                    </div>
-                    <div class="text-sm text-gray-600">Verfügbare Räume</div>
-                </div>
-                <button onclick="openAddRoomModal()" class="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-semibold flex items-center gap-2">
-                    <i class="fas fa-plus"></i>
-                    Neuer Raum
-                </button>
-            </div>
+    <div class="flex items-center justify-between">
+        <div>
+            <h2 class="text-xl font-semibold text-gray-800">Raum-Zuteilung</h2>
+            <p class="text-sm text-gray-500 mt-1">Ziehen Sie Aussteller auf Räume, um sie zuzuordnen</p>
         </div>
+        <button onclick="openAddRoomModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
+            <i class="fas fa-plus"></i>
+            Neuer Raum
+        </button>
     </div>
 
     <!-- Statistics -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-blue-100 text-sm mb-1">Aussteller gesamt</p>
-                    <p class="text-3xl font-bold"><?php echo count($exhibitors); ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Aussteller gesamt</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($exhibitors); ?></p>
                 </div>
-                <i class="fas fa-building text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <i class="fas fa-building text-blue-500"></i>
+                </div>
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-green-100 text-sm mb-1">Zugeordnet</p>
-                    <p class="text-3xl font-bold"><?php echo count($exhibitors) - count($unassignedExhibitors); ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Zugeordnet</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($exhibitors) - count($unassignedExhibitors); ?></p>
                 </div>
-                <i class="fas fa-check-circle text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <i class="fas fa-check-circle text-emerald-500"></i>
+                </div>
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl p-6 text-white">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-orange-100 text-sm mb-1">Nicht zugeordnet</p>
-                    <p class="text-3xl font-bold"><?php echo count($unassignedExhibitors); ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Nicht zugeordnet</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($unassignedExhibitors); ?></p>
                 </div>
-                <i class="fas fa-exclamation-triangle text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
+                    <i class="fas fa-exclamation-triangle text-amber-500"></i>
+                </div>
             </div>
         </div>
     </div>
@@ -97,11 +90,11 @@ foreach ($exhibitors as $ex) {
     <!-- Two Column Layout -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <!-- Left: Unassigned Exhibitors -->
-        <div class="bg-white rounded-xl p-6 border-l-4 border-orange-600">
-            <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
-                <i class="fas fa-list text-orange-600 mr-3"></i>
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-list text-amber-500 mr-2"></i>
                 Nicht zugeordnete Aussteller
-                <span class="ml-auto text-sm font-normal text-gray-600">
+                <span class="ml-auto text-sm font-normal text-gray-500">
                     <?php echo count($unassignedExhibitors); ?> Aussteller
                 </span>
             </h3>
@@ -132,11 +125,11 @@ foreach ($exhibitors as $ex) {
         </div>
 
         <!-- Right: Rooms with Assigned Exhibitors -->
-        <div class="bg-white rounded-xl p-6 border-l-4 border-blue-600">
-            <h3 class="text-xl font-bold text-gray-800 mb-6 flex items-center">
-                <i class="fas fa-door-open text-blue-600 mr-3"></i>
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
+            <h3 class="text-base font-semibold text-gray-800 mb-4 flex items-center">
+                <i class="fas fa-door-open text-blue-500 mr-2"></i>
                 Räume
-                <span class="ml-auto text-sm font-normal text-gray-600">
+                <span class="ml-auto text-sm font-normal text-gray-500">
                     <?php echo count($rooms); ?> Räume
                 </span>
             </h3>
@@ -163,11 +156,29 @@ foreach ($exhibitors as $ex) {
                                         <?php endif; ?>
                                         • Max. <?php echo $room['capacity']; ?> Pers.
                                     </p>
+                                    <?php if (!empty($room['equipment'])): ?>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <?php foreach (explode(',', $room['equipment']) as $equip): ?>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-blue-50 text-blue-600 border border-blue-100">
+                                                <?php echo htmlspecialchars(trim($equip)); ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
-                            <span class="text-sm font-semibold text-gray-600">
-                                <?php echo isset($assignedExhibitors[$room['id']]) ? count($assignedExhibitors[$room['id']]) : 0; ?> zugeordnet
-                            </span>
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm font-semibold text-gray-600">
+                                    <?php echo isset($assignedExhibitors[$room['id']]) ? count($assignedExhibitors[$room['id']]) : 0; ?> zugeordnet
+                                </span>
+                                <?php if (!isset($assignedExhibitors[$room['id']]) || count($assignedExhibitors[$room['id']]) === 0): ?>
+                                    <button onclick="deleteRoom(<?php echo $room['id']; ?>, '<?php echo htmlspecialchars($room['room_number'], ENT_QUOTES); ?>')" 
+                                            class="text-red-500 hover:text-red-700 transition px-2 py-1 rounded hover:bg-red-50" 
+                                            title="Raum löschen">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                <?php endif; ?>
+                            </div>
                         </div>
 
                         <!-- Drop Zone -->
@@ -209,19 +220,13 @@ foreach ($exhibitors as $ex) {
     </div>
 
     <!-- Quick Actions -->
-    <div class="bg-white rounded-xl p-6 border-l-4 border-gray-600">
-        <h3 class="text-lg font-bold text-gray-800 mb-4">
-            <i class="fas fa-tools text-blue-600 mr-2"></i>
-            Aktionen
-        </h3>
-        <div class="flex flex-wrap gap-3">
-            <button onclick="clearAllAssignments()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition font-semibold">
-                <i class="fas fa-trash mr-2"></i>Alle Zuordnungen löschen
-            </button>
-            <button onclick="location.reload()" class="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition font-semibold">
-                <i class="fas fa-sync mr-2"></i>Ansicht aktualisieren
-            </button>
-        </div>
+    <div class="flex flex-wrap gap-3">
+        <button onclick="clearAllAssignments()" class="px-4 py-2 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition font-medium">
+            <i class="fas fa-trash mr-2"></i>Alle Zuordnungen löschen
+        </button>
+        <button onclick="location.reload()" class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition font-medium">
+            <i class="fas fa-sync mr-2"></i>Aktualisieren
+        </button>
     </div>
 </div>
 
@@ -291,6 +296,42 @@ foreach ($exhibitors as $ex) {
                                placeholder="Max. Personen">
                     </div>
                 </div>
+
+                <!-- Equipment (Issue #17) -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        <i class="fas fa-tools text-gray-400 mr-1"></i> Ausstattung
+                    </label>
+                    <div class="flex flex-wrap gap-2 mb-2" id="equipmentCheckboxes">
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Beamer" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-video text-gray-400 mr-1"></i> Beamer
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Smartboard" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-chalkboard text-gray-400 mr-1"></i> Smartboard
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Whiteboard" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-chalkboard-teacher text-gray-400 mr-1"></i> Whiteboard
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Lautsprecher" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-volume-up text-gray-400 mr-1"></i> Lautsprecher
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="WLAN" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-wifi text-gray-400 mr-1"></i> WLAN
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Steckdosen" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-plug text-gray-400 mr-1"></i> Steckdosen
+                        </label>
+                    </div>
+                    <input type="text" id="equipment_custom" name="equipment_custom"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                           placeholder="Weitere Ausstattung (kommagetrennt)">
+                </div>
             </div>
 
             <div class="mt-8 flex gap-3">
@@ -329,7 +370,8 @@ document.getElementById('addRoomForm').addEventListener('submit', function(e) {
         room_name: document.getElementById('room_name').value,
         building: document.getElementById('building').value,
         floor: document.getElementById('floor').value,
-        capacity: document.getElementById('capacity').value
+        capacity: document.getElementById('capacity').value,
+        equipment: getSelectedEquipment()
     };
     
     fetch('api/add-room.php', {
@@ -500,6 +542,49 @@ function clearAllAssignments() {
         console.error('Error:', error);
         showNotification('error', 'Fehler beim Löschen');
     });
+}
+
+// Delete Unused Room
+function deleteRoom(roomId, roomNumber) {
+    if (!confirm(`Möchten Sie den ungenutzten Raum "${roomNumber}" wirklich löschen?\n\nDieser Raum hat keine zugeordneten Aussteller und kann sicher gelöscht werden.`)) {
+        return;
+    }
+    
+    fetch('api/delete-room.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            room_id: roomId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('success', `Raum "${roomNumber}" wurde gelöscht!`);
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('error', data.message || 'Fehler beim Löschen des Raums');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('error', 'Fehler beim Löschen des Raums');
+    });
+}
+
+// Equipment-Auswahl sammeln (Issue #17)
+function getSelectedEquipment() {
+    const checked = [...document.querySelectorAll('input[name="equipment[]"]:checked')].map(cb => cb.value);
+    const custom = document.getElementById('equipment_custom')?.value?.trim();
+    if (custom) {
+        custom.split(',').forEach(item => {
+            const trimmed = item.trim();
+            if (trimmed && !checked.includes(trimmed)) checked.push(trimmed);
+        });
+    }
+    return checked.join(', ');
 }
 
 // Show Notification

@@ -13,6 +13,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
     updateSetting('event_date', $eventDate);
     updateSetting('max_registrations_per_student', $maxReg);
     
+    // Auto-Close Einstellung (Issue #12)
+    $autoClose = isset($_POST['auto_close_registration']) ? '1' : '0';
+    updateSetting('auto_close_registration', $autoClose);
+    
     $message = ['type' => 'success', 'text' => 'Einstellungen erfolgreich gespeichert'];
 }
 
@@ -29,6 +33,7 @@ $currentSettings = [
     'registration_end' => getSetting('registration_end'),
     'event_date' => getSetting('event_date'),
     'max_registrations_per_student' => getSetting('max_registrations_per_student', 3),
+    'auto_close_registration' => getSetting('auto_close_registration', '1'),
     'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL)
 ];
 ?>
@@ -46,10 +51,10 @@ $currentSettings = [
     <?php endif; ?>
 
     <!-- Settings Form -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4">
-            <h3 class="text-2xl font-bold flex items-center">
-                <i class="fas fa-cog mr-3"></i>
+    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                <i class="fas fa-cog text-emerald-500 mr-2"></i>
                 System-Einstellungen
             </h3>
         </div>
@@ -162,24 +167,42 @@ $currentSettings = [
                         Standard: 3 (ein Aussteller pro Zeitslot). Empfohlen wird dieser Wert beizubehalten.
                     </p>
                 </div>
+                
+                <!-- Auto-Close Toggle (Issue #12) -->
+                <div class="mt-6">
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" 
+                               name="auto_close_registration" 
+                               value="1"
+                               <?php echo $currentSettings['auto_close_registration'] === '1' ? 'checked' : ''; ?>
+                               class="w-5 h-5 text-emerald-500 rounded border-gray-300 focus:ring-emerald-400">
+                        <div>
+                            <span class="text-sm font-semibold text-gray-700">Einschreibung nach Zuteilung automatisch schliessen</span>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Nach der automatischen Zuteilung wird die Einschreibung automatisch geschlossen. Nur Admins können danach noch Änderungen vornehmen.
+                            </p>
+                        </div>
+                    </label>
+                </div>
             </div>
 
             <!-- Submit Button -->
-            <div class="flex justify-end pt-4 border-t border-gray-200">
+            <div class="flex justify-end pt-4 border-t border-gray-100">
                 <button type="submit" 
                         name="save_settings"
-                        class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-8 py-3 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition font-semibold shadow-lg">
-                    <i class="fas fa-save mr-2"></i>Einstellungen speichern
+                        class="bg-emerald-500 text-white px-6 py-2.5 rounded-lg hover:bg-emerald-600 transition font-medium">
+                    <i class="fas fa-save mr-2"></i>Speichern
                 </button>
             </div>
         </form>
     </div>
 
     <!-- QR Code Generator -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="bg-gradient-to-r from-green-600 to-teal-600 text-white px-6 py-4">
-            <h3 class="text-2xl font-bold flex items-center">
-                <i class="fas fa-qrcode mr-3"></i>
+    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-100">
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                <i class="fas fa-qrcode text-emerald-500 mr-2"></i>
                 QR-Code Generator
             </h3>
         </div>

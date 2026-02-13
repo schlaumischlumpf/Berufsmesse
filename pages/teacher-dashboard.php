@@ -268,7 +268,53 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
                     <li><i class="fas fa-check mr-2"></i>Sprechen Sie Schüler mit fehlenden Anmeldungen an</li>
                     <li><i class="fas fa-check mr-2"></i>Bei Fragen zur Registrierung wenden Sie sich an die Administratoren</li>
                 </ul>
+                <button onclick="startGuidedTour()" class="mt-4 text-sm text-amber-600 hover:text-amber-700 font-medium transition">
+                    <i class="fas fa-play-circle mr-1"></i>Tour starten
+                </button>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+// Start guided tour
+function startGuidedTour() {
+    const userRole = '<?php echo $_SESSION["role"] ?? "teacher"; ?>';
+    
+    if (typeof GuidedTour !== 'undefined') {
+        // Generate role-based steps
+        const steps = typeof generateTourSteps !== 'undefined' 
+            ? generateTourSteps(userRole)
+            : (window.berufsmesseTourSteps || []);
+        
+        const tour = new GuidedTour({
+            steps: steps,
+            role: userRole,
+                }
+            },
+            onSkip: () => {
+                if (typeof showToast !== 'undefined') {
+                    showToast('Tour übersprungen', 'info');
+                }
+            }
+        });
+        tour.reset(); // Allow restart
+        tour.start();
+    } else {
+        console.warn('GuidedTour nicht geladen');
+    }
+}
+
+// Auto-start tour if start_tour parameter is present
+document.addEventListener('DOMContentLoaded', () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('start_tour') === '1') {
+        // Remove parameter from URL
+        window.history.replaceState({}, '', window.location.pathname + '?page=teacher-dashboard');
+        // Start tour after a short delay
+        setTimeout(() => {
+            startGuidedTour();
+        }, 500);
+    }
+});
+</script>

@@ -102,6 +102,99 @@ try {
     $errors[] = "Fehler bei users.email: " . $e->getMessage();
 }
 
+// Migration 5: rooms.equipment Spalte hinzufügen (Issue #17)
+try {
+    $stmt = $db->query("SHOW COLUMNS FROM rooms LIKE 'equipment'");
+    if ($stmt->rowCount() === 0) {
+        $db->exec("ALTER TABLE rooms ADD COLUMN equipment VARCHAR(500) DEFAULT NULL COMMENT 'Raumausstattung (z.B. Beamer, Smartboard)' AFTER capacity");
+        $success[] = "Spalte 'rooms.equipment' erfolgreich hinzugefügt";
+    } else {
+        $success[] = "Spalte 'rooms.equipment' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei rooms.equipment: " . $e->getMessage();
+}
+
+// Migration 6: registrations.priority Spalte hinzufügen (Issue #16)
+try {
+    $stmt = $db->query("SHOW COLUMNS FROM registrations LIKE 'priority'");
+    if ($stmt->rowCount() === 0) {
+        $db->exec("ALTER TABLE registrations ADD COLUMN priority INT DEFAULT 0 COMMENT 'Priorität der Anmeldung (1=hoch, 2=mittel, 3=niedrig, 0=keine)' AFTER registration_type");
+        $success[] = "Spalte 'registrations.priority' erfolgreich hinzugefügt";
+    } else {
+        $success[] = "Spalte 'registrations.priority' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei registrations.priority: " . $e->getMessage();
+}
+
+// Migration 7: attendance Tabelle für QR-Code Anwesenheitsprüfung erstellen (Issue #15)
+try {
+    $stmt = $db->query("SHOW TABLES LIKE 'attendance'");
+    if ($stmt->rowCount() === 0) {
+        $db->exec("
+            CREATE TABLE attendance (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                exhibitor_id INT NOT NULL,
+                timeslot_id INT NOT NULL,
+                qr_token VARCHAR(64) NOT NULL COMMENT 'Temporärer QR-Token für diesen Slot',
+                checked_in_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY (exhibitor_id) REFERENCES exhibitors(id) ON DELETE CASCADE,
+                FOREIGN KEY (timeslot_id) REFERENCES timeslots(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_attendance (user_id, exhibitor_id, timeslot_id),
+                INDEX idx_qr_token (qr_token)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Anwesenheitsprüfung per QR-Code'
+        ");
+        $success[] = "Tabelle 'attendance' erfolgreich erstellt";
+    } else {
+        $success[] = "Tabelle 'attendance' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei attendance: " . $e->getMessage();
+}
+
+// Migration 8: qr_tokens Tabelle für temporäre QR-Codes (Issue #15)
+try {
+    $stmt = $db->query("SHOW TABLES LIKE 'qr_tokens'");
+    if ($stmt->rowCount() === 0) {
+        $db->exec("
+            CREATE TABLE qr_tokens (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                exhibitor_id INT NOT NULL,
+                timeslot_id INT NOT NULL,
+                token VARCHAR(64) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                expires_at TIMESTAMP NULL DEFAULT NULL,
+                FOREIGN KEY (exhibitor_id) REFERENCES exhibitors(id) ON DELETE CASCADE,
+                FOREIGN KEY (timeslot_id) REFERENCES timeslots(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_exhibitor_slot_token (exhibitor_id, timeslot_id),
+                INDEX idx_token (token)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Temporäre QR-Codes für Anwesenheitsprüfung'
+        ");
+        $success[] = "Tabelle 'qr_tokens' erfolgreich erstellt";
+    } else {
+        $success[] = "Tabelle 'qr_tokens' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei qr_tokens: " . $e->getMessage();
+}
+
+// Migration 9: settings für Einschreibeschluss-Automatik (Issue #12)
+try {
+    $stmt = $db->prepare("SELECT COUNT(*) FROM settings WHERE setting_key = 'auto_close_registration'");
+    $stmt->execute();
+    if ($stmt->fetchColumn() == 0) {
+        $db->exec("INSERT INTO settings (setting_key, setting_value) VALUES ('auto_close_registration', '1')");
+        $success[] = "Einstellung 'auto_close_registration' hinzugefügt";
+    } else {
+        $success[] = "Einstellung 'auto_close_registration' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei auto_close_registration setting: " . $e->getMessage();
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="de">

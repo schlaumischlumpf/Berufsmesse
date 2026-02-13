@@ -83,7 +83,7 @@ foreach ($stmt->fetchAll() as $cap) {
             <div>
                 <h3 class="font-bold text-blue-900 mb-2">Hinweise zur Nutzung</h3>
                 <ul class="text-sm text-blue-800 space-y-1">
-                    <li><i class="fas fa-check mr-2"></i>Die Standardkapazität wird automatisch aus der Raumkapazität berechnet (Raumkapazität ÷ 3)</li>
+                    <li><i class="fas fa-check mr-2"></i>Die Standardkapazität entspricht der vollen Raumkapazität für jeden Slot</li>
                     <li><i class="fas fa-check mr-2"></i>Sie können für jeden Slot individuelle Werte festlegen</li>
                     <li><i class="fas fa-check mr-2"></i>Leere Felder verwenden die Standardkapazität</li>
                     <li><i class="fas fa-check mr-2"></i>Diese Einstellungen beeinflussen die automatische Zuteilung</li>
