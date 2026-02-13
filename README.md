@@ -1,128 +1,127 @@
 # Berufsmesse
 
-Kurze Projektbeschreibung
-- Webanwendung zur Verwaltung und Darstellung einer Berufsmesse (Aussteller, Stände, Termine, Besucherregistrierung).
-- Ziel: einfache Bereitstellung (Docker / GitHub Container Registry), lokale Entwicklung und CI/CD-Integration.
+Willkommen im Repository für das Berufsmesse-Projekt. Dieses Projekt stellt eine Plattform zur Verwaltung und Präsentation einer Berufsmesse bereit.
 
-Inhalt
-- Features
-- Architektur & Technologien
-- Voraussetzungen
-- Schnellstart (lokal)
-- Installation mit Docker (GitHub Package / ghcr.io)
-- Konfiguration (Beispiel .env)
-- Entwicklung & Tests
-- CI / Veröffentlichung (GitHub Actions)
-- Beitragende & Lizenz
+## Inhaltsverzeichnis
 
-Features
-- Verwaltung von Ausstellern und Events
-- Responsive Web-Front‑/Backend (API)
-- Dockerisiert für einfache Verteilung
-- CI/CD-ready (GitHub Actions & GitHub Container Registry)
+- [Über das Projekt](#über-das-projekt)
+- [Features](#features)
+- [Voraussetzungen](#voraussetzungen)
+- [Installation mit Docker](#installation-mit-docker)
+    - [Image von GitHub Packages pullen](#image-von-github-packages-pullen)
+    - [Container starten](#container-starten)
+    - [Docker Compose (Empfohlen)](#docker-compose-empfohlen)
+- [Entwicklung](#entwicklung)
+- [Lizenz](#lizenz)
 
-Architektur & Technologien (Beispiel)
-- Frontend: React / Vue / Angular (ersetzbar)
-- Backend: Node / Python / Go (API)
-- Datenbank: PostgreSQL (Docker-Compose)
-- Container: Docker, Images in GitHub Container Registry (ghcr.io)
+## Über das Projekt
 
-Voraussetzungen
-- Docker (>= 20.x)
-- optional: docker-compose
-- falls private Images oder Push: GitHub Personal Access Token (PAT) mit scopes:
-    - read:packages (ziehen privater Images)
-    - write:packages, delete:packages (pushen/löschen)
-    - repo (wenn Repository privat)
+Dieses System wurde entwickelt, um die Organisation von Berufsmessen zu vereinfachen. Es ermöglicht Ausstellern, sich zu präsentieren, und Besuchern, Informationen über verfügbare Stände und Unternehmen zu erhalten.
 
-Schnellstart (lokal, Source)
-- Code klonen:
-    git clone https://github.com/<OWNER>/berufsmesse.git
-    cd berufsmesse
-- Abhängigkeiten installieren & Dev-Server starten (Beispiel Node):
-    npm ci
-    npm run dev
-- Oder mit Docker Compose:
-    docker-compose up --build
+## Features
 
-Installation mit Docker über GitHub Package (GitHub Container Registry — ghcr.io)
+*   Verwaltung von Ausstellern und Ständen
+*   Besucher-Frontend zur Orientierung
+*   Admin-Dashboard
+*   Responsive Design für mobile Nutzung
 
-1) Öffentliche Image-Nutzung (kein Login nötig)
-- Pull:
-    docker pull ghcr.io/<OWNER>/berufsmesse:latest
-- Run:
-    docker run --rm -p 3000:3000 --env-file .env ghcr.io/<OWNER>/berufsmesse:latest
+## Voraussetzungen
 
-2) Private Image-Nutzung (Login erforderlich)
-- Login (lokal):
-    echo "<GHCR_PAT>" | docker login ghcr.io -u <GITHUB_USERNAME> --password-stdin
-    docker pull ghcr.io/<OWNER>/berufsmesse:latest
-- Run:
-    docker run --rm -p 3000:3000 --env-file .env ghcr.io/<OWNER>/berufsmesse:latest
+Für den Betrieb der Anwendung wird eine Docker-Laufzeitumgebung benötigt.
 
-3) Image bauen & in ghcr.io pushen (lokal)
-- Build:
-    docker build -t ghcr.io/<OWNER>/berufsmesse:1.0.0 .
-- Login:
-    echo "<GHCR_PAT>" | docker login ghcr.io -u <GITHUB_USERNAME> --password-stdin
-- Push:
-    docker push ghcr.io/<OWNER>/berufsmesse:1.0.0
+*   Docker Engine
+*   Docker Compose (optional, aber empfohlen)
 
-4) Beispiel docker-compose.yml (pull von ghcr.io)
-    version: "3.8"
-    services:
-        app:
-            image: ghcr.io/<OWNER>/berufsmesse:latest
-            ports:
-                - "3000:3000"
-            env_file: .env
-        db:
-            image: postgres:14
-            environment:
-                POSTGRES_USER: berufs
-                POSTGRES_PASSWORD: secret
+## Installation mit Docker
 
-Hinweise zu GitHub Packages
-- Für private Images: PAT mit read:packages erforderlich zum Pull.
-- Für GitHub Actions: GITHUB_TOKEN kann zum Push genutzt werden, sofern repository permissions packages: write erlaubt sind.
+Dieses Projekt stellt ein Docker Image über die GitHub Container Registry (GHCR) bereit. Sie können dieses Image direkt auf Ihren Server ziehen, ohne den Quellcode bauen zu müssen.
 
-Konfiguration (.env — Beispiel)
-    PORT=3000
-    DATABASE_URL=postgres://user:pass@db:5432/berufsmesse
-    NODE_ENV=production
-    JWT_SECRET=replace_me
+### Image von GitHub Packages pullen
 
-Entwicklung & Tests
-- Lokaler Dev-Start: npm run dev | make dev | docker-compose -f docker-compose.dev.yml up --build
-- Tests: npm test | pytest (je nach Stack)
-- Linter / Formatter: npm run lint | make format
+Zuerst müssen Sie sich an der GitHub Container Registry anmelden (falls das Image privat ist) oder es direkt pullen (falls öffentlich).
 
-CI / Veröffentlichung (GitHub Actions — Beispiel)
-- Workflow-Punkte:
-    - Build & Test
-    - Build Docker-Image
-    - Push zu ghcr.io (permissions: packages: write)
-- Minimaler Workflow-Snippet:
-    permissions:
-        contents: read
-        packages: write
-    jobs:
-        build-and-push:
-            runs-on: ubuntu-latest
-            steps:
-                - uses: actions/checkout@v4
-                - uses: docker/login-action@v2
-                    with:
-                        registry: ghcr.io
-                        username: ${{ github.actor }}
-                        password: ${{ secrets.GITHUB_TOKEN }}
-                - uses: docker/build-push-action@v4
-                    with:
-                        context: .
-                        push: true
-                        tags: ghcr.io/${{ github.repository_owner }}/berufsmesse:latest
+```bash
+# Beispiel für öffentliches Image
+docker pull ghcr.io/username/berufsmesse:latest
+```
 
-Troubleshooting (kurz)
-- 401 beim Pull: PAT prüfen / token scopes / Image-Visibility
-- Port belegt: anderen Port mappen (-p HOST:CONTAINER)
-- DB-Verbindungsfehler: .env prüfen, DB erreichbar?
+*Ersetzen Sie `username` durch den tatsächlichen GitHub-Benutzernamen oder die Organisation.*
+
+### Container starten
+
+Starten Sie den Container mit folgendem Befehl. Achten Sie darauf, die Ports entsprechend Ihrer Serverkonfiguration anzupassen.
+
+```bash
+docker run -d \
+    --name berufsmesse \
+    -p 8080:80 \
+    -e ENV_VAR_EXAMPLE=wert \
+    ghcr.io/username/berufsmesse:latest
+```
+
+### Docker Compose (Empfohlen)
+
+Für den produktiven Einsatz empfiehlt sich die Verwendung einer `docker-compose.yml`.
+
+Erstellen Sie eine Datei `docker-compose.yml` auf Ihrem Server:
+
+```yaml
+version: '3.8'
+
+services:
+    app:
+        image: ghcr.io/username/berufsmesse:latest
+        container_name: berufsmesse
+        restart: unless-stopped
+        ports:
+            - "8080:80"
+        environment:
+            # Passen Sie diese Umgebungsvariablen an Ihre App an
+            - NODE_ENV=production
+            - DB_HOST=db
+            - DB_USER=example
+            - DB_PASS=secret
+        depends_on:
+            - db
+
+    db:
+        image: postgres:15-alpine
+        container_name: berufsmesse_db
+        restart: unless-stopped
+        environment:
+            - POSTGRES_USER=example
+            - POSTGRES_PASSWORD=secret
+            - POSTGRES_DB=berufsmesse
+        volumes:
+            - db_data:/var/lib/postgresql/data
+
+volumes:
+    db_data:
+```
+
+Starten Sie den Stack mit:
+
+```bash
+docker-compose up -d
+```
+
+## Entwicklung
+
+Um lokal an diesem Projekt zu arbeiten:
+
+1.  Repository klonen:
+        ```bash
+        git clone https://github.com/username/berufsmesse.git
+        ```
+2.  Abhängigkeiten installieren:
+        ```bash
+        npm install
+        ```
+3.  Entwicklungsserver starten:
+        ```bash
+        npm run dev
+        ```
+
+## Lizenz
+
+Dieses Projekt ist unter der MIT Lizenz lizenziert - siehe die [LICENSE.md](LICENSE.md) Datei für Details.
