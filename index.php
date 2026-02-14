@@ -334,6 +334,7 @@ $regEnd = getSetting('registration_end');
     <!-- Custom Design System -->
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/design-system.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/guided-tour.css">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/easter-eggs.css">
     
     <style>
         /* ==========================================================================
@@ -686,19 +687,19 @@ $regEnd = getSetting('registration_end');
                 <div class="nav-group-title">Übersicht</div>
                 
                 <!-- Dashboard als Startseite -->
-                <a href="?page=dashboard" class="nav-link <?php echo $currentPage === 'dashboard' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'dashboard' ? 'javascript:void(0)' : '?page=dashboard'; ?>" data-page="dashboard" class="nav-link <?php echo $currentPage === 'dashboard' ? 'active' : ''; ?>">
                     <i class="fas fa-home"></i>
                     <span>Dashboard</span>
                 </a>
 
                 <!-- Unternehmen -->
-                <a href="?page=exhibitors" class="nav-link <?php echo $currentPage === 'exhibitors' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'exhibitors' ? 'javascript:void(0)' : '?page=exhibitors'; ?>" data-page="exhibitors" class="nav-link <?php echo $currentPage === 'exhibitors' ? 'active' : ''; ?>">
                     <i class="fas fa-building"></i>
                     <span>Unternehmen</span>
                 </a>
 
                 <!-- QR Check-In -->
-                <a href="?page=qr-checkin" class="nav-link <?php echo $currentPage === 'qr-checkin' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'qr-checkin' ? 'javascript:void(0)' : '?page=qr-checkin'; ?>" data-page="qr-checkin" class="nav-link <?php echo $currentPage === 'qr-checkin' ? 'active' : ''; ?>">
                     <i class="fas fa-qrcode"></i>
                     <span>QR Check-In</span>
                 </a>
@@ -707,12 +708,12 @@ $regEnd = getSetting('registration_end');
                 <?php if (isTeacher() && !isAdmin()): ?>
                 <div class="nav-group-title">Lehrer</div>
                 
-                <a href="?page=teacher-dashboard" class="nav-link <?php echo $currentPage === 'teacher-dashboard' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'teacher-dashboard' ? 'javascript:void(0)' : '?page=teacher-dashboard'; ?>" data-page="teacher-dashboard" class="nav-link <?php echo $currentPage === 'teacher-dashboard' ? 'active' : ''; ?>">
                     <i class="fas fa-chalkboard-teacher"></i>
                     <span>Übersicht</span>
                 </a>
                 
-                <a href="?page=exhibitors" class="nav-link <?php echo $currentPage === 'exhibitors' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'exhibitors' ? 'javascript:void(0)' : '?page=exhibitors'; ?>" data-page="exhibitors" class="nav-link <?php echo $currentPage === 'exhibitors' ? 'active' : ''; ?>">
                     <i class="fas fa-building"></i>
                     <span>Unternehmen</span>
                 </a>
@@ -723,66 +724,66 @@ $regEnd = getSetting('registration_end');
                 <div class="nav-group-title">Verwaltung</div>
                 
                 <?php if (isAdmin()): ?>
-                <a href="?page=admin-dashboard" class="nav-link <?php echo $currentPage === 'admin-dashboard' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-dashboard' ? 'javascript:void(0)' : '?page=admin-dashboard'; ?>" data-page="admin-dashboard" class="nav-link <?php echo $currentPage === 'admin-dashboard' ? 'active' : ''; ?>">
                     <i class="fas fa-tachometer-alt"></i>
                     <span>Admin-Dashboard</span>
                 </a>
                 <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('manage_exhibitors')): ?>
-                <a href="?page=admin-exhibitors" class="nav-link <?php echo $currentPage === 'admin-exhibitors' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-exhibitors' ? 'javascript:void(0)' : '?page=admin-exhibitors'; ?>" data-page="admin-exhibitors" class="nav-link <?php echo $currentPage === 'admin-exhibitors' ? 'active' : ''; ?>">
                     <i class="fas fa-building"></i>
                     <span>Aussteller</span>
                 </a>
                 <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('manage_rooms')): ?>
-                <a href="?page=admin-rooms" class="nav-link <?php echo $currentPage === 'admin-rooms' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-rooms' ? 'javascript:void(0)' : '?page=admin-rooms'; ?>" data-page="admin-rooms" class="nav-link <?php echo $currentPage === 'admin-rooms' ? 'active' : ''; ?>">
                     <i class="fas fa-map-marker-alt"></i>
                     <span>Räume</span>
                 </a>
                 
-                <a href="?page=admin-room-capacities" class="nav-link <?php echo $currentPage === 'admin-room-capacities' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-room-capacities' ? 'javascript:void(0)' : '?page=admin-room-capacities'; ?>" data-page="admin-room-capacities" class="nav-link <?php echo $currentPage === 'admin-room-capacities' ? 'active' : ''; ?>">
                     <i class="fas fa-table"></i>
                     <span>Kapazitäten</span>
                 </a>
                 <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('manage_users')): ?>
-                <a href="?page=admin-users" class="nav-link <?php echo $currentPage === 'admin-users' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-users' ? 'javascript:void(0)' : '?page=admin-users'; ?>" data-page="admin-users" class="nav-link <?php echo $currentPage === 'admin-users' ? 'active' : ''; ?>">
                     <i class="fas fa-users"></i>
                     <span>Benutzer</span>
                 </a>
                 <?php endif; ?>
                 
                 <?php if (isAdmin()): ?>
-                <a href="?page=admin-permissions" class="nav-link <?php echo $currentPage === 'admin-permissions' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-permissions' ? 'javascript:void(0)' : '?page=admin-permissions'; ?>" data-page="admin-permissions" class="nav-link <?php echo $currentPage === 'admin-permissions' ? 'active' : ''; ?>">
                     <i class="fas fa-shield-alt"></i>
                     <span>Berechtigungen</span>
                 </a>
                 <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('manage_settings')): ?>
-                <a href="?page=admin-settings" class="nav-link <?php echo $currentPage === 'admin-settings' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-settings' ? 'javascript:void(0)' : '?page=admin-settings'; ?>" data-page="admin-settings" class="nav-link <?php echo $currentPage === 'admin-settings' ? 'active' : ''; ?>">
                     <i class="fas fa-cog"></i>
                     <span>Einstellungen</span>
                 </a>
                 <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('view_reports')): ?>
-                <a href="?page=admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
                     <i class="fas fa-print"></i>
                     <span>Druckzentrale</span>
                 </a>
                 <?php endif; ?>
                 
                 <?php if (isAdmin()): ?>
-                <a href="?page=admin-qr-codes" class="nav-link <?php echo $currentPage === 'admin-qr-codes' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-qr-codes' ? 'javascript:void(0)' : '?page=admin-qr-codes'; ?>" data-page="admin-qr-codes" class="nav-link <?php echo $currentPage === 'admin-qr-codes' ? 'active' : ''; ?>">
                     <i class="fas fa-qrcode"></i>
                     <span>QR-Anwesenheit</span>
                 </a>
                 
-                <a href="?page=admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'admin-registrations' ? 'javascript:void(0)' : '?page=admin-registrations'; ?>" data-page="admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
                     <i class="fas fa-clipboard-list"></i>
                     <span>Einschreibungen</span>
                 </a>
@@ -945,6 +946,7 @@ $regEnd = getSetting('registration_end');
     <!-- JavaScript Libraries -->
     <script src="<?php echo BASE_URL; ?>assets/js/animations.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/js/guided-tour.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/easter-eggs.js"></script>
     
     <script>
         // Mobile Menu Toggle with Animation
