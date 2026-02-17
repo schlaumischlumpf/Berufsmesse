@@ -191,15 +191,72 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
     <?php endif; ?>
 </div>
 
+<!-- Token Modal -->
+<div id="tokenModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-800">
+                <i class="fas fa-key text-blue-600 mr-2"></i>QR-Code Token
+            </h3>
+            <button onclick="closeTokenModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+            <p class="text-sm text-gray-600 mb-2">Token:</p>
+            <div class="flex items-center gap-2">
+                <code id="tokenValue" class="flex-1 text-2xl font-mono font-bold text-gray-800 tracking-wider"></code>
+                <button onclick="copyTokenToClipboard()" class="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition">
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 text-center" id="copyStatus"></p>
+    </div>
+</div>
+
 <script>
+let currentToken = '';
+
 function showToken(token) {
-    // Token in Zwischenablage kopieren
-    navigator.clipboard.writeText(token).then(function() {
-        // Modal oder Alert mit Token anzeigen
-        alert('Token:\n\n' + token + '\n\n✓ In Zwischenablage kopiert!');
+    currentToken = token;
+    document.getElementById('tokenValue').textContent = token;
+    document.getElementById('copyStatus').textContent = '';
+    document.getElementById('tokenModal').classList.remove('hidden');
+}
+
+function closeTokenModal() {
+    document.getElementById('tokenModal').classList.add('hidden');
+}
+
+function copyTokenToClipboard() {
+    navigator.clipboard.writeText(currentToken).then(function() {
+        document.getElementById('copyStatus').textContent = '✓ In Zwischenablage kopiert!';
+        document.getElementById('copyStatus').className = 'text-xs text-green-600 text-center';
     }, function(err) {
-        // Fallback wenn Zwischenablage nicht funktioniert
-        alert('Token:\n\n' + token);
+        // Fallback für ältere Browser
+        const textarea = document.createElement('textarea');
+        textarea.value = currentToken;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        document.getElementById('copyStatus').textContent = '✓ In Zwischenablage kopiert!';
+        document.getElementById('copyStatus').className = 'text-xs text-green-600 text-center';
     });
 }
+
+// Modal schließen bei Klick außerhalb
+document.getElementById('tokenModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeTokenModal();
+    }
+});
+
+// Modal schließen mit Escape-Taste
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeTokenModal();
+    }
+});
 </script>
