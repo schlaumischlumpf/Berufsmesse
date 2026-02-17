@@ -88,13 +88,24 @@ class GuidedTour {
             switch(e.key) {
                 case 'Escape':
                     this.skip();
+                    e.preventDefault();
                     break;
                 case 'ArrowRight':
-                case 'Enter':
                     this.next();
+                    e.preventDefault();
+                    break;
+                case 'Enter':
+                    // Only allow Enter to advance if not on the last step
+                    if (this.currentStep < this.steps.length - 1) {
+                        this.next();
+                    } else {
+                        this.complete();
+                    }
+                    e.preventDefault();
                     break;
                 case 'ArrowLeft':
                     this.prev();
+                    e.preventDefault();
                     break;
             }
         });
@@ -342,6 +353,11 @@ class GuidedTour {
         this.tooltip.classList.remove('active');
         document.body.style.overflow = '';
         this.clearHighlight();
+        
+        // Entferne den Fokus von jedem aktiven Element um Enter-Ereignisse zu verhindern
+        if (document.activeElement && document.activeElement !== document.body) {
+            document.activeElement.blur();
+        }
         
         // Stelle sicher, dass alle Styling entfernt wird
         setTimeout(() => {
