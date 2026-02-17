@@ -641,6 +641,39 @@ $regEnd = getSetting('registration_end');
             .sidebar.open {
                 transform: translateX(0);
             }
+            
+            /* Issue #24: Mobile - Buttons mit Text+Icon nur Icon anzeigen */
+            .btn-mobile-icon span.btn-text {
+                display: none;
+            }
+            
+            /* Issue #24: Mobile - Tagesplan Buttons kompakter */
+            .schedule-actions .btn,
+            .schedule-actions a {
+                padding: 0.375rem 0.5rem;
+                font-size: 0.75rem;
+            }
+            .schedule-actions .btn span,
+            .schedule-actions a span {
+                display: none;
+            }
+        }
+        
+        /* Issue #24: Exhibitor Modal - Schließen-Button mehr Abstand */
+        .exhibitor-modal-box > div:last-child {
+            padding-bottom: 1.5rem !important;
+        }
+        
+        @media (max-width: 768px) {
+            .exhibitor-modal-box > div:last-child {
+                padding-bottom: 2rem !important;
+                padding-bottom: max(2rem, env(safe-area-inset-bottom, 2rem)) !important;
+            }
+            
+            .exhibitor-modal-box {
+                max-height: 85vh;
+                margin-bottom: 2rem;
+            }
         }
         
         /* ==========================================================================
@@ -667,6 +700,9 @@ $regEnd = getSetting('registration_end');
     <button id="mobileMenuBtn" class="md:hidden fixed top-4 left-4 z-50 bg-white/90 backdrop-blur-sm text-gray-600 p-3 rounded-xl shadow-lg border border-gray-100 transition-all duration-300 hover:bg-white hover:shadow-xl">
         <i class="fas fa-bars text-lg"></i>
     </button>
+    
+    <!-- Mobile Overlay -->
+    <div id="mobileOverlay" class="md:hidden fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300 opacity-0"></div>
 
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar sidebar-transition fixed left-0 top-0 h-full bg-white/95 backdrop-blur-lg border-r border-gray-100 w-64 z-40 flex flex-col shadow-xl">
@@ -980,26 +1016,47 @@ $regEnd = getSetting('registration_end');
         // Mobile Menu Toggle with Animation
         const mobileMenuBtn = document.getElementById('mobileMenuBtn');
         const sidebar = document.getElementById('sidebar');
+        const mobileOverlay = document.getElementById('mobileOverlay');
+        
+        function openMobileSidebar() {
+            sidebar.classList.add('open');
+            mobileMenuBtn.style.transform = 'rotate(90deg)';
+            mobileMenuBtn.style.opacity = '0.5';
+            if (mobileOverlay) {
+                mobileOverlay.classList.remove('hidden');
+                setTimeout(() => mobileOverlay.classList.add('opacity-100'), 10);
+                mobileOverlay.classList.remove('opacity-0');
+            }
+        }
+        
+        function closeMobileSidebar() {
+            sidebar.classList.remove('open');
+            mobileMenuBtn.style.transform = 'rotate(0)';
+            mobileMenuBtn.style.opacity = '1';
+            if (mobileOverlay) {
+                mobileOverlay.classList.remove('opacity-100');
+                mobileOverlay.classList.add('opacity-0');
+                setTimeout(() => mobileOverlay.classList.add('hidden'), 300);
+            }
+        }
         
         mobileMenuBtn.addEventListener('click', () => {
-            sidebar.classList.toggle('open');
-            // Toggle button with rotation animation
             if (sidebar.classList.contains('open')) {
-                mobileMenuBtn.style.transform = 'rotate(90deg)';
-                mobileMenuBtn.style.opacity = '0.5';
+                closeMobileSidebar();
             } else {
-                mobileMenuBtn.style.transform = 'rotate(0)';
-                mobileMenuBtn.style.opacity = '1';
+                openMobileSidebar();
             }
         });
+        
+        if (mobileOverlay) {
+            mobileOverlay.addEventListener('click', closeMobileSidebar);
+        }
 
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
             if (window.innerWidth < 768) {
-                if (!sidebar.contains(e.target) && !mobileMenuBtn.contains(e.target)) {
-                    sidebar.classList.remove('open');
-                    mobileMenuBtn.style.transform = 'rotate(0)';
-                    mobileMenuBtn.style.opacity = '1';
+                if (!sidebar.contains(e.target) && !mobileMenuBtn.contains(e.target) && !(mobileOverlay && mobileOverlay.contains(e.target))) {
+                    closeMobileSidebar();
                 }
             }
         });
