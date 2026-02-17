@@ -223,6 +223,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
         $_SESSION['auto_assign_students'] = $incompleteStudents;
         $_SESSION['auto_assign_errors'] = $errors;
         
+        logAuditAction('Auto-Zuteilung', "$assignedCount Zuweisungen durchgeführt, $incompleteStudents Schüler noch unvollständig");
+        
         // Auto-Close: Einschreibung automatisch schliessen nach Zuteilung (Issue #12)
         $autoClose = getSetting('auto_close_registration', '1');
         if ($autoClose === '1') {
@@ -268,6 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && is
     } catch (Exception $e) {
         error_log('QR generation error: ' . $e->getMessage());
     }
+    logAuditAction('QR-Codes generiert', "$generated QR-Codes für alle Aussteller erstellt");
     header('Location: ?page=admin-qr-codes&generated=' . $generated);
     exit;
 }
@@ -787,6 +790,11 @@ $regEnd = getSetting('registration_end');
                     <i class="fas fa-clipboard-list"></i>
                     <span>Einschreibungen</span>
                 </a>
+                
+                <a href="<?php echo $currentPage === 'admin-audit-logs' ? 'javascript:void(0)' : '?page=admin-audit-logs'; ?>" data-page="admin-audit-logs" class="nav-link <?php echo $currentPage === 'admin-audit-logs' ? 'active' : ''; ?>">
+                    <i class="fas fa-history"></i>
+                    <span>Audit Logs</span>
+                </a>
                 <?php endif; ?>
                 <?php endif; ?>
             </nav>
@@ -922,6 +930,12 @@ $regEnd = getSetting('registration_end');
                 case 'admin-registrations':
                     if (isAdmin()) {
                         include 'pages/admin-registrations.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+                case 'admin-audit-logs':
+                    if (isAdmin() || hasPermission('view_audit_logs')) {
+                        include 'pages/admin-audit-logs.php';
                         $pageLoaded = true;
                     }
                     break;

@@ -121,3 +121,40 @@ ALTER TABLE `registrations` ADD UNIQUE KEY `unique_user_exhibitor` (`user_id`, `
 
 -- 4. Optional: Füge einen Index für bessere Performance bei Slot-Queries hinzu
 ALTER TABLE `registrations` ADD INDEX IF NOT EXISTS `idx_user_timeslot` (`user_id`, `timeslot_id`);
+
+-- ===========================================================================
+-- Issue #21: Audit Logs
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS audit_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT DEFAULT NULL,
+    username VARCHAR(100) NOT NULL,
+    action VARCHAR(255) NOT NULL,
+    details TEXT DEFAULT NULL,
+    ip_address VARCHAR(45) DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_user_id (user_id),
+    INDEX idx_action (action),
+    INDEX idx_created_at (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Audit Logs für alle Nutzeraktionen';
+
+-- ===========================================================================
+-- Issue #26: Berechtigungsgruppen
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS permission_groups (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    description TEXT DEFAULT NULL,
+    created_by INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_group_name (name),
+    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Berechtigungsgruppen';
+
+CREATE TABLE IF NOT EXISTS permission_group_items (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    group_id INT NOT NULL,
+    permission VARCHAR(50) NOT NULL,
+    FOREIGN KEY (group_id) REFERENCES permission_groups(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_group_permission (group_id, permission)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Berechtigungen in Gruppen';

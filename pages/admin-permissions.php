@@ -17,6 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
         grantPermission($userId, $permission);
     }
     
+    logAuditAction('Berechtigungen geändert', "Berechtigungen für Benutzer #$userId aktualisiert: " . implode(', ', $permissions));
+    
     $message = ['type' => 'success', 'text' => 'Berechtigungen erfolgreich aktualisiert'];
     $reopenUserId = $userId; // Flag to reopen modal
 }
