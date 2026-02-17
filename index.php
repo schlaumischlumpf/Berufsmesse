@@ -720,6 +720,20 @@ $regEnd = getSetting('registration_end');
                     <i class="fas fa-building"></i>
                     <span>Unternehmen</span>
                 </a>
+                
+                <?php if (hasPermission('view_rooms')): ?>
+                <a href="<?php echo $currentPage === 'admin-rooms' ? 'javascript:void(0)' : '?page=admin-rooms'; ?>" data-page="admin-rooms" class="nav-link <?php echo $currentPage === 'admin-rooms' ? 'active' : ''; ?>">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Raumplan</span>
+                </a>
+                <?php endif; ?>
+                
+                <?php if (hasPermission('view_reports')): ?>
+                <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
+                    <i class="fas fa-print"></i>
+                    <span>Druckzentrale</span>
+                </a>
+                <?php endif; ?>
                 <?php endif; ?>
 
                 <?php if (isAdmin() || hasPermission('manage_exhibitors') || hasPermission('manage_rooms') || hasPermission('manage_settings') || hasPermission('manage_users') || hasPermission('view_reports') || hasPermission('auto_assign')): ?>
@@ -886,7 +900,7 @@ $regEnd = getSetting('registration_end');
                     }
                     break;
                 case 'admin-rooms':
-                    if (isAdmin() || hasPermission('manage_rooms')) {
+                    if (isAdmin() || hasPermission('manage_rooms') || hasPermission('view_rooms')) {
                         include 'pages/admin-rooms.php';
                         $pageLoaded = true;
                     }
@@ -922,7 +936,7 @@ $regEnd = getSetting('registration_end');
                     }
                     break;
                 case 'admin-qr-codes':
-                    if (isAdmin()) {
+                    if (isAdmin() || hasPermission('manage_qr_codes')) {
                         include 'pages/admin-qr-codes.php';
                         $pageLoaded = true;
                     }

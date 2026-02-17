@@ -193,69 +193,6 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
         </div>
     </div>
 
-    <!-- Recent Activity -->
-    <div class="bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4">
-            <h3 class="text-xl font-bold flex items-center">
-                <i class="fas fa-history mr-3"></i>
-                Letzte Anmeldungen
-            </h3>
-        </div>
-
-        <div class="p-6">
-            <?php
-            $stmt = $db->query("
-                SELECT r.*, u.firstname, u.lastname, u.class, e.name as exhibitor_name, t.slot_name
-                FROM registrations r
-                JOIN users u ON r.user_id = u.id
-                JOIN exhibitors e ON r.exhibitor_id = e.id
-                JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE u.role = 'student'
-                ORDER BY r.registered_at DESC
-                LIMIT 20
-            ");
-            $recentRegistrations = $stmt->fetchAll();
-            ?>
-
-            <div class="overflow-x-auto">
-                <table class="w-full">
-                    <thead class="bg-gray-50 border-b border-gray-200">
-                        <tr>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Schüler</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Klasse</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aussteller</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Zeitslot</th>
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Zeitpunkt</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-200">
-                        <?php foreach ($recentRegistrations as $reg): ?>
-                        <tr class="hover:bg-gray-50">
-                            <td class="px-4 py-3 text-sm text-gray-800">
-                                <?php echo htmlspecialchars($reg['firstname'] . ' ' . $reg['lastname']); ?>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-600">
-                                <?php echo htmlspecialchars($reg['class'] ?: '-'); ?>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-800">
-                                <?php echo htmlspecialchars($reg['exhibitor_name']); ?>
-                            </td>
-                            <td class="px-4 py-3 text-sm">
-                                <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
-                                    <?php echo htmlspecialchars($reg['slot_name']); ?>
-                                </span>
-                            </td>
-                            <td class="px-4 py-3 text-sm text-gray-600">
-                                <?php echo formatDateTime($reg['registered_at']); ?>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
     <!-- Info Box -->
     <div class="bg-yellow-50 border-l-4 border-yellow-500 p-6 rounded-lg">
         <div class="flex items-start">
@@ -264,9 +201,9 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
                 <h4 class="font-bold text-yellow-900 mb-2">Tipps für Lehrer</h4>
                 <ul class="text-sm text-yellow-800 space-y-1">
                     <li><i class="fas fa-check mr-2"></i>Nutze die Klassenlisten, um den Überblick über Schüleranmeldungen zu behalten</li>
-                    <li><i class="fas fa-check mr-2"></i>Drucke die Pläne aus, um sie im Unterricht zu besprechen</li>
+                    <li><i class="fas fa-check mr-2"></i>Über die Druckzentrale kannst du Laufzettel und Klassenpläne drucken</li>
+                    <li><i class="fas fa-check mr-2"></i>Im Raumplan siehst du die Zuordnung der Aussteller zu Räumen</li>
                     <li><i class="fas fa-check mr-2"></i>Sprich Schüler mit fehlenden Anmeldungen an</li>
-                    <li><i class="fas fa-check mr-2"></i>Bei Fragen zur Registrierung wende dich an die Administratoren</li>
                 </ul>
                 <button onclick="startGuidedTour()" class="mt-4 text-sm text-amber-600 hover:text-amber-700 font-medium transition">
                     <i class="fas fa-play-circle mr-1"></i>Tour starten
