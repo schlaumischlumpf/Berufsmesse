@@ -25,8 +25,8 @@ try {
         $timeslotId = intval($data['timeslot_id'] ?? 0);
         
         if ($exhibitorId && $timeslotId) {
-            // Einzelnen Token generieren
-            $token = bin2hex(random_bytes(16));
+            // Einzelnen Token generieren (6 Zeichen)
+            $token = bin2hex(random_bytes(3));
             $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
             
             $stmt = $db->prepare("
@@ -48,7 +48,7 @@ try {
             $generated = 0;
             foreach ($exhibitors as $exId) {
                 foreach ($timeslots as $tsId) {
-                    $token = bin2hex(random_bytes(16));
+                    $token = bin2hex(random_bytes(3)); // 6 Zeichen
                     $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
                     
                     $stmt = $db->prepare("
