@@ -47,6 +47,9 @@ foreach ($stmt->fetchAll() as $row) {
     $attendanceStats[$row['exhibitor_id'] . '_' . $row['timeslot_id']] = $row['present_count'];
 }
 
+// QR-Code Base URL aus Einstellungen laden
+$qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
+
 // POST-Handling wurde nach index.php verschoben (vor HTML-Output)
 ?>
 
@@ -132,7 +135,7 @@ foreach ($stmt->fetchAll() as $row) {
                     <!-- QR-Code anzeigen -->
                     <div class="text-center mb-3">
                         <div id="qr-<?php echo $key; ?>" class="inline-block bg-white p-3 rounded-lg border border-gray-200">
-                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=<?php echo urlencode(BASE_URL . '?page=qr-checkin&token=' . $token['token']); ?>" 
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=<?php echo urlencode($qrCodeBaseUrl . '?page=qr-checkin&token=' . $token['token']); ?>" 
                                  alt="QR-Code" class="w-36 h-36" loading="lazy">
                         </div>
                     </div>
@@ -141,7 +144,7 @@ foreach ($stmt->fetchAll() as $row) {
                             Gültig bis: <?php echo date('d.m.Y H:i', strtotime($token['expires_at'])); ?>
                         </p>
                         <div class="flex gap-2 justify-center">
-                            <button onclick="window.open('https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=<?php echo urlencode(BASE_URL . '?page=qr-checkin&token=' . $token['token']); ?>', '_blank')" 
+                            <button onclick="window.open('https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=<?php echo urlencode($qrCodeBaseUrl . '?page=qr-checkin&token=' . $token['token']); ?>', '_blank')" 
                                     class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-xs">
                                 <i class="fas fa-print mr-1"></i>Gross
                             </button>
