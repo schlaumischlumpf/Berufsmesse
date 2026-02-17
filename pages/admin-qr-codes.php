@@ -148,6 +148,10 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                                     class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-xs">
                                 <i class="fas fa-print mr-1"></i>Gross
                             </button>
+                            <button onclick="showToken('<?php echo htmlspecialchars($token['token'], ENT_QUOTES); ?>')" 
+                                    class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-xs">
+                                <i class="fas fa-key mr-1"></i>Token
+                            </button>
                             <form method="POST" class="inline">
                                 <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                                 <input type="hidden" name="timeslot_id" value="<?php echo $timeslot['id']; ?>">
@@ -186,3 +190,16 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
     </div>
     <?php endif; ?>
 </div>
+
+<script>
+function showToken(token) {
+    // Token in Zwischenablage kopieren
+    navigator.clipboard.writeText(token).then(function() {
+        // Modal oder Alert mit Token anzeigen
+        alert('Token:\n\n' + token + '\n\n✓ In Zwischenablage kopiert!');
+    }, function(err) {
+        // Fallback wenn Zwischenablage nicht funktioniert
+        alert('Token:\n\n' + token);
+    });
+}
+</script>
