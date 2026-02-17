@@ -666,7 +666,6 @@ $regEnd = getSetting('registration_end');
         
         @media (max-width: 768px) {
             .exhibitor-modal-box > div:last-child {
-                padding-bottom: 2rem !important;
                 padding-bottom: max(2rem, env(safe-area-inset-bottom, 2rem)) !important;
             }
             

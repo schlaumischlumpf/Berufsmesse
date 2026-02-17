@@ -246,16 +246,19 @@ try {
 
         // Voreingestellte Berechtigungsgruppen erstellen
         $db->exec("INSERT INTO permission_groups (name, description) VALUES ('Lehrer Standard', 'Standard-Berechtigungen für Lehrkräfte')");
-        $groupId = $db->lastInsertId();
-        $db->exec("INSERT INTO permission_group_items (group_id, permission) VALUES ($groupId, 'view_reports'), ($groupId, 'view_rooms')");
+        $groupId = intval($db->lastInsertId());
+        $stmt = $db->prepare("INSERT INTO permission_group_items (group_id, permission) VALUES (?, ?), (?, ?)");
+        $stmt->execute([$groupId, 'view_reports', $groupId, 'view_rooms']);
         
         $db->exec("INSERT INTO permission_groups (name, description) VALUES ('Orga-Team', 'Erweiterte Berechtigungen für das Organisationsteam')");
-        $groupId = $db->lastInsertId();
-        $db->exec("INSERT INTO permission_group_items (group_id, permission) VALUES ($groupId, 'manage_exhibitors'), ($groupId, 'manage_rooms'), ($groupId, 'view_reports'), ($groupId, 'view_rooms'), ($groupId, 'manage_qr_codes')");
+        $groupId = intval($db->lastInsertId());
+        $stmt = $db->prepare("INSERT INTO permission_group_items (group_id, permission) VALUES (?, ?), (?, ?), (?, ?), (?, ?), (?, ?)");
+        $stmt->execute([$groupId, 'manage_exhibitors', $groupId, 'manage_rooms', $groupId, 'view_reports', $groupId, 'view_rooms', $groupId, 'manage_qr_codes']);
         
         $db->exec("INSERT INTO permission_groups (name, description) VALUES ('Vollzugriff', 'Alle verfügbaren Berechtigungen')");
-        $groupId = $db->lastInsertId();
-        $db->exec("INSERT INTO permission_group_items (group_id, permission) VALUES ($groupId, 'manage_exhibitors'), ($groupId, 'manage_rooms'), ($groupId, 'manage_settings'), ($groupId, 'manage_users'), ($groupId, 'view_reports'), ($groupId, 'auto_assign'), ($groupId, 'view_rooms'), ($groupId, 'manage_qr_codes'), ($groupId, 'view_audit_logs')");
+        $groupId = intval($db->lastInsertId());
+        $stmt = $db->prepare("INSERT INTO permission_group_items (group_id, permission) VALUES (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?)");
+        $stmt->execute([$groupId, 'manage_exhibitors', $groupId, 'manage_rooms', $groupId, 'manage_settings', $groupId, 'manage_users', $groupId, 'view_reports', $groupId, 'auto_assign', $groupId, 'view_rooms', $groupId, 'manage_qr_codes', $groupId, 'view_audit_logs']);
         
         $success[] = "Voreingestellte Berechtigungsgruppen erstellt";
     } else {

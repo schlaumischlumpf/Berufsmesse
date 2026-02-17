@@ -166,7 +166,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
             <div class="border border-gray-200 rounded-lg p-4 <?php echo $token ? 'bg-gray-50' : 'bg-yellow-50 border-yellow-200'; ?>">
                 <div class="flex items-center justify-between mb-3">
                     <span class="text-sm font-medium text-gray-700"><?php echo htmlspecialchars($timeslot['slot_name']); ?></span>
-                    <button type="button" onclick='showAttendanceList(<?php echo json_encode(htmlspecialchars($exhibitor["name"])); ?>, <?php echo json_encode(htmlspecialchars($timeslot["slot_name"])); ?>, <?php echo json_encode($attendanceDetails[$key] ?? []); ?>)'
+                    <button type="button" onclick='showAttendanceList(<?php echo json_encode($exhibitor["name"]); ?>, <?php echo json_encode($timeslot["slot_name"]); ?>, <?php echo json_encode($attendanceDetails[$key] ?? []); ?>)'
                             class="text-xs px-2 py-1 rounded-full cursor-pointer hover:opacity-80 transition <?php echo $presentCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'; ?>"
                             title="Klicken für Anwesenheitsliste">
                         <i class="fas fa-users mr-1"></i><?php echo $presentCount; ?>/<?php echo $regCount; ?> anwesend
