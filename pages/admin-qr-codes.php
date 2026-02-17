@@ -47,6 +47,28 @@ foreach ($stmt->fetchAll() as $row) {
     $attendanceStats[$row['exhibitor_id'] . '_' . $row['timeslot_id']] = $row['present_count'];
 }
 
+// Gesamte Anwesenheit laden (Issue #27)
+$stmt = $db->query("
+    SELECT a.exhibitor_id, a.timeslot_id, a.checked_in_at, u.firstname, u.lastname, u.class, u.id as user_id
+    FROM attendance a
+    JOIN users u ON a.user_id = u.id
+    ORDER BY a.exhibitor_id, a.timeslot_id, u.lastname, u.firstname
+");
+$attendanceDetails = [];
+foreach ($stmt->fetchAll() as $row) {
+    $key = $row['exhibitor_id'] . '_' . $row['timeslot_id'];
+    if (!isset($attendanceDetails[$key])) {
+        $attendanceDetails[$key] = [];
+    }
+    $attendanceDetails[$key][] = $row;
+}
+
+// Gesamt-Statistik
+$stmt = $db->query("SELECT COUNT(DISTINCT user_id) as total FROM attendance");
+$totalAttendees = $stmt->fetchColumn();
+$stmt = $db->query("SELECT COUNT(*) as total FROM attendance");
+$totalCheckins = $stmt->fetchColumn();
+
 // QR-Code Base URL aus Einstellungen laden
 $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
 
@@ -81,6 +103,24 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
         </div>
     </div>
     <?php endif; ?>
+
+    <!-- Anwesenheits-Übersicht (Issue #27) -->
+    <div class="bg-white rounded-xl border border-gray-100 p-5">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold text-gray-800">
+                <i class="fas fa-user-check text-emerald-500 mr-2"></i>
+                Anwesenheitsübersicht
+            </h3>
+            <div class="flex gap-4 text-sm">
+                <span class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full font-medium">
+                    <?php echo $totalAttendees; ?> Schüler eingecheckt
+                </span>
+                <span class="px-3 py-1 bg-blue-100 text-blue-700 rounded-full font-medium">
+                    <?php echo $totalCheckins; ?> Check-ins gesamt
+                </span>
+            </div>
+        </div>
+    </div>
 
     <!-- Info Box -->
     <div class="bg-blue-50 border border-blue-100 rounded-xl p-4">
@@ -126,9 +166,11 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
             <div class="border border-gray-200 rounded-lg p-4 <?php echo $token ? 'bg-gray-50' : 'bg-yellow-50 border-yellow-200'; ?>">
                 <div class="flex items-center justify-between mb-3">
                     <span class="text-sm font-medium text-gray-700"><?php echo htmlspecialchars($timeslot['slot_name']); ?></span>
-                    <span class="text-xs px-2 py-1 rounded-full <?php echo $presentCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'; ?>">
-                        <?php echo $presentCount; ?>/<?php echo $regCount; ?> anwesend
-                    </span>
+                    <button type="button" onclick='showAttendanceList(<?php echo json_encode(htmlspecialchars($exhibitor["name"])); ?>, <?php echo json_encode(htmlspecialchars($timeslot["slot_name"])); ?>, <?php echo json_encode($attendanceDetails[$key] ?? []); ?>)'
+                            class="text-xs px-2 py-1 rounded-full cursor-pointer hover:opacity-80 transition <?php echo $presentCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'; ?>"
+                            title="Klicken für Anwesenheitsliste">
+                        <i class="fas fa-users mr-1"></i><?php echo $presentCount; ?>/<?php echo $regCount; ?> anwesend
+                    </button>
                 </div>
                 
                 <?php if ($token): ?>
@@ -257,6 +299,91 @@ document.getElementById('tokenModal')?.addEventListener('click', function(e) {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeTokenModal();
+        closeAttendanceModal();
+    }
+});
+
+// Anwesenheitsliste anzeigen (Issue #27)
+function showAttendanceList(exhibitorName, slotName, attendees) {
+    const modal = document.getElementById('attendanceModal');
+    document.getElementById('attendanceTitle').textContent = exhibitorName + ' – ' + slotName;
+    
+    const tbody = document.getElementById('attendanceTableBody');
+    tbody.innerHTML = '';
+    
+    if (attendees.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-6 text-center text-gray-500"><i class="fas fa-user-slash text-2xl mb-2"></i><br>Noch keine Anwesenden</td></tr>';
+    } else {
+        attendees.forEach(function(a, idx) {
+            const checkinTime = a.checked_in_at ? new Date(a.checked_in_at).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'}) : '-';
+            const row = document.createElement('tr');
+            row.className = 'hover:bg-gray-50';
+            row.innerHTML = '<td class="px-4 py-2 text-sm text-gray-600">' + (idx + 1) + '</td>' +
+                '<td class="px-4 py-2 text-sm font-medium text-gray-800">' + escapeHtml(a.firstname) + ' ' + escapeHtml(a.lastname) + '</td>' +
+                '<td class="px-4 py-2 text-sm text-gray-600">' + escapeHtml(a.class || '-') + '</td>' +
+                '<td class="px-4 py-2 text-sm text-gray-500">' + checkinTime + '</td>';
+            tbody.appendChild(row);
+        });
+    }
+    
+    document.getElementById('attendanceCount').textContent = attendees.length + ' Anwesende';
+    modal.classList.remove('hidden');
+}
+
+function closeAttendanceModal() {
+    document.getElementById('attendanceModal').classList.add('hidden');
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Modal schließen bei Klick außerhalb
+document.getElementById('attendanceModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeAttendanceModal();
     }
 });
 </script>
+
+<!-- Anwesenheits-Modal (Issue #27) -->
+<div id="attendanceModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+        <div class="flex items-center justify-between p-5 border-b border-gray-200">
+            <div>
+                <h3 class="text-lg font-semibold text-gray-800">
+                    <i class="fas fa-user-check text-emerald-500 mr-2"></i>Anwesenheitsliste
+                </h3>
+                <p id="attendanceTitle" class="text-sm text-gray-500 mt-1"></p>
+            </div>
+            <div class="flex items-center gap-3">
+                <span id="attendanceCount" class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold"></span>
+                <button onclick="closeAttendanceModal()" class="text-gray-400 hover:text-gray-600">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+        <div class="overflow-y-auto flex-1">
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200 sticky top-0">
+                    <tr>
+                        <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Nr.</th>
+                        <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
+                        <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Klasse</th>
+                        <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Check-in</th>
+                    </tr>
+                </thead>
+                <tbody id="attendanceTableBody" class="divide-y divide-gray-100">
+                </tbody>
+            </table>
+        </div>
+        <div class="p-4 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+            <button onclick="closeAttendanceModal()" class="w-full px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm font-medium">
+                Schließen
+            </button>
+        </div>
+    </div>
+</div>
