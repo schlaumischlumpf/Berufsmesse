@@ -255,7 +255,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && is
 
         foreach ($exhibitors as $exId) {
             foreach ($timeslots as $tsId) {
-                $token = bin2hex(random_bytes(16));
+                $token = bin2hex(random_bytes(3)); // 6 Zeichen
                 $stmt = $db->prepare("
                     INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at)
                     VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))
@@ -277,7 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) &&
     try {
         $exhibitorId = intval($_POST['exhibitor_id']);
         $timeslotId = intval($_POST['timeslot_id']);
-        $token = bin2hex(random_bytes(16));
+        $token = bin2hex(random_bytes(3)); // 6 Zeichen
         $stmt = $db->prepare("
             INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at)
             VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))

@@ -102,10 +102,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
     <!-- Registrierungen nach Zeitslot -->
     <div class="space-y-4">
         <?php 
-        // Nach Slot gruppieren
+        // Nach Slot gruppieren - separate Behandlung für NULL timeslots
         $slotGroups = [];
+        $noTimeslotRegs = [];
         foreach ($myRegistrations as $reg) {
-            $slotGroups[$reg['slot_number']][] = $reg;
+            if ($reg['slot_number'] === null) {
+                $noTimeslotRegs[] = $reg;
+            } else {
+                $slotGroups[$reg['slot_number']][] = $reg;
+            }
         }
         
         foreach ($slotGroups as $slotNumber => $registrations):
@@ -120,10 +125,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                             <i class="fas fa-clock text-emerald-600"></i>
                         </div>
                         <div>
-                            <h3 class="font-semibold text-gray-800"><?php echo htmlspecialchars($slot['slot_name']); ?></h3>
+                            <h3 class="font-semibold text-gray-800"><?php echo htmlspecialchars($slot['slot_name'] ?? 'Kein Zeitslot'); ?></h3>
                             <p class="text-xs text-gray-500">
-                                <?php echo date('H:i', strtotime($slot['start_time'])); ?> - 
-                                <?php echo date('H:i', strtotime($slot['end_time'])); ?> Uhr
+                                <?php 
+                                if ($slot['start_time'] && $slot['end_time']) {
+                                    echo date('H:i', strtotime($slot['start_time'])) . ' - ' . date('H:i', strtotime($slot['end_time'])) . ' Uhr';
+                                } else {
+                                    echo 'Zeit wird noch festgelegt';
+                                }
+                                ?>
                             </p>
                         </div>
                     </div>
@@ -177,6 +187,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
             </div>
         </div>
         <?php endforeach; ?>
+        
+        <?php if (!empty($noTimeslotRegs)): ?>
+        <!-- Registrierungen ohne Zeitslot -->
+        <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+            <!-- Header -->
+            <div class="bg-amber-50 border-b border-amber-100 px-5 py-3">
+                <div class="flex items-center justify-between flex-wrap gap-2">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center mr-3">
+                            <i class="fas fa-hourglass-half text-amber-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-semibold text-gray-800">Ohne Zeitslot</h3>
+                            <p class="text-xs text-amber-600">
+                                Zeit wird noch festgelegt
+                            </p>
+                        </div>
+                    </div>
+                    <span class="text-xs font-medium text-amber-700 bg-amber-200 px-2 py-1 rounded">
+                        <?php echo count($noTimeslotRegs); ?> Anmeldung(en)
+                    </span>
+                </div>
+            </div>
+
+            <!-- Content -->
+            <div class="p-5 space-y-3">
+                <?php foreach ($noTimeslotRegs as $reg): ?>
+                <div class="border border-gray-100 rounded-lg p-4 hover:border-emerald-200 hover:bg-gray-50 transition">
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <h4 class="font-semibold text-gray-800">
+                                    <?php echo htmlspecialchars($reg['exhibitor_name']); ?>
+                                </h4>
+                                <?php if ($reg['registration_type'] === 'automatic'): ?>
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
+                                        <i class="fas fa-robot mr-1"></i>Auto
+                                    </span>
+                                <?php endif; ?>
+                            </div>
+                            <p class="text-sm text-gray-500">
+                                <?php echo htmlspecialchars($reg['short_description'] ?? ''); ?>
+                            </p>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row gap-2">
+                            <button onclick="openExhibitorModal(<?php echo $reg['exhibitor_id']; ?>)" 
+                                    class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm">
+                                <i class="fas fa-info-circle mr-1"></i>Details
+                            </button>
+                            
+                            <?php if ($reg['registration_type'] === 'manual' && getRegistrationStatus() === 'open'): ?>
+                            <form method="POST" class="inline" onsubmit="return confirm('Möchtest Du dich wirklich abmelden?')">
+                                <input type="hidden" name="registration_id" value="<?php echo $reg['id']; ?>">
+                                <button type="submit" 
+                                        name="unregister"
+                                        class="px-3 py-1.5 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition text-sm">
+                                    <i class="fas fa-times-circle mr-1"></i>Abmelden
+                                </button>
+                            </form>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
 
     <!-- Info Box -->

@@ -47,6 +47,9 @@ foreach ($stmt->fetchAll() as $row) {
     $attendanceStats[$row['exhibitor_id'] . '_' . $row['timeslot_id']] = $row['present_count'];
 }
 
+// QR-Code Base URL aus Einstellungen laden
+$qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
+
 // POST-Handling wurde nach index.php verschoben (vor HTML-Output)
 ?>
 
@@ -132,7 +135,7 @@ foreach ($stmt->fetchAll() as $row) {
                     <!-- QR-Code anzeigen -->
                     <div class="text-center mb-3">
                         <div id="qr-<?php echo $key; ?>" class="inline-block bg-white p-3 rounded-lg border border-gray-200">
-                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=<?php echo urlencode(BASE_URL . '?page=qr-checkin&token=' . $token['token']); ?>" 
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=<?php echo urlencode($qrCodeBaseUrl . '?page=qr-checkin&token=' . $token['token']); ?>" 
                                  alt="QR-Code" class="w-36 h-36" loading="lazy">
                         </div>
                     </div>
@@ -141,9 +144,13 @@ foreach ($stmt->fetchAll() as $row) {
                             Gültig bis: <?php echo date('d.m.Y H:i', strtotime($token['expires_at'])); ?>
                         </p>
                         <div class="flex gap-2 justify-center">
-                            <button onclick="window.open('https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=<?php echo urlencode(BASE_URL . '?page=qr-checkin&token=' . $token['token']); ?>', '_blank')" 
+                            <button onclick="window.open('https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=<?php echo urlencode($qrCodeBaseUrl . '?page=qr-checkin&token=' . $token['token']); ?>', '_blank')" 
                                     class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-xs">
                                 <i class="fas fa-print mr-1"></i>Gross
+                            </button>
+                            <button onclick="showToken('<?php echo htmlspecialchars($token['token'], ENT_QUOTES); ?>')" 
+                                    class="px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition text-xs">
+                                <i class="fas fa-key mr-1"></i>Token
                             </button>
                             <form method="POST" class="inline">
                                 <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
@@ -183,3 +190,73 @@ foreach ($stmt->fetchAll() as $row) {
     </div>
     <?php endif; ?>
 </div>
+
+<!-- Token Modal -->
+<div id="tokenModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-lg font-semibold text-gray-800">
+                <i class="fas fa-key text-blue-600 mr-2"></i>QR-Code Token
+            </h3>
+            <button onclick="closeTokenModal()" class="text-gray-400 hover:text-gray-600">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="bg-gray-50 border border-gray-200 rounded-lg p-4 mb-4">
+            <p class="text-sm text-gray-600 mb-2">Token:</p>
+            <div class="flex items-center gap-2">
+                <code id="tokenValue" class="flex-1 text-2xl font-mono font-bold text-gray-800 tracking-wider"></code>
+                <button onclick="copyTokenToClipboard()" class="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition">
+                    <i class="fas fa-copy"></i>
+                </button>
+            </div>
+        </div>
+        <p class="text-xs text-gray-500 text-center" id="copyStatus"></p>
+    </div>
+</div>
+
+<script>
+let currentToken = '';
+
+function showToken(token) {
+    currentToken = token;
+    document.getElementById('tokenValue').textContent = token;
+    document.getElementById('copyStatus').textContent = '';
+    document.getElementById('tokenModal').classList.remove('hidden');
+}
+
+function closeTokenModal() {
+    document.getElementById('tokenModal').classList.add('hidden');
+}
+
+function copyTokenToClipboard() {
+    navigator.clipboard.writeText(currentToken).then(function() {
+        document.getElementById('copyStatus').textContent = '✓ In Zwischenablage kopiert!';
+        document.getElementById('copyStatus').className = 'text-xs text-green-600 text-center';
+    }, function(err) {
+        // Fallback für ältere Browser
+        const textarea = document.createElement('textarea');
+        textarea.value = currentToken;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        document.getElementById('copyStatus').textContent = '✓ In Zwischenablage kopiert!';
+        document.getElementById('copyStatus').className = 'text-xs text-green-600 text-center';
+    });
+}
+
+// Modal schließen bei Klick außerhalb
+document.getElementById('tokenModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeTokenModal();
+    }
+});
+
+// Modal schließen mit Escape-Taste
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeTokenModal();
+    }
+});
+</script>

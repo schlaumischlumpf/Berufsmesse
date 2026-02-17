@@ -311,27 +311,43 @@ foreach ($userRegistrations as $reg) {
             </div>
             <?php endif; ?>
 
-            <!-- Quick Stats -->
+            <!-- Einschreibungsfortschritt -->
             <div class="card p-6 animate-on-scroll stagger-6">
-                <h3 class="font-bold text-gray-800 mb-4">Deine Statistik</h3>
+                <h3 class="font-bold text-gray-800 mb-4">Einschreibungsfortschritt</h3>
                 
                 <div class="space-y-4">
-                    <!-- Registrations -->
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center">
-                                <i class="fas fa-clipboard-check text-blue-600 text-sm"></i>
-                            </div>
-                            <span class="text-sm text-gray-600">Einschreibungen</span>
+                    <!-- Progress Bar -->
+                    <div>
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-sm text-gray-600">Fortschritt</span>
+                            <span class="text-sm font-bold text-gray-800">
+                                <?php echo $totalRegistrations; ?> / <?php echo $maxRegistrations; ?>
+                            </span>
                         </div>
-                        <span class="font-bold text-gray-800 counter-animate" data-target="<?php echo $totalRegistrations; ?>"><?php echo $totalRegistrations; ?></span>
+                        <div class="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+                            <?php 
+                            $progressPercent = $maxRegistrations > 0 ? min(100, ($totalRegistrations / $maxRegistrations) * 100) : 0;
+                            $progressColor = $progressPercent >= 100 ? 'bg-green-500' : ($progressPercent >= 50 ? 'bg-blue-500' : 'bg-amber-500');
+                            ?>
+                            <div class="<?php echo $progressColor; ?> h-full transition-all duration-500 rounded-full" 
+                                 style="width: <?php echo $progressPercent; ?>%"></div>
+                        </div>
+                        <?php if ($totalRegistrations >= $maxRegistrations): ?>
+                        <p class="text-xs text-green-600 mt-1">
+                            <i class="fas fa-check-circle mr-1"></i>Alle Plätze belegt
+                        </p>
+                        <?php else: ?>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Noch <?php echo max(0, $maxRegistrations - $totalRegistrations); ?> freie Plätze
+                        </p>
+                        <?php endif; ?>
                     </div>
                     
                     <!-- Automatic Assignments -->
                     <?php 
                     $autoAssigned = array_filter($userRegistrations, fn($r) => $r['registration_type'] === 'automatic');
                     ?>
-                    <div class="flex items-center justify-between">
+                    <div class="flex items-center justify-between pt-2 border-t border-gray-100">
                         <div class="flex items-center gap-3">
                             <div class="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
                                 <i class="fas fa-robot text-purple-600 text-sm"></i>
