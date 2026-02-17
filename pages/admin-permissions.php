@@ -1,5 +1,5 @@
 <?php
-// Admin Berechtigungsverwaltung (Issue #10)
+// Admin Berechtigungsverwaltung (Issue #10, #26)
 
 // Datenbankverbindung holen
 $db = getDB();
@@ -23,6 +23,62 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
     $reopenUserId = $userId; // Flag to reopen modal
 }
 
+// Handle Apply Permission Group
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
+    $userId = intval($_POST['user_id']);
+    $groupId = intval($_POST['group_id']);
+    
+    // Gruppe anwenden
+    applyPermissionGroup($userId, $groupId);
+    
+    logAuditAction('Berechtigungsgruppe angewendet', "Gruppe #$groupId auf Benutzer #$userId angewendet");
+    
+    $message = ['type' => 'success', 'text' => 'Berechtigungsgruppe erfolgreich angewendet'];
+}
+
+// Handle Create Permission Group
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
+    $groupName = trim($_POST['group_name'] ?? '');
+    $groupDescription = trim($_POST['group_description'] ?? '');
+    $groupPermissions = $_POST['group_permissions'] ?? [];
+    
+    if (!empty($groupName) && !empty($groupPermissions)) {
+        try {
+            $stmt = $db->prepare("INSERT INTO permission_groups (name, description, created_by) VALUES (?, ?, ?)");
+            $stmt->execute([$groupName, $groupDescription, $_SESSION['user_id']]);
+            $newGroupId = $db->lastInsertId();
+            
+            $insertStmt = $db->prepare("INSERT INTO permission_group_items (group_id, permission) VALUES (?, ?)");
+            foreach ($groupPermissions as $perm) {
+                $insertStmt->execute([$newGroupId, $perm]);
+            }
+            
+            logAuditAction('Berechtigungsgruppe erstellt', "Gruppe '$groupName' mit " . count($groupPermissions) . " Berechtigungen erstellt");
+            $message = ['type' => 'success', 'text' => "Berechtigungsgruppe '$groupName' erfolgreich erstellt"];
+        } catch (PDOException $e) {
+            $message = ['type' => 'error', 'text' => 'Fehler: Gruppenname existiert bereits oder ungültige Daten'];
+        }
+    } else {
+        $message = ['type' => 'error', 'text' => 'Name und mindestens eine Berechtigung erforderlich'];
+    }
+}
+
+// Handle Delete Permission Group
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
+    $groupId = intval($_POST['group_id']);
+    try {
+        $stmt = $db->prepare("SELECT name FROM permission_groups WHERE id = ?");
+        $stmt->execute([$groupId]);
+        $group = $stmt->fetch();
+        
+        $db->prepare("DELETE FROM permission_groups WHERE id = ?")->execute([$groupId]);
+        logAuditAction('Berechtigungsgruppe gelöscht', "Gruppe '" . ($group['name'] ?? $groupId) . "' gelöscht");
+        $message = ['type' => 'success', 'text' => 'Berechtigungsgruppe gelöscht'];
+    } catch (Exception $e) {
+        $message = ['type' => 'error', 'text' => 'Fehler beim Löschen der Gruppe'];
+    }
+}
+
 // Alle Benutzer laden (außer Schüler)
 $stmt = $db->query("
     SELECT u.*, COUNT(DISTINCT p.permission) as permission_count
@@ -36,6 +92,9 @@ $users = $stmt->fetchAll();
 
 // Verfügbare Berechtigungen
 $availablePermissions = getAvailablePermissions();
+
+// Berechtigungsgruppen laden
+$permissionGroups = getPermissionGroups();
 
 // Statistiken
 $stats = [];
@@ -177,13 +236,31 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                         </td>
                         <td class="px-6 py-4 text-right">
                             <?php if ($user['role'] !== 'admin'): ?>
-                                <button type="button" 
-                                        class="permission-btn px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm hover:shadow-md"
-                                        data-user-id="<?php echo htmlspecialchars($user['id']); ?>"
-                                        data-user-name="<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?>"
-                                        data-permissions='<?php echo htmlspecialchars(json_encode($userPermissions), ENT_QUOTES, 'UTF-8'); ?>'>
-                                    <i class="fas fa-shield-alt mr-2"></i>Berechtigungen verwalten
-                                </button>
+                                <div class="flex items-center justify-end gap-2">
+                                    <?php if (!empty($permissionGroups)): ?>
+                                    <form method="POST" class="inline-flex items-center gap-1">
+                                        <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
+                                        <select name="group_id" class="text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500">
+                                            <?php foreach ($permissionGroups as $group): ?>
+                                            <option value="<?php echo $group['id']; ?>"><?php echo htmlspecialchars($group['name']); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                        <button type="submit" name="apply_group" value="1" 
+                                                class="px-2 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition text-xs font-semibold"
+                                                title="Gruppe anwenden">
+                                            <i class="fas fa-layer-group"></i>
+                                        </button>
+                                    </form>
+                                    <?php endif; ?>
+                                    <button type="button" 
+                                            class="permission-btn px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm hover:shadow-md"
+                                            data-user-id="<?php echo htmlspecialchars($user['id']); ?>"
+                                            data-user-name="<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?>"
+                                            data-permissions='<?php echo htmlspecialchars(json_encode($userPermissions), ENT_QUOTES, 'UTF-8'); ?>'>
+                                        <i class="fas fa-shield-alt mr-2"></i>Berechtigungen
+                                    </button>
+                                </div>
+                                </div>
                             <?php else: ?>
                                 <span class="text-gray-400 text-sm italic">-</span>
                             <?php endif; ?>
@@ -192,6 +269,59 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                     <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Permission Groups (Issue #26) -->
+    <div class="bg-white rounded-xl shadow-md overflow-hidden">
+        <div class="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-6 py-4">
+            <div class="flex items-center justify-between">
+                <h3 class="text-xl font-bold flex items-center">
+                    <i class="fas fa-layer-group mr-3"></i>
+                    Berechtigungsgruppen
+                </h3>
+                <button onclick="document.getElementById('createGroupModal').classList.remove('hidden');document.getElementById('createGroupModal').classList.add('flex')" 
+                        class="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition text-sm font-medium">
+                    <i class="fas fa-plus mr-1"></i>Neue Gruppe
+                </button>
+            </div>
+        </div>
+
+        <div class="p-6">
+            <?php if (empty($permissionGroups)): ?>
+            <p class="text-gray-500 text-center py-4">Keine Berechtigungsgruppen vorhanden. Erstelle eine neue Gruppe.</p>
+            <?php else: ?>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <?php foreach ($permissionGroups as $group): 
+                    $groupPerms = getPermissionGroupPermissions($group['id']);
+                ?>
+                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <div class="flex items-start justify-between mb-3">
+                        <div>
+                            <h4 class="font-semibold text-gray-800"><?php echo htmlspecialchars($group['name']); ?></h4>
+                            <?php if ($group['description']): ?>
+                            <p class="text-xs text-gray-500 mt-1"><?php echo htmlspecialchars($group['description']); ?></p>
+                            <?php endif; ?>
+                        </div>
+                        <form method="POST" class="inline" onsubmit="return confirm('Gruppe wirklich löschen?')">
+                            <input type="hidden" name="group_id" value="<?php echo $group['id']; ?>">
+                            <button type="submit" name="delete_group" value="1" class="text-red-400 hover:text-red-600 transition text-sm">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                    <div class="flex flex-wrap gap-1 mb-3">
+                        <?php foreach ($groupPerms as $perm): ?>
+                        <span class="px-2 py-0.5 bg-indigo-100 text-indigo-700 rounded text-xs font-medium"><?php echo htmlspecialchars($perm); ?></span>
+                        <?php endforeach; ?>
+                    </div>
+                    <div class="text-xs text-gray-400">
+                        <?php echo count($groupPerms); ?> Berechtigungen
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -367,4 +497,75 @@ setTimeout(function() {
 }
 ?>
 <?php endif; ?>
+</script>
+
+<!-- Create Group Modal (Issue #26) -->
+<div id="createGroupModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-gradient-to-r from-indigo-600 to-blue-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Neue Berechtigungsgruppe</h3>
+            <p class="text-sm text-indigo-100 mt-1">Erstelle eine wiederverwendbare Berechtigungsgruppe</p>
+        </div>
+        
+        <form method="POST" class="p-6 space-y-4">
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Gruppenname</label>
+                <input type="text" name="group_name" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                       placeholder="z.B. Orga-Team">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Beschreibung</label>
+                <input type="text" name="group_description"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                       placeholder="Kurze Beschreibung der Gruppe">
+            </div>
+            
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Berechtigungen</label>
+                <div class="space-y-2">
+                    <?php foreach ($availablePermissions as $key => $description): ?>
+                    <label class="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer border border-gray-200">
+                        <input type="checkbox" name="group_permissions[]" value="<?php echo $key; ?>"
+                               class="mt-0.5 mr-3 rounded text-indigo-600 w-4 h-4">
+                        <div>
+                            <div class="font-medium text-sm text-gray-800"><?php echo $key; ?></div>
+                            <div class="text-xs text-gray-500"><?php echo $description; ?></div>
+                        </div>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+            
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="document.getElementById('createGroupModal').classList.add('hidden');document.getElementById('createGroupModal').classList.remove('flex')" 
+                        class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Abbrechen
+                </button>
+                <button type="submit" name="create_group" value="1" class="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition">
+                    <i class="fas fa-save mr-2"></i>Erstellen
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+// Close create group modal on ESC or outside click
+document.getElementById('createGroupModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        this.classList.add('hidden');
+        this.classList.remove('flex');
+    }
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        const cgModal = document.getElementById('createGroupModal');
+        if (cgModal && !cgModal.classList.contains('hidden')) {
+            cgModal.classList.add('hidden');
+            cgModal.classList.remove('flex');
+        }
+    }
+});
 </script>
