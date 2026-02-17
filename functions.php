@@ -324,7 +324,57 @@ function getAvailablePermissions() {
         'manage_settings' => 'Systemeinstellungen – Einschreibezeitraum, Event-Datum und Parameter anpassen',
         'manage_users' => 'Benutzerverwaltung – Benutzerkonten erstellen, löschen und Passwörter zurücksetzen',
         'view_reports' => 'Berichte & Druckzentrale – Übersichten einsehen, Laufzettel und Listen drucken',
-        'auto_assign' => 'Automatische Zuteilung – Schüler automatisch den Zeitslots zuweisen'
+        'auto_assign' => 'Automatische Zuteilung – Schüler automatisch den Zeitslots zuweisen',
+        'view_rooms' => 'Raumplan einsehen – Raumzuordnungen und Belegung ansehen',
+        'manage_qr_codes' => 'QR-Code Verwaltung – QR-Codes für Anwesenheit generieren und verwalten',
+        'view_audit_logs' => 'Audit Logs – Protokolle aller Nutzeraktionen einsehen'
     ];
+}
+
+// Audit Log System (Issue #21)
+function logAuditAction($action, $details = '') {
+    try {
+        $db = getDB();
+        $userId = $_SESSION['user_id'] ?? null;
+        $username = $_SESSION['username'] ?? 'System';
+        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
+        
+        $stmt = $db->prepare("
+            INSERT INTO audit_logs (user_id, username, action, details, ip_address, created_at)
+            VALUES (?, ?, ?, ?, ?, NOW())
+        ");
+        $stmt->execute([$userId, $username, $action, $details, $ipAddress]);
+    } catch (Exception $e) {
+        error_log('Audit Log Error: ' . $e->getMessage());
+    }
+}
+
+// Berechtigungsgruppen (Issue #26)
+function getPermissionGroups() {
+    try {
+        $db = getDB();
+        $stmt = $db->query("SELECT * FROM permission_groups ORDER BY name ASC");
+        return $stmt->fetchAll();
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+function getPermissionGroupPermissions($groupId) {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("SELECT permission FROM permission_group_items WHERE group_id = ?");
+        $stmt->execute([$groupId]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+function applyPermissionGroup($userId, $groupId) {
+    $permissions = getPermissionGroupPermissions($groupId);
+    foreach ($permissions as $permission) {
+        grantPermission($userId, $permission);
+    }
 }
 ?>

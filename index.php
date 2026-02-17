@@ -223,6 +223,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
         $_SESSION['auto_assign_students'] = $incompleteStudents;
         $_SESSION['auto_assign_errors'] = $errors;
         
+        logAuditAction('Auto-Zuteilung', "$assignedCount Zuweisungen durchgeführt, $incompleteStudents Schüler noch unvollständig");
+        
         // Auto-Close: Einschreibung automatisch schliessen nach Zuteilung (Issue #12)
         $autoClose = getSetting('auto_close_registration', '1');
         if ($autoClose === '1') {
@@ -268,6 +270,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && is
     } catch (Exception $e) {
         error_log('QR generation error: ' . $e->getMessage());
     }
+    logAuditAction('QR-Codes generiert', "$generated QR-Codes für alle Aussteller erstellt");
     header('Location: ?page=admin-qr-codes&generated=' . $generated);
     exit;
 }
@@ -638,6 +641,38 @@ $regEnd = getSetting('registration_end');
             .sidebar.open {
                 transform: translateX(0);
             }
+            
+            /* Issue #24: Mobile - Buttons mit Text+Icon nur Icon anzeigen */
+            .btn-mobile-icon span.btn-text {
+                display: none;
+            }
+            
+            /* Issue #24: Mobile - Tagesplan Buttons kompakter */
+            .schedule-actions .btn,
+            .schedule-actions a {
+                padding: 0.375rem 0.5rem;
+                font-size: 0.75rem;
+            }
+            .schedule-actions .btn span,
+            .schedule-actions a span {
+                display: none;
+            }
+        }
+        
+        /* Issue #24: Exhibitor Modal - Schließen-Button mehr Abstand */
+        .exhibitor-modal-box > div:last-child {
+            padding-bottom: 1.5rem !important;
+        }
+        
+        @media (max-width: 768px) {
+            .exhibitor-modal-box > div:last-child {
+                padding-bottom: max(2rem, env(safe-area-inset-bottom, 2rem)) !important;
+            }
+            
+            .exhibitor-modal-box {
+                max-height: 85vh;
+                margin-bottom: 2rem;
+            }
         }
         
         /* ==========================================================================
@@ -664,6 +699,9 @@ $regEnd = getSetting('registration_end');
     <button id="mobileMenuBtn" class="md:hidden fixed top-4 left-4 z-50 bg-white/90 backdrop-blur-sm text-gray-600 p-3 rounded-xl shadow-lg border border-gray-100 transition-all duration-300 hover:bg-white hover:shadow-xl">
         <i class="fas fa-bars text-lg"></i>
     </button>
+    
+    <!-- Mobile Overlay -->
+    <div id="mobileOverlay" class="md:hidden fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300 opacity-0"></div>
 
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar sidebar-transition fixed left-0 top-0 h-full bg-white/95 backdrop-blur-lg border-r border-gray-100 w-64 z-40 flex flex-col shadow-xl">
@@ -717,6 +755,20 @@ $regEnd = getSetting('registration_end');
                     <i class="fas fa-building"></i>
                     <span>Unternehmen</span>
                 </a>
+                
+                <?php if (hasPermission('view_rooms')): ?>
+                <a href="<?php echo $currentPage === 'admin-rooms' ? 'javascript:void(0)' : '?page=admin-rooms'; ?>" data-page="admin-rooms" class="nav-link <?php echo $currentPage === 'admin-rooms' ? 'active' : ''; ?>">
+                    <i class="fas fa-map-marker-alt"></i>
+                    <span>Raumplan</span>
+                </a>
+                <?php endif; ?>
+                
+                <?php if (hasPermission('view_reports')): ?>
+                <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
+                    <i class="fas fa-print"></i>
+                    <span>Druckzentrale</span>
+                </a>
+                <?php endif; ?>
                 <?php endif; ?>
 
                 <?php if (isAdmin() || hasPermission('manage_exhibitors') || hasPermission('manage_rooms') || hasPermission('manage_settings') || hasPermission('manage_users') || hasPermission('view_reports') || hasPermission('auto_assign')): ?>
@@ -786,6 +838,11 @@ $regEnd = getSetting('registration_end');
                 <a href="<?php echo $currentPage === 'admin-registrations' ? 'javascript:void(0)' : '?page=admin-registrations'; ?>" data-page="admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
                     <i class="fas fa-clipboard-list"></i>
                     <span>Einschreibungen</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'admin-audit-logs' ? 'javascript:void(0)' : '?page=admin-audit-logs'; ?>" data-page="admin-audit-logs" class="nav-link <?php echo $currentPage === 'admin-audit-logs' ? 'active' : ''; ?>">
+                    <i class="fas fa-history"></i>
+                    <span>Audit Logs</span>
                 </a>
                 <?php endif; ?>
                 <?php endif; ?>
@@ -878,7 +935,7 @@ $regEnd = getSetting('registration_end');
                     }
                     break;
                 case 'admin-rooms':
-                    if (isAdmin() || hasPermission('manage_rooms')) {
+                    if (isAdmin() || hasPermission('manage_rooms') || hasPermission('view_rooms')) {
                         include 'pages/admin-rooms.php';
                         $pageLoaded = true;
                     }
@@ -914,7 +971,7 @@ $regEnd = getSetting('registration_end');
                     }
                     break;
                 case 'admin-qr-codes':
-                    if (isAdmin()) {
+                    if (isAdmin() || hasPermission('manage_qr_codes')) {
                         include 'pages/admin-qr-codes.php';
                         $pageLoaded = true;
                     }
@@ -922,6 +979,12 @@ $regEnd = getSetting('registration_end');
                 case 'admin-registrations':
                     if (isAdmin()) {
                         include 'pages/admin-registrations.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+                case 'admin-audit-logs':
+                    if (isAdmin() || hasPermission('view_audit_logs')) {
+                        include 'pages/admin-audit-logs.php';
                         $pageLoaded = true;
                     }
                     break;
@@ -952,26 +1015,47 @@ $regEnd = getSetting('registration_end');
         // Mobile Menu Toggle with Animation
         const mobileMenuBtn = document.getElementById('mobileMenuBtn');
         const sidebar = document.getElementById('sidebar');
+        const mobileOverlay = document.getElementById('mobileOverlay');
+        
+        function openMobileSidebar() {
+            sidebar.classList.add('open');
+            mobileMenuBtn.style.transform = 'rotate(90deg)';
+            mobileMenuBtn.style.opacity = '0.5';
+            if (mobileOverlay) {
+                mobileOverlay.classList.remove('hidden');
+                setTimeout(() => mobileOverlay.classList.add('opacity-100'), 10);
+                mobileOverlay.classList.remove('opacity-0');
+            }
+        }
+        
+        function closeMobileSidebar() {
+            sidebar.classList.remove('open');
+            mobileMenuBtn.style.transform = 'rotate(0)';
+            mobileMenuBtn.style.opacity = '1';
+            if (mobileOverlay) {
+                mobileOverlay.classList.remove('opacity-100');
+                mobileOverlay.classList.add('opacity-0');
+                setTimeout(() => mobileOverlay.classList.add('hidden'), 300);
+            }
+        }
         
         mobileMenuBtn.addEventListener('click', () => {
-            sidebar.classList.toggle('open');
-            // Toggle button with rotation animation
             if (sidebar.classList.contains('open')) {
-                mobileMenuBtn.style.transform = 'rotate(90deg)';
-                mobileMenuBtn.style.opacity = '0.5';
+                closeMobileSidebar();
             } else {
-                mobileMenuBtn.style.transform = 'rotate(0)';
-                mobileMenuBtn.style.opacity = '1';
+                openMobileSidebar();
             }
         });
+        
+        if (mobileOverlay) {
+            mobileOverlay.addEventListener('click', closeMobileSidebar);
+        }
 
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
             if (window.innerWidth < 768) {
-                if (!sidebar.contains(e.target) && !mobileMenuBtn.contains(e.target)) {
-                    sidebar.classList.remove('open');
-                    mobileMenuBtn.style.transform = 'rotate(0)';
-                    mobileMenuBtn.style.opacity = '1';
+                if (!sidebar.contains(e.target) && !mobileMenuBtn.contains(e.target) && !(mobileOverlay && mobileOverlay.contains(e.target))) {
+                    closeMobileSidebar();
                 }
             }
         });

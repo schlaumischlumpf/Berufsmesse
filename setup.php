@@ -181,6 +181,93 @@ try {
     $errors[] = "Fehler bei qr_tokens: " . $e->getMessage();
 }
 
+// Migration 10: audit_logs Tabelle erstellen (Issue #21)
+try {
+    $stmt = $db->query("SHOW TABLES LIKE 'audit_logs'");
+    if ($stmt->rowCount() === 0) {
+        $db->exec("
+            CREATE TABLE audit_logs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT DEFAULT NULL,
+                username VARCHAR(100) NOT NULL,
+                action VARCHAR(255) NOT NULL,
+                details TEXT DEFAULT NULL,
+                ip_address VARCHAR(45) DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_user_id (user_id),
+                INDEX idx_action (action),
+                INDEX idx_created_at (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Audit Logs für alle Nutzeraktionen (Issue #21)'
+        ");
+        $success[] = "Tabelle 'audit_logs' erfolgreich erstellt";
+    } else {
+        $success[] = "Tabelle 'audit_logs' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei audit_logs: " . $e->getMessage();
+}
+
+// Migration 11: permission_groups Tabellen erstellen (Issue #26)
+try {
+    $stmt = $db->query("SHOW TABLES LIKE 'permission_groups'");
+    if ($stmt->rowCount() === 0) {
+        $db->exec("
+            CREATE TABLE permission_groups (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                description TEXT DEFAULT NULL,
+                created_by INT DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE KEY unique_group_name (name),
+                FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Berechtigungsgruppen (Issue #26)'
+        ");
+        $success[] = "Tabelle 'permission_groups' erfolgreich erstellt";
+    } else {
+        $success[] = "Tabelle 'permission_groups' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei permission_groups: " . $e->getMessage();
+}
+
+try {
+    $stmt = $db->query("SHOW TABLES LIKE 'permission_group_items'");
+    if ($stmt->rowCount() === 0) {
+        $db->exec("
+            CREATE TABLE permission_group_items (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                group_id INT NOT NULL,
+                permission VARCHAR(50) NOT NULL,
+                FOREIGN KEY (group_id) REFERENCES permission_groups(id) ON DELETE CASCADE,
+                UNIQUE KEY unique_group_permission (group_id, permission)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Berechtigungen in Gruppen (Issue #26)'
+        ");
+        $success[] = "Tabelle 'permission_group_items' erfolgreich erstellt";
+
+        // Voreingestellte Berechtigungsgruppen erstellen
+        $db->exec("INSERT INTO permission_groups (name, description) VALUES ('Lehrer Standard', 'Standard-Berechtigungen für Lehrkräfte')");
+        $groupId = intval($db->lastInsertId());
+        $stmt = $db->prepare("INSERT INTO permission_group_items (group_id, permission) VALUES (?, ?), (?, ?)");
+        $stmt->execute([$groupId, 'view_reports', $groupId, 'view_rooms']);
+        
+        $db->exec("INSERT INTO permission_groups (name, description) VALUES ('Orga-Team', 'Erweiterte Berechtigungen für das Organisationsteam')");
+        $groupId = intval($db->lastInsertId());
+        $stmt = $db->prepare("INSERT INTO permission_group_items (group_id, permission) VALUES (?, ?), (?, ?), (?, ?), (?, ?), (?, ?)");
+        $stmt->execute([$groupId, 'manage_exhibitors', $groupId, 'manage_rooms', $groupId, 'view_reports', $groupId, 'view_rooms', $groupId, 'manage_qr_codes']);
+        
+        $db->exec("INSERT INTO permission_groups (name, description) VALUES ('Vollzugriff', 'Alle verfügbaren Berechtigungen')");
+        $groupId = intval($db->lastInsertId());
+        $stmt = $db->prepare("INSERT INTO permission_group_items (group_id, permission) VALUES (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?), (?, ?)");
+        $stmt->execute([$groupId, 'manage_exhibitors', $groupId, 'manage_rooms', $groupId, 'manage_settings', $groupId, 'manage_users', $groupId, 'view_reports', $groupId, 'auto_assign', $groupId, 'view_rooms', $groupId, 'manage_qr_codes', $groupId, 'view_audit_logs']);
+        
+        $success[] = "Voreingestellte Berechtigungsgruppen erstellt";
+    } else {
+        $success[] = "Tabelle 'permission_group_items' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei permission_group_items: " . $e->getMessage();
+}
+
 // Migration 9: settings für Einschreibeschluss-Automatik (Issue #12)
 try {
     $stmt = $db->prepare("SELECT COUNT(*) FROM settings WHERE setting_key = 'auto_close_registration'");

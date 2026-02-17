@@ -74,8 +74,8 @@ foreach ($registrations as $reg) {
                 </div>
                 <div class="h-10 w-px bg-gray-200"></div>
                 <div class="flex gap-2">
-                    <a href="api/generate-personal-pdf.php" class="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:from-emerald-600 hover:to-green-700 transition shadow-sm inline-flex items-center gap-2">
-                        <i class="fas fa-file-pdf"></i> PDF herunterladen
+                    <a href="api/generate-personal-pdf.php" class="bg-gradient-to-r from-emerald-500 to-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:from-emerald-600 hover:to-green-700 transition shadow-sm inline-flex items-center gap-2 btn-mobile-icon">
+                        <i class="fas fa-file-pdf"></i> <span class="btn-text">PDF herunterladen</span>
                     </a>
                 </div>
             </div>

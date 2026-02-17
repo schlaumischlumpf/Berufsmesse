@@ -30,6 +30,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['lastname'] = $user['lastname'];
             $_SESSION['role'] = $user['role'];
             
+            logAuditAction('Login', 'Benutzer hat sich angemeldet');
+            
             // Prüfe ob Passwort erzwungen werden muss (beim ersten Login oder nach Admin-Reset)
             $db = getDB();
             $stmt = $db->prepare("SELECT must_change_password FROM users WHERE id = ?");
