@@ -1,0 +1,16 @@
+# Umgebungsvariablen (enthält Passwörter)
+.env
+
+# Hochgeladene Dateien
+uploads/*
+!uploads/.gitkeep
+
+# IDE/Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Betriebssystem
+.DS_Store
+Thumbs.db

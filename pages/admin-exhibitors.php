@@ -379,16 +379,7 @@ $allExhibitors = $stmt->fetchAll();
                         <option value="<?php echo htmlspecialchars($ind); ?>"><?php echo htmlspecialchars($ind); ?></option>
                         <?php endforeach; ?>
                         <?php if (empty($industryNames)): ?>
-                        <option value="Automobilindustrie">Automobilindustrie</option>
-                        <option value="Handwerk">Handwerk</option>
-                        <option value="Gesundheitswesen">Gesundheitswesen</option>
-                        <option value="IT & Software">IT &amp; Software</option>
-                        <option value="Dienstleistung">Dienstleistung</option>
-                        <option value="Öffentlicher Dienst">Öffentlicher Dienst</option>
-                        <option value="Bildung">Bildung</option>
-                        <option value="Gastronomie & Hotellerie">Gastronomie &amp; Hotellerie</option>
-                        <option value="Handel & Verkauf">Handel &amp; Verkauf</option>
-                        <option value="Sonstiges">Sonstiges</option>
+                        <option disabled>-- Keine Branchen vorhanden (migrations.sql ausführen) --</option>
                         <?php endif; ?>
                     </select>
                 </div>

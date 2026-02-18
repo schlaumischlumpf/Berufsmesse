@@ -1,52 +1,61 @@
-# Comments are provided throughout this file to help you get started.
-# If you need more help, visit the Docker Compose reference guide at
-# https://docs.docker.com/go/compose-spec-reference/
+# Docker Compose für die Berufsmesse-Anwendung
+# Kopiere .env.example zu .env und passe die Werte an, bevor du startest.
+# Starten: docker compose up -d
 
-# Here the instructions define your application as a service called "server".
-# This service is built from the Dockerfile in the current directory.
-# You can add other services your application may depend on here, such as a
-# database or a cache. For examples, see the Awesome Compose repository:
-# https://github.com/docker/awesome-compose
 services:
-  server:
+  app:
     build:
       context: .
+    restart: unless-stopped
     ports:
-      - 9000:80
+      - "${APP_PORT:-9000}:80"
     environment:
       DB_HOST: db
-      DB_USER: root
-      DB_PASS: "test"
-      DB_NAME: berufsmesse
+      DB_USER: ${DB_USER:-berufsmesse}
+      DB_PASS: ${DB_PASS:?DB_PASS muss in der .env-Datei gesetzt sein}
+      DB_NAME: ${DB_NAME:-berufsmesse}
+      BASE_URL: ${BASE_URL:-/}
+    volumes:
+      - uploads:/var/www/html/uploads
+    depends_on:
+      db:
+        condition: service_healthy
 
   db:
-    image: mariadb:10.9
-    restart: always
+    image: mariadb:10.11
+    restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: "test"
-      MYSQL_DATABASE: berufsmesse
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS:?DB_ROOT_PASS muss in der .env-Datei gesetzt sein}
+      MYSQL_DATABASE: ${DB_NAME:-berufsmesse}
+      MYSQL_USER: ${DB_USER:-berufsmesse}
+      MYSQL_PASSWORD: ${DB_PASS:?DB_PASS muss in der .env-Datei gesetzt sein}
     volumes:
       - db-data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 30s
 
   phpmyadmin:
-    image: phpmyadmin/phpmyadmin:latest
-    restart: always
+    image: phpmyadmin:latest
+    restart: unless-stopped
+    profiles:
+      - tools
     depends_on:
       db:
         condition: service_healthy
     environment:
       PMA_HOST: db
-      PMA_USER: root
-      PMA_PASSWORD: "test"
+      PMA_USER: ${DB_USER:-berufsmesse}
+      PMA_PASSWORD: ${DB_PASS:?DB_PASS muss in der .env-Datei gesetzt sein}
       PHP_UPLOAD_MAX_FILESIZE: 16M
+      UPLOAD_LIMIT: 16M
     ports:
-      - 8080:80
+      - "${PMA_PORT:-8080}:80"
 
 volumes:
   db-data:
+  uploads:
 
