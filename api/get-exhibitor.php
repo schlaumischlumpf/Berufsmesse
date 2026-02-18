@@ -71,13 +71,31 @@ echo json_encode([
 
 // Neue Funktion für Schüler-Detailansicht
 function generateDetailsTab($exhibitor) {
-    // Angebot ermitteln
+    // Angebot aus offer_types JSON laden (Fallback: aus Beschreibung parsen)
     $angebot = [];
-    $desc = strtolower($exhibitor['short_description'] . ' ' . $exhibitor['description']);
-    if (strpos($desc, 'ausbildung') !== false) $angebot[] = 'Ausbildung';
-    if (strpos($desc, 'studium') !== false || strpos($desc, 'dual') !== false) $angebot[] = 'Duales Studium';
-    if (strpos($desc, 'praktikum') !== false) $angebot[] = 'Praktikum';
-    if (empty($angebot)) $angebot[] = 'Ausbildung';
+    if (!empty($exhibitor['offer_types'])) {
+        $offerData = json_decode($exhibitor['offer_types'], true);
+        if ($offerData && !empty($offerData['selected'])) {
+            $angebot = $offerData['selected'];
+        }
+        $offerCustom = (!empty($offerData['custom'])) ? $offerData['custom'] : '';
+    } else {
+        $desc = strtolower($exhibitor['short_description'] . ' ' . $exhibitor['description']);
+        if (strpos($desc, 'ausbildung') !== false) $angebot[] = 'Ausbildung';
+        if (strpos($desc, 'studium') !== false || strpos($desc, 'dual') !== false) $angebot[] = 'Duales Studium';
+        if (strpos($desc, 'praktikum') !== false) $angebot[] = 'Praktikum';
+        $offerCustom = '';
+    }
+    if (empty($angebot) && empty($offerCustom)) $angebot[] = 'Ausbildung';
+    
+    // Sichtbare Felder
+    $visibleFields = isset($exhibitor['visible_fields']) ? json_decode($exhibitor['visible_fields'], true) : ['name', 'short_description', 'description', 'category', 'website', 'offer_types'];
+    if (!is_array($visibleFields)) {
+        $visibleFields = ['name', 'short_description', 'description', 'category', 'website', 'offer_types'];
+    }
+    $isVisible = function($field) use ($visibleFields) {
+        return in_array($field, $visibleFields);
+    };
     
     // Berufe/Tätigkeiten (aus jobs Feld oder Description parsen)
     $jobs = $exhibitor['jobs'] ?? '';
@@ -132,16 +150,23 @@ function generateDetailsTab($exhibitor) {
         </div>
 
         <!-- Angebot (Ausbildung/Studium/Praktikum) -->
+        <?php if ($isVisible('offer_types') && (!empty($angebot) || !empty($offerCustom))): ?>
         <div>
             <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Angebot für Schüler</h4>
             <div class="flex flex-wrap gap-2">
                 <?php foreach ($angebot as $a): ?>
-                <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700">
-                    <i class="fas fa-graduation-cap mr-2"></i> <?php echo $a; ?>
+                <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-emerald-50 text-emerald-700">
+                    <i class="fas fa-graduation-cap mr-2"></i> <?php echo htmlspecialchars($a); ?>
                 </span>
                 <?php endforeach; ?>
+                <?php if (!empty($offerCustom)): ?>
+                <span class="inline-flex items-center px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-50 text-blue-700">
+                    <i class="fas fa-star mr-2"></i> <?php echo htmlspecialchars($offerCustom); ?>
+                </span>
+                <?php endif; ?>
             </div>
         </div>
+        <?php endif; ?>
 
         <!-- Besonderheiten -->
         <div>

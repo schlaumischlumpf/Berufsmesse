@@ -14,6 +14,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = sanitize($_POST['email'] ?? '');
         $phone = sanitize($_POST['phone'] ?? '');
         $website = sanitize($_POST['website'] ?? '');
+        $jobs = sanitize($_POST['jobs'] ?? '');
+        $features = sanitize($_POST['features'] ?? '');
+        
+        // Angebotstypen als JSON speichern
+        $offerSelected = isset($_POST['offer_types_selected']) ? (array)$_POST['offer_types_selected'] : [];
+        $offerCustom = trim($_POST['offer_types_custom'] ?? '');
+        $offerTypesJson = (!empty($offerSelected) || $offerCustom !== '') 
+            ? json_encode(['selected' => $offerSelected, 'custom' => $offerCustom]) 
+            : null;
         
         // Sichtbare Felder als JSON speichern
         $visibleFields = isset($_POST['visible_fields']) ? $_POST['visible_fields'] : ['name', 'short_description', 'description', 'category', 'website'];
@@ -25,9 +34,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $logoPath = handleLogoUpload($_FILES['logo']);
         }
         
-        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields, logo) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath])) {
+        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields, logo, offer_types, jobs, features) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features])) {
+            logAuditAction('aussteller_erstellt', "Aussteller '$name' erstellt");
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich hinzugefuegt'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Hinzufuegen'];
@@ -44,6 +54,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = sanitize($_POST['email'] ?? '');
         $phone = sanitize($_POST['phone'] ?? '');
         $website = sanitize($_POST['website'] ?? '');
+        $jobs = sanitize($_POST['jobs'] ?? '');
+        $features = sanitize($_POST['features'] ?? '');
+        
+        // Angebotstypen als JSON speichern
+        $offerSelected = isset($_POST['offer_types_selected']) ? (array)$_POST['offer_types_selected'] : [];
+        $offerCustom = trim($_POST['offer_types_custom'] ?? '');
+        $offerTypesJson = (!empty($offerSelected) || $offerCustom !== '') 
+            ? json_encode(['selected' => $offerSelected, 'custom' => $offerCustom]) 
+            : null;
         
         // Sichtbare Felder als JSON speichern
         $visibleFields = isset($_POST['visible_fields']) ? $_POST['visible_fields'] : ['name', 'short_description', 'description', 'category', 'website'];
@@ -63,15 +82,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, 
-                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, logo = ? WHERE id = ?");
-            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $id]);
+                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, logo = ?, offer_types = ?, jobs = ?, features = ? WHERE id = ?");
+            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $id]);
         } else {
             $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, 
-                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ? WHERE id = ?");
-            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $id]);
+                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, offer_types = ?, jobs = ?, features = ? WHERE id = ?");
+            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $offerTypesJson, $jobs, $features, $id]);
         }
         
         if ($result) {
+            logAuditAction('aussteller_bearbeitet', "Aussteller '$name' (ID: $id) bearbeitet");
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich aktualisiert'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren'];
@@ -149,6 +169,10 @@ function handleLogoUpload($file) {
     
     return null;
 }
+
+// Branchen aus DB laden
+$industries = getIndustries();
+$industryNames = array_column($industries, 'name');
 
 // Alle Aussteller laden mit Raum-Kapazitaet
 $stmt = $db->query("
@@ -351,16 +375,21 @@ $allExhibitors = $stmt->fetchAll();
                     <select name="category" id="category" required
                             class="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                         <option value="">-- Bitte waehlen --</option>
+                        <?php foreach ($industryNames as $ind): ?>
+                        <option value="<?php echo htmlspecialchars($ind); ?>"><?php echo htmlspecialchars($ind); ?></option>
+                        <?php endforeach; ?>
+                        <?php if (empty($industryNames)): ?>
                         <option value="Automobilindustrie">Automobilindustrie</option>
                         <option value="Handwerk">Handwerk</option>
                         <option value="Gesundheitswesen">Gesundheitswesen</option>
-                        <option value="IT & Software">IT & Software</option>
+                        <option value="IT & Software">IT &amp; Software</option>
                         <option value="Dienstleistung">Dienstleistung</option>
-                        <option value="Öffentlicher Dienst">Oeffentlicher Dienst</option>
+                        <option value="Öffentlicher Dienst">Öffentlicher Dienst</option>
                         <option value="Bildung">Bildung</option>
-                        <option value="Gastronomie & Hotellerie">Gastronomie & Hotellerie</option>
-                        <option value="Handel & Verkauf">Handel & Verkauf</option>
+                        <option value="Gastronomie & Hotellerie">Gastronomie &amp; Hotellerie</option>
+                        <option value="Handel & Verkauf">Handel &amp; Verkauf</option>
                         <option value="Sonstiges">Sonstiges</option>
+                        <?php endif; ?>
                     </select>
                 </div>
                 
@@ -400,6 +429,45 @@ $allExhibitors = $stmt->fetchAll();
                     <input type="text" name="website" id="website" placeholder="www.beispiel.de"
                            class="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                 </div>
+
+                <!-- Typische Berufe / Taetigkeiten -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Typische Berufe / Taetigkeiten</label>
+                    <textarea name="jobs" id="jobs" rows="2"
+                              class="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                              placeholder="z.B. Mechatroniker, Informatiker, Kaufmann/frau..."></textarea>
+                </div>
+
+                <!-- Besonderheiten -->
+                <div class="md:col-span-2">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Besonderheiten</label>
+                    <textarea name="features" id="features" rows="2"
+                              class="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                              placeholder="z.B. familienfreundliches Unternehmen, internationale Standorte..."></textarea>
+                </div>
+
+                <!-- Angebote fuer Schueler -->
+                <div class="md:col-span-2 border-t border-gray-100 pt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-3">
+                        <i class="fas fa-graduation-cap mr-2 text-emerald-500"></i>Angebote fuer Schueler
+                    </label>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                        <?php 
+                        $offerTypeOptions = ['Ausbildung', 'Duales Studium', 'Studium', 'Praktikum', 'Werkstudent', 'Hospitation', 'Sonstiges'];
+                        foreach ($offerTypeOptions as $opt): ?>
+                        <label class="flex items-center p-3 bg-emerald-50 rounded-lg cursor-pointer hover:bg-emerald-100 transition">
+                            <input type="checkbox" name="offer_types_selected[]" value="<?php echo htmlspecialchars($opt); ?>" class="mr-2 rounded text-emerald-500 offer-type-checkbox">
+                            <span class="text-sm text-gray-700"><?php echo htmlspecialchars($opt); ?></span>
+                        </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Weiteres Angebot (optional)</label>
+                        <input type="text" name="offer_types_custom" id="offer_types_custom"
+                               placeholder="z.B. Trainee-Programm, Gap-Year-Stelle..."
+                               class="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+                    </div>
+                </div>
                 
                 <!-- Sichtbarkeitseinstellungen -->
                 <div class="md:col-span-2 border-t border-gray-100 pt-4">
@@ -438,6 +506,10 @@ $allExhibitors = $stmt->fetchAll();
                         <label class="flex items-center p-3 bg-gray-50 rounded-lg cursor-pointer">
                             <input type="checkbox" name="visible_fields[]" value="website" checked class="mr-2 rounded text-emerald-500">
                             <span class="text-sm text-gray-600">Webseite</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-gray-50 rounded-lg cursor-pointer">
+                            <input type="checkbox" name="visible_fields[]" value="offer_types" checked class="mr-2 rounded text-emerald-500">
+                            <span class="text-sm text-gray-600">Angebote</span>
                         </label>
                     </div>
                 </div>
@@ -530,6 +602,27 @@ function openEditModal(exhibitor) {
     document.getElementById('email').value = exhibitor.email || '';
     document.getElementById('phone').value = exhibitor.phone || '';
     document.getElementById('website').value = exhibitor.website || '';
+    document.getElementById('jobs').value = exhibitor.jobs || '';
+    document.getElementById('features').value = exhibitor.features || '';
+    
+    // Angebotstypen setzen
+    document.querySelectorAll('.offer-type-checkbox').forEach(cb => { cb.checked = false; });
+    document.getElementById('offer_types_custom').value = '';
+    if (exhibitor.offer_types) {
+        try {
+            const offerData = typeof exhibitor.offer_types === 'string' 
+                ? JSON.parse(exhibitor.offer_types) 
+                : exhibitor.offer_types;
+            if (offerData && offerData.selected) {
+                document.querySelectorAll('.offer-type-checkbox').forEach(cb => {
+                    cb.checked = offerData.selected.includes(cb.value);
+                });
+            }
+            if (offerData && offerData.custom) {
+                document.getElementById('offer_types_custom').value = offerData.custom;
+            }
+        } catch(e) {}
+    }
     
     // Logo anzeigen
     if (exhibitor.logo) {

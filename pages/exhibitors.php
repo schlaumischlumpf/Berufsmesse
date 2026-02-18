@@ -1,7 +1,9 @@
 <?php
-// Kategorien für Filter ermitteln
-$stmt = $db->query("SELECT DISTINCT category FROM exhibitors WHERE active = 1 AND category IS NOT NULL AND category != '' ORDER BY category");
-$categories = $stmt->fetchAll(PDO::FETCH_COLUMN);
+// Kategorien fuer Filter aus DB laden (Fallback: DISTINCT aus exhibitors)
+$industryList = getIndustries();
+$categories = !empty($industryList) 
+    ? array_column($industryList, 'name')
+    : $db->query("SELECT DISTINCT category FROM exhibitors WHERE active = 1 AND category IS NOT NULL AND category != '' ORDER BY category")->fetchAll(PDO::FETCH_COLUMN);
 ?>
 
 <!-- Aussteller-Übersicht -->
@@ -45,13 +47,23 @@ $categories = $stmt->fetchAll(PDO::FETCH_COLUMN);
             // Branche
             $branche = $exhibitor['category'] ?? 'Allgemein';
             
-            // Angebot (aus short_description oder description parsen)
+            // Angebot aus offer_types JSON laden (Fallback: aus Beschreibung parsen)
             $angebot = [];
-            $desc = strtolower($exhibitor['short_description'] . ' ' . $exhibitor['description']);
-            if (strpos($desc, 'ausbildung') !== false) $angebot[] = 'Ausbildung';
-            if (strpos($desc, 'studium') !== false || strpos($desc, 'dual') !== false) $angebot[] = 'Duales Studium';
-            if (strpos($desc, 'praktikum') !== false) $angebot[] = 'Praktikum';
-            if (empty($angebot)) $angebot[] = 'Ausbildung'; // Default
+            if (!empty($exhibitor['offer_types'])) {
+                $offerData = json_decode($exhibitor['offer_types'], true);
+                if ($offerData && !empty($offerData['selected'])) {
+                    $angebot = $offerData['selected'];
+                }
+                if ($offerData && !empty($offerData['custom'])) {
+                    $angebot[] = $offerData['custom'];
+                }
+            }
+            if (empty($angebot)) {
+                $desc = strtolower($exhibitor['short_description'] . ' ' . $exhibitor['description']);
+                if (strpos($desc, 'ausbildung') !== false) $angebot[] = 'Ausbildung';
+                if (strpos($desc, 'studium') !== false || strpos($desc, 'dual') !== false) $angebot[] = 'Duales Studium';
+                if (strpos($desc, 'praktikum') !== false) $angebot[] = 'Praktikum';
+            }
             
             // Pastel Color variants based on index
             $colors = ['mint', 'lavender', 'peach', 'sky'];
