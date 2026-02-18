@@ -5,8 +5,8 @@ require_once '../functions.php';
 
 header('Content-Type: application/json');
 
-// Check if user is admin
-if (!isAdmin()) {
+// Check if user has permission
+if (!isAdmin() && !hasPermission('raeume_erstellen')) {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'Keine Berechtigung']);
     exit;

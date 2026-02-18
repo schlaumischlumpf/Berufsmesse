@@ -9,7 +9,7 @@ require_once '../functions.php';
 
 header('Content-Type: application/json');
 
-if (!isAdmin() && !hasPermission('manage_exhibitors')) {
+if (!isAdmin() && !hasPermission('qr_codes_erstellen')) {
     echo json_encode(['success' => false, 'message' => 'Keine Berechtigung']);
     exit;
 }

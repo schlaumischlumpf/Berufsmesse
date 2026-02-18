@@ -12,7 +12,10 @@ session_start();
 require_once '../config.php';
 require_once '../functions.php';
 
-requireAdmin();
+if (!isAdmin() && !hasPermission('zuteilung_ausfuehren')) {
+    header('Location: ../index.php');
+    exit;
+}
 
 set_time_limit(300); // 5 Minuten Timeout
 

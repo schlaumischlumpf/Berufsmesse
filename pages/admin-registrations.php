@@ -16,6 +16,7 @@ $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
 
 // Handle: Admin meldet Schüler an
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
+    if (!isAdmin() && !hasPermission('anmeldungen_erstellen')) die('Keine Berechtigung');
     $studentId = intval($_POST['student_id']);
     $exhibitorId = intval($_POST['exhibitor_id']);
     $priority = max(1, min(3, intval($_POST['priority'] ?? 2)));
@@ -43,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
 
 // Handle: Admin nimmt Einschreibung zurück
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_unregister'])) {
+    if (!isAdmin() && !hasPermission('anmeldungen_loeschen')) die('Keine Berechtigung');
     $registrationId = intval($_POST['registration_id']);
     $stmt = $db->prepare("DELETE FROM registrations WHERE id = ?");
     if ($stmt->execute([$registrationId])) {

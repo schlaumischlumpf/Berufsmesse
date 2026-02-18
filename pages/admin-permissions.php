@@ -6,6 +6,7 @@ $db = getDB();
 
 // Handle Permission Changes
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) {
+    if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userId = intval($_POST['user_id']);
     $permissions = $_POST['permissions'] ?? [];
     
@@ -25,6 +26,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
 
 // Handle Apply Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
+    if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userId = intval($_POST['user_id']);
     $groupId = intval($_POST['group_id']);
     
@@ -38,6 +40,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
 
 // Handle Create Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
+    if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
     $groupName = trim($_POST['group_name'] ?? '');
     $groupDescription = trim($_POST['group_description'] ?? '');
     $groupPermissions = $_POST['group_permissions'] ?? [];
@@ -65,6 +68,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
 
 // Handle Delete Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
+    if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
     $groupId = intval($_POST['group_id']);
     try {
         $stmt = $db->prepare("SELECT name FROM permission_groups WHERE id = ?");
@@ -84,14 +88,16 @@ $stmt = $db->query("
     SELECT u.*, COUNT(DISTINCT p.permission) as permission_count
     FROM users u
     LEFT JOIN user_permissions p ON u.id = p.user_id
-    WHERE u.role IN ('admin', 'teacher')
+    WHERE u.role IN ('admin', 'teacher', 'orga')
     GROUP BY u.id
     ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
 ");
 $users = $stmt->fetchAll();
 
-// Verfügbare Berechtigungen
+// Verfügbare Berechtigungen (gruppiert)
 $availablePermissions = getAvailablePermissions();
+$allPermissions = getAllPermissionKeys();
+$permissionDependencies = getPermissionDependencies();
 
 // Berechtigungsgruppen laden
 $permissionGroups = getPermissionGroups();
@@ -139,7 +145,9 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                 <h3 class="font-semibold text-blue-800 mb-2">Berechtigungskonzept</h3>
                 <ul class="text-sm text-blue-700 space-y-1">
                     <li><strong>Administratoren</strong> haben automatisch alle Berechtigungen</li>
+                    <li><strong>Orga-Nutzer</strong> haben keine Berechtigungen by default – jede muss explizit vergeben werden</li>
                     <li><strong>Lehrer</strong> und andere Benutzer benötigen explizite Berechtigungen</li>
+                    <li>Abhängige Berechtigungen werden beim Vergeben/Entziehen automatisch mit behandelt</li>
                 </ul>
             </div>
         </div>
@@ -175,7 +183,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
             <div class="flex items-center justify-between">
                 <div>
                     <p class="text-gray-500 text-sm mb-1">Verfügbare Berechtigungen</p>
-                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($availablePermissions); ?></p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($allPermissions); ?></p>
                 </div>
                 <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
                     <i class="fas fa-list text-blue-500"></i>
@@ -218,6 +226,10 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                             <?php if ($user['role'] === 'admin'): ?>
                                 <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-user-shield mr-1"></i>Admin
+                                </span>
+                            <?php elseif ($user['role'] === 'orga'): ?>
+                                <span class="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-users-cog mr-1"></i>Orga
                                 </span>
                             <?php else: ?>
                                 <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
@@ -334,22 +346,27 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
             </h3>
         </div>
 
-        <div class="p-6">
-            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <?php foreach ($availablePermissions as $key => $description): ?>
-                <div class="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                    <div class="flex items-start">
-                        <div class="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
-                            <i class="fas fa-key text-purple-600"></i>
-                        </div>
-                        <div>
-                            <h4 class="font-semibold text-gray-800 mb-1"><?php echo $key; ?></h4>
-                            <p class="text-sm text-gray-600"><?php echo $description; ?></p>
+        <div class="p-6 space-y-4">
+            <?php foreach ($availablePermissions as $groupName => $groupPerms): ?>
+            <div>
+                <h4 class="text-sm font-bold text-gray-500 uppercase tracking-wider mb-2"><?php echo htmlspecialchars($groupName); ?></h4>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <?php foreach ($groupPerms as $key => $description): ?>
+                    <div class="bg-gray-50 border border-gray-200 rounded-lg p-3">
+                        <div class="flex items-start">
+                            <div class="w-8 h-8 bg-purple-100 rounded-lg flex items-center justify-center mr-3 flex-shrink-0">
+                                <i class="fas fa-key text-purple-600 text-xs"></i>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold text-sm text-gray-800 mb-0.5"><?php echo $key; ?></h4>
+                                <p class="text-xs text-gray-600"><?php echo $description; ?></p>
+                            </div>
                         </div>
                     </div>
+                    <?php endforeach; ?>
                 </div>
-                <?php endforeach; ?>
             </div>
+            <?php endforeach; ?>
         </div>
     </div>
 </div>
@@ -365,22 +382,33 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
         <form method="POST" class="p-6 space-y-4">
             <input type="hidden" name="user_id" id="modal_user_id">
             
-            <div class="space-y-3">
+            <div class="space-y-4">
                 <label class="block text-sm font-semibold text-gray-700 mb-3">
                     Wähle die Berechtigungen aus:
                 </label>
                 
-                <?php foreach ($availablePermissions as $key => $description): ?>
-                <label class="flex items-start p-4 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition border border-gray-200">
-                    <input type="checkbox" 
-                           name="permissions[]" 
-                           value="<?php echo $key; ?>"
-                           class="mt-1 mr-3 rounded text-purple-600 w-5 h-5">
-                    <div class="flex-1">
-                        <div class="font-semibold text-gray-800"><?php echo $key; ?></div>
-                        <div class="text-sm text-gray-600 mt-1"><?php echo $description; ?></div>
+                <?php foreach ($availablePermissions as $groupName => $groupPerms): ?>
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <div class="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <?php echo htmlspecialchars($groupName); ?>
                     </div>
-                </label>
+                    <div class="divide-y divide-gray-100">
+                    <?php foreach ($groupPerms as $key => $description): ?>
+                    <label class="flex items-start p-3 bg-white hover:bg-gray-50 cursor-pointer transition permission-label" data-key="<?php echo $key; ?>">
+                        <input type="checkbox" 
+                               name="permissions[]" 
+                               value="<?php echo $key; ?>"
+                               class="perm-checkbox mt-1 mr-3 rounded text-purple-600 w-4 h-4"
+                               data-key="<?php echo $key; ?>"
+                               data-deps='<?php echo htmlspecialchars(json_encode(getPermissionDependencies()[$key] ?? []), ENT_QUOTES); ?>'>
+                        <div class="flex-1">
+                            <div class="font-semibold text-sm text-gray-800"><?php echo $key; ?></div>
+                            <div class="text-xs text-gray-600 mt-0.5"><?php echo $description; ?></div>
+                        </div>
+                    </label>
+                    <?php endforeach; ?>
+                    </div>
+                </div>
                 <?php endforeach; ?>
             </div>
             
@@ -397,6 +425,46 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
 </div>
 
 <script>
+// Abhängigkeiten (PHP → JS)
+const permDeps = <?php echo json_encode($permissionDependencies); ?>;
+
+// Reverse-Map: was hängt von dieser Berechtigung ab?
+const permDependents = {};
+Object.entries(permDeps).forEach(([perm, deps]) => {
+    deps.forEach(dep => {
+        if (!permDependents[dep]) permDependents[dep] = [];
+        permDependents[dep].push(perm);
+    });
+});
+
+function getCheckbox(key) {
+    return document.querySelector('.perm-checkbox[data-key="' + key + '"]');
+}
+
+function checkDependencies(key, checked) {
+    if (checked) {
+        // Beim Aktivieren: alle Abhängigkeiten aktivieren
+        const deps = permDeps[key] || [];
+        deps.forEach(dep => {
+            const cb = getCheckbox(dep);
+            if (cb && !cb.checked) {
+                cb.checked = true;
+                checkDependencies(dep, true);
+            }
+        });
+    } else {
+        // Beim Deaktivieren: alle höheren Berechtigungen deaktivieren
+        const dependents = permDependents[key] || [];
+        dependents.forEach(dep => {
+            const cb = getCheckbox(dep);
+            if (cb && cb.checked) {
+                cb.checked = false;
+                checkDependencies(dep, false);
+            }
+        });
+    }
+}
+
 // Event Listener für alle Berechtigungsknöpfe
 document.addEventListener('DOMContentLoaded', function() {
     // Alle Berechtigungsknöpfe finden
@@ -417,6 +485,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             
             openPermissionModal(userId, userName, currentPermissions);
+        });
+    });
+
+    // Dependency-Logic für Checkboxen
+    document.querySelectorAll('.perm-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+            checkDependencies(this.getAttribute('data-key'), this.checked);
         });
     });
 });
@@ -524,16 +599,25 @@ setTimeout(function() {
             
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-2">Berechtigungen</label>
-                <div class="space-y-2">
-                    <?php foreach ($availablePermissions as $key => $description): ?>
-                    <label class="flex items-start p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer border border-gray-200">
-                        <input type="checkbox" name="group_permissions[]" value="<?php echo $key; ?>"
-                               class="mt-0.5 mr-3 rounded text-indigo-600 w-4 h-4">
-                        <div>
-                            <div class="font-medium text-sm text-gray-800"><?php echo $key; ?></div>
-                            <div class="text-xs text-gray-500"><?php echo $description; ?></div>
+                <div class="space-y-3">
+                    <?php foreach ($availablePermissions as $groupName => $groupPerms): ?>
+                    <div class="border border-gray-200 rounded-lg overflow-hidden">
+                        <div class="bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                            <?php echo htmlspecialchars($groupName); ?>
                         </div>
-                    </label>
+                        <div class="divide-y divide-gray-100">
+                        <?php foreach ($groupPerms as $key => $description): ?>
+                        <label class="flex items-start p-2.5 bg-white hover:bg-gray-50 cursor-pointer border-0">
+                            <input type="checkbox" name="group_permissions[]" value="<?php echo $key; ?>"
+                                   class="mt-0.5 mr-3 rounded text-indigo-600 w-4 h-4">
+                            <div>
+                                <div class="font-medium text-sm text-gray-800"><?php echo $key; ?></div>
+                                <div class="text-xs text-gray-500"><?php echo $description; ?></div>
+                            </div>
+                        </label>
+                        <?php endforeach; ?>
+                        </div>
+                    </div>
                     <?php endforeach; ?>
                 </div>
             </div>

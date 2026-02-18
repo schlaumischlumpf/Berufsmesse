@@ -9,7 +9,7 @@ require_once '../functions.php';
 require_once '../fpdf/fpdf.php';
 
 // Berechtigungsprüfung
-if (!isLoggedIn() || (!isAdmin() && !isTeacher())) {
+if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_drucken'))) {
     die('Keine Berechtigung');
 }
 

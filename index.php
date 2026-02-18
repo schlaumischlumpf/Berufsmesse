@@ -11,7 +11,7 @@ $db = getDB();
 $currentPage = $_GET['page'] ?? 'dashboard';
 
 // Auto-Assign durchführen wenn aufgerufen (VOR jeglichem HTML-Output!)
-if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) {
+if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() || hasPermission('zuteilung_ausfuehren'))) {
     // Direkt die API-Logik ausführen
     try {
         // Verwaltete Slots (nur 1, 3, 5)
@@ -246,7 +246,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && isAdmin()) 
 }
 
 // QR-Code Generierung (Bulk) - BEFORE HTML output
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && isAdmin()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (isAdmin() || hasPermission('qr_codes_erstellen'))) {
     $generated = 0;
     try {
         $stmt = $db->query("SELECT id FROM exhibitors WHERE active = 1");
@@ -276,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && is
 }
 
 // QR-Code Generierung (Einzeln) - BEFORE HTML output
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) && isAdmin()) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) && (isAdmin() || hasPermission('qr_codes_erstellen'))) {
     try {
         $exhibitorId = intval($_POST['exhibitor_id']);
         $timeslotId = intval($_POST['timeslot_id']);
@@ -756,14 +756,14 @@ $regEnd = getSetting('registration_end');
                     <span>Unternehmen</span>
                 </a>
                 
-                <?php if (hasPermission('view_rooms')): ?>
+                <?php if (hasPermission('raeume_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-rooms' ? 'javascript:void(0)' : '?page=admin-rooms'; ?>" data-page="admin-rooms" class="nav-link <?php echo $currentPage === 'admin-rooms' ? 'active' : ''; ?>">
                     <i class="fas fa-map-marker-alt"></i>
                     <span>Raumplan</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (hasPermission('view_reports')): ?>
+                <?php if (hasPermission('berichte_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
                     <i class="fas fa-print"></i>
                     <span>Druckzentrale</span>
@@ -771,75 +771,81 @@ $regEnd = getSetting('registration_end');
                 <?php endif; ?>
                 <?php endif; ?>
 
-                <?php if (isAdmin() || hasPermission('manage_exhibitors') || hasPermission('manage_rooms') || hasPermission('manage_settings') || hasPermission('manage_users') || hasPermission('view_reports') || hasPermission('auto_assign')): ?>
+                <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen')): ?>
                 
                 <div class="nav-group-title">Verwaltung</div>
                 
-                <?php if (isAdmin()): ?>
+                <?php if (isAdmin() || hasPermission('dashboard_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-dashboard' ? 'javascript:void(0)' : '?page=admin-dashboard'; ?>" data-page="admin-dashboard" class="nav-link <?php echo $currentPage === 'admin-dashboard' ? 'active' : ''; ?>">
                     <i class="fas fa-tachometer-alt"></i>
                     <span>Admin-Dashboard</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('manage_exhibitors')): ?>
+                <?php if (isAdmin() || hasPermission('aussteller_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-exhibitors' ? 'javascript:void(0)' : '?page=admin-exhibitors'; ?>" data-page="admin-exhibitors" class="nav-link <?php echo $currentPage === 'admin-exhibitors' ? 'active' : ''; ?>">
                     <i class="fas fa-building"></i>
                     <span>Aussteller</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('manage_rooms')): ?>
+                <?php if (isAdmin() || hasPermission('raeume_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-rooms' ? 'javascript:void(0)' : '?page=admin-rooms'; ?>" data-page="admin-rooms" class="nav-link <?php echo $currentPage === 'admin-rooms' ? 'active' : ''; ?>">
                     <i class="fas fa-map-marker-alt"></i>
                     <span>Räume</span>
                 </a>
+                <?php endif; ?>
                 
+                <?php if (isAdmin() || hasPermission('kapazitaeten_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-room-capacities' ? 'javascript:void(0)' : '?page=admin-room-capacities'; ?>" data-page="admin-room-capacities" class="nav-link <?php echo $currentPage === 'admin-room-capacities' ? 'active' : ''; ?>">
                     <i class="fas fa-table"></i>
                     <span>Kapazitäten</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('manage_users')): ?>
+                <?php if (isAdmin() || hasPermission('benutzer_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-users' ? 'javascript:void(0)' : '?page=admin-users'; ?>" data-page="admin-users" class="nav-link <?php echo $currentPage === 'admin-users' ? 'active' : ''; ?>">
                     <i class="fas fa-users"></i>
                     <span>Benutzer</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin()): ?>
+                <?php if (isAdmin() || hasPermission('berechtigungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-permissions' ? 'javascript:void(0)' : '?page=admin-permissions'; ?>" data-page="admin-permissions" class="nav-link <?php echo $currentPage === 'admin-permissions' ? 'active' : ''; ?>">
                     <i class="fas fa-shield-alt"></i>
                     <span>Berechtigungen</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('manage_settings')): ?>
+                <?php if (isAdmin() || hasPermission('einstellungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-settings' ? 'javascript:void(0)' : '?page=admin-settings'; ?>" data-page="admin-settings" class="nav-link <?php echo $currentPage === 'admin-settings' ? 'active' : ''; ?>">
                     <i class="fas fa-cog"></i>
                     <span>Einstellungen</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('view_reports')): ?>
+                <?php if (isAdmin() || hasPermission('berichte_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
                     <i class="fas fa-print"></i>
                     <span>Druckzentrale</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin()): ?>
+                <?php if (isAdmin() || hasPermission('qr_codes_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-qr-codes' ? 'javascript:void(0)' : '?page=admin-qr-codes'; ?>" data-page="admin-qr-codes" class="nav-link <?php echo $currentPage === 'admin-qr-codes' ? 'active' : ''; ?>">
                     <i class="fas fa-qrcode"></i>
                     <span>QR-Anwesenheit</span>
                 </a>
+                <?php endif; ?>
                 
+                <?php if (isAdmin() || hasPermission('anmeldungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-registrations' ? 'javascript:void(0)' : '?page=admin-registrations'; ?>" data-page="admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
                     <i class="fas fa-clipboard-list"></i>
                     <span>Einschreibungen</span>
                 </a>
+                <?php endif; ?>
                 
+                <?php if (isAdmin() || hasPermission('audit_logs_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-audit-logs' ? 'javascript:void(0)' : '?page=admin-audit-logs'; ?>" data-page="admin-audit-logs" class="nav-link <?php echo $currentPage === 'admin-audit-logs' ? 'active' : ''; ?>">
                     <i class="fas fa-history"></i>
                     <span>Audit Logs</span>
@@ -923,67 +929,67 @@ $regEnd = getSetting('registration_end');
                     }
                     break;
                 case 'admin-dashboard':
-                    if (isAdmin()) {
+                    if (isAdmin() || hasPermission('dashboard_sehen')) {
                         include 'pages/admin-dashboard.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-exhibitors':
-                    if (isAdmin() || hasPermission('manage_exhibitors')) {
+                    if (isAdmin() || hasPermission('aussteller_sehen')) {
                         include 'pages/admin-exhibitors.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-rooms':
-                    if (isAdmin() || hasPermission('manage_rooms') || hasPermission('view_rooms')) {
+                    if (isAdmin() || hasPermission('raeume_sehen')) {
                         include 'pages/admin-rooms.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-room-capacities':
-                    if (isAdmin() || hasPermission('manage_rooms')) {
+                    if (isAdmin() || hasPermission('kapazitaeten_sehen')) {
                         include 'pages/admin-room-capacities.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-users':
-                    if (isAdmin() || hasPermission('manage_users')) {
+                    if (isAdmin() || hasPermission('benutzer_sehen')) {
                         include 'pages/admin-users.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-permissions':
-                    if (isAdmin()) {
+                    if (isAdmin() || hasPermission('berechtigungen_sehen')) {
                         include 'pages/admin-permissions.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-print':
-                    if (isAdmin() || hasPermission('view_reports')) {
+                    if (isAdmin() || hasPermission('berichte_sehen')) {
                         include 'pages/admin-print.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-settings':
-                    if (isAdmin() || hasPermission('manage_settings')) {
+                    if (isAdmin() || hasPermission('einstellungen_sehen')) {
                         include 'pages/admin-settings.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-qr-codes':
-                    if (isAdmin() || hasPermission('manage_qr_codes')) {
+                    if (isAdmin() || hasPermission('qr_codes_sehen')) {
                         include 'pages/admin-qr-codes.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-registrations':
-                    if (isAdmin()) {
+                    if (isAdmin() || hasPermission('anmeldungen_sehen')) {
                         include 'pages/admin-registrations.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-audit-logs':
-                    if (isAdmin() || hasPermission('view_audit_logs')) {
+                    if (isAdmin() || hasPermission('audit_logs_sehen')) {
                         include 'pages/admin-audit-logs.php';
                         $pageLoaded = true;
                     }
@@ -1165,7 +1171,7 @@ $regEnd = getSetting('registration_end');
                 const regBtn = document.getElementById('modalRegisterBtn');
                 if (regBtn) {
                     regBtn.href = '?page=registration&exhibitor=' + exhibitorId;
-                    const isManagement = <?php echo (isTeacher() || isAdmin()) ? 'true' : 'false'; ?>;
+                    const isManagement = <?php echo (isTeacher() || isAdmin() || isOrga()) ? 'true' : 'false'; ?>;
                     const isRegistrationPage = '<?php echo $currentPage; ?>' === 'registration';
                     regBtn.style.display = (isManagement || isRegistrationPage) ? 'none' : 'inline-flex';
                 }

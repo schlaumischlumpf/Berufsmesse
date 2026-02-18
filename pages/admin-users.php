@@ -7,6 +7,7 @@ $db = getDB();
 // Handle CSV Import
 $csvImportResult = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
+    if (!isAdmin() && !hasPermission('benutzer_importieren')) die('Keine Berechtigung');
     if (!empty($_FILES['csv_file']['name'])) {
         $file = $_FILES['csv_file'];
         
@@ -66,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     }
                     
                     // Validiere Rolle
-                    $allowedRoles = ['student', 'teacher', 'admin'];
+                    $allowedRoles = ['student', 'teacher', 'admin', 'orga'];
                     if (!in_array($role, $allowedRoles, true)) {
                         $importResult['errors'][] = "Zeile $rowNumber: Ungültige Rolle '$role'";
                         $rowNumber++;
@@ -129,6 +130,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
 // Handle User Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['create_user'])) {
+        if (!isAdmin() && !hasPermission('benutzer_erstellen')) die('Keine Berechtigung');
         // Neuen Benutzer erstellen
         $username = sanitize($_POST['username']);
         $email = sanitize($_POST['email']);
@@ -149,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
             } else {
                 // Validate role to avoid DB truncation/enum issues
-                $allowedRoles = ['student', 'teacher', 'admin']; // must match app expectations
+                $allowedRoles = ['student', 'teacher', 'admin', 'orga']; // must match app expectations
                 if (!in_array($role, $allowedRoles, true)) {
                     // fallback to a safe default
                     $role = 'student';
@@ -176,6 +178,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['reset_password'])) {
+        if (!isAdmin() && !hasPermission('benutzer_passwort_zuruecksetzen')) die('Keine Berechtigung');
         // Passwort zurücksetzen
         $userId = intval($_POST['user_id']);
         $newPassword = $_POST['new_password'];
@@ -198,6 +201,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['delete_user'])) {
+        if (!isAdmin() && !hasPermission('benutzer_loeschen')) die('Keine Berechtigung');
         // Benutzer löschen
         $userId = intval($_POST['user_id']);
         
@@ -365,6 +369,10 @@ $stats['teachers'] = $stmt->fetch()['count'];
                                 <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-chalkboard-teacher mr-1"></i>Lehrer
                                 </span>
+                            <?php elseif ($user['role'] === 'orga'): ?>
+                                <span class="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-users-cog mr-1"></i>Orga
+                                </span>
                             <?php else: ?>
                                 <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-user-graduate mr-1"></i>Schüler
@@ -426,10 +434,10 @@ $stats['teachers'] = $stmt->fetch()['count'];
                     <strong>CSV-Format:</strong> firstname, lastname, username, email, role, class, password (optional)
                 </p>
                 <p class="text-sm text-blue-700 mt-2">
-                    Rollen: <code class="bg-white px-2 py-1 rounded">student</code>, <code class="bg-white px-2 py-1 rounded">teacher</code>, <code class="bg-white px-2 py-1 rounded">admin</code>
+                    Rollen: <code class="bg-white px-2 py-1 rounded">student</code>, <code class="bg-white px-2 py-1 rounded">teacher</code>, <code class="bg-white px-2 py-1 rounded">orga</code>, <code class="bg-white px-2 py-1 rounded">admin</code>
                 </p>
                 <p class="text-sm text-blue-700 mt-2">
-                    Wenn kein Passwort angegeben wird, wird ein automatisches generiert und zwinging eine Passwortänderung beim Login.
+                    Wenn kein Passwort angegeben wird, wird ein automatisches generiert und zwingt eine Passwortänderung beim Login.
                 </p>
                 <p class="text-sm text-blue-700 mt-3">
                     <a href="../../example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
@@ -546,6 +554,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
                 <select name="role" id="roleSelect" required class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" onchange="toggleClassField()">
                     <option value="student">Schüler</option>
                     <option value="teacher">Lehrer</option>
+                    <option value="orga">Orga</option>
                     <?php if (isAdmin()): ?>
                     <option value="admin">Administrator</option>
                     <?php endif; ?>

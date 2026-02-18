@@ -4,6 +4,7 @@
 // Handle Form Submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_exhibitor'])) {
+        if (!isAdmin() && !hasPermission('aussteller_erstellen')) die('Keine Berechtigung');
         // Neuen Aussteller hinzufuegen
         $name = sanitize($_POST['name']);
         $shortDesc = sanitize($_POST['short_description']);
@@ -32,6 +33,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = ['type' => 'error', 'text' => 'Fehler beim Hinzufuegen'];
         }
     } elseif (isset($_POST['edit_exhibitor'])) {
+        if (!isAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
         // Aussteller bearbeiten
         $id = intval($_POST['exhibitor_id']);
         $name = sanitize($_POST['name']);
@@ -75,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren'];
         }
     } elseif (isset($_POST['delete_exhibitor'])) {
+        if (!isAdmin() && !hasPermission('aussteller_loeschen')) die('Keine Berechtigung');
         // Aussteller loeschen
         $id = intval($_POST['exhibitor_id']);
         
@@ -93,6 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = ['type' => 'error', 'text' => 'Fehler beim Loeschen'];
         }
     } elseif (isset($_POST['upload_document'])) {
+        if (!isAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
         // Dokument hochladen
         $exhibitorId = intval($_POST['exhibitor_id']);
         if (isset($_FILES['document']) && $_FILES['document']['error'] === UPLOAD_ERR_OK) {
@@ -100,6 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = $result;
         }
     } elseif (isset($_POST['delete_document'])) {
+        if (!isAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
         // Dokument loeschen
         $documentId = intval($_POST['document_id']);
         if (deleteFile($documentId)) {

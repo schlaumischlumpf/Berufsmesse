@@ -5,8 +5,8 @@ require_once '../functions.php';
 
 header('Content-Type: application/json');
 
-// Nur für Admins
-if (!isAdmin()) {
+// Nur für Admins oder Benutzer mit Raum-Bearbeitung
+if (!isAdmin() && !hasPermission('raeume_bearbeiten')) {
     echo json_encode(['success' => false, 'message' => 'Keine Berechtigung']);
     exit;
 }
