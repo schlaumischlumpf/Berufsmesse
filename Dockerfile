@@ -31,8 +31,12 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 RUN echo "upload_max_filesize = 10M" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
  && echo "post_max_size = 12M"       >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
  && echo "max_execution_time = 300"  >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.enable = 1"        >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.revalidate_freq = 60" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini"
+ && echo "opcache.enable = 1"                  >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
+ && echo "opcache.memory_consumption = 128"    >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
+ && echo "opcache.interned_strings_buffer = 8" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
+ && echo "opcache.max_accelerated_files = 4000" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
+ && echo "opcache.revalidate_freq = 60"        >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
+ && echo "opcache.enable_cli = 0"              >> "$PHP_INI_DIR/conf.d/berufsmesse.ini"
 
 # Allow .htaccess overrides in the web root
 RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
