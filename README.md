@@ -10,7 +10,7 @@ Eine PHP/MySQL-Webanwendung zur Organisation und Durchführung von Berufsmessen 
 - [Schnellstart mit Docker](#schnellstart-mit-docker)
 - [Umgebungsvariablen](#umgebungsvariablen)
 - [Erster Start – Admin-Konto & Setup](#erster-start--admin-konto--setup)
-- [Datenbank-Migrationen](#datenbank-migrationen)
+- [Datenbank & Migrationen](#datenbank--migrationen)
 - [phpMyAdmin (optional)](#phpmyadmin-optional)
 - [Produktionsbetrieb & HTTPS](#produktionsbetrieb--https)
 - [Anwendung aktualisieren](#anwendung-aktualisieren)
@@ -76,18 +76,18 @@ BASE_URL=/
 docker compose up -d --build
 ```
 
-Beim ersten Start:
-1. Der `db`-Container (MariaDB) startet und initialisiert die Datenbank.  
-2. Der `app`-Container wartet auf die Datenbank und führt danach automatisch `migrations.sql` aus.  
+Beim ersten Start passiert automatisch Folgendes:
+1. Der `db`-Container (MariaDB) startet und erstellt die Datenbank.
+2. Der `app`-Container wartet auf die Datenbank und führt danach automatisch `database-init.sql` aus – damit werden **alle** Tabellen erstellt und sämtliche Migrationen angewendet.
 3. Apache startet und die Anwendung ist erreichbar.
 
 ### 4. Anwendung aufrufen
 
 ```
-http://<server-ip>:9000
+http://localhost:9000
 ```
 
-> Beim ersten Aufruf wird automatisch ein Admin-Konto über die Einrichtungsseite angelegt – siehe [Erster Start](#erster-start--admin-konto--setup).
+> Beim ersten Aufruf muss ein Admin-Konto angelegt werden – siehe [Erster Start](#erster-start--admin-konto--setup).
 
 ---
 
@@ -111,23 +111,34 @@ http://<server-ip>:9000
 
 Nach dem ersten `docker compose up` musst du ein Admin-Konto anlegen:
 
-1. Öffne `http://<server-ip>:9000/register.php`
-2. Registriere dich mit einem Benutzernamen und Passwort
-3. Setze die Rolle manuell auf `admin` – entweder über phpMyAdmin oder direkt per SQL:
+1. Öffne `http://localhost:9000/register.php`
+2. Registriere dich mit einem Benutzernamen und Passwort (Rolle **Administrator** wählen)
+3. Falls du dich als Schüler registriert hast, setze die Rolle manuell auf `admin` per SQL:
 
 ```bash
-docker compose exec db mysql -u"${DB_USER}" -p"${DB_PASS}" berufsmesse \
+docker compose exec db mysql -u"berufsmesse" -p"DEIN_DB_PASS" berufsmesse \
   -e "UPDATE users SET role='admin' WHERE username='dein_benutzername';"
 ```
 
-4. Logge dich auf `http://<server-ip>:9000` ein.
+4. Logge dich auf `http://localhost:9000` ein.
 5. Navigiere zu **Einstellungen → System-Einstellungen** und konfiguriere den Einschreibezeitraum und das Veranstaltungsdatum.
+
+> ⚠️ Lösche oder schütze `register.php` vor dem Produktionsbetrieb.
 
 ---
 
-## Datenbank-Migrationen
+## Datenbank & Migrationen
 
-Migrationen werden beim Container-Start **automatisch** über `docker-entrypoint.sh` ausgeführt. Alle Statements in `migrations.sql` verwenden `IF NOT EXISTS` / `IF EXISTS`, sodass ein erneutes Ausführen sicher (idempotent) ist.
+### Automatisch (empfohlen)
+
+`database-init.sql` wird bei jedem Container-Start **automatisch** über `docker-entrypoint.sh` ausgeführt. Sie:
+
+- Erstellt die Datenbank und alle Tabellen (`CREATE TABLE IF NOT EXISTS`)
+- Füllt Standarddaten ein (Zeitslots, Branchen, Einstellungen)
+- Wendet alle Schema-Migrationen an (fehlende Spalten, Typ-Änderungen)
+- Migriert alte Berechtigungen in das neue granulare System
+
+Alle Statements sind **idempotent** – wiederholtes Ausführen ist sicher.
 
 ### Manuelle Ausführung
 
@@ -135,10 +146,18 @@ Falls du Migrationen manuell anwenden möchtest:
 
 ```bash
 docker compose exec app mysql -h db \
-  -u"${DB_USER}" -p"${DB_PASS}" berufsmesse < migrations.sql
+  -u"berufsmesse" -p"DEIN_DB_PASS" berufsmesse < database-init.sql
 ```
 
 Oder über phpMyAdmin (siehe unten).
+
+### Dateien
+
+| Datei | Zweck |
+|---|---|
+| `database-init.sql` | **Hauptdatei.** Vollständige Schema-Erstellung + alle Migrationen. Diese ausführen. |
+| `migrations.sql` | Ältere Migrationsdatei (aus Kompatibilitätsgründen beibehalten). |
+| `migration_allow_null_timeslot.sql` | Ältere Einzelmigration (jetzt in `database-init.sql` enthalten). |
 
 ---
 
@@ -151,7 +170,7 @@ phpMyAdmin ist als optionaler Service mit dem `tools`-Profil enthalten und wird 
 docker compose --profile tools up -d
 
 # Erreichbar unter:
-# http://<server-ip>:8080
+# http://localhost:8080
 ```
 
 > ⚠️ Starte phpMyAdmin nicht dauerhaft in Produktion. Nutze es nur für Wartungsarbeiten und stoppe es danach wieder.
@@ -162,7 +181,7 @@ docker compose --profile tools up -d
 
 ### Mit einem Reverse Proxy (empfohlen)
 
-Für HTTPS-Betrieb empfiehlt sich ein Reverse Proxy wie **Nginx Proxy Manager**, **Caddy** oder **Traefik** vor dem App-Container.
+Für HTTPS-Betrieb empfiehlt sich ein Reverse Proxy wie **Caddy**, **Nginx Proxy Manager** oder **Traefik** vor dem App-Container.
 
 Beispiel mit **Caddy** (`Caddyfile` auf dem Host-System):
 
@@ -174,18 +193,12 @@ berufsmesse.example.com {
 
 Caddy übernimmt automatisch die TLS-Zertifikate via Let's Encrypt.
 
-### HTTPS-Konfiguration in der App
+### Secure Cookies aktivieren
 
 Sobald HTTPS aktiv ist, aktiviere das Secure-Cookie-Flag in `config.php`:
 
 ```php
 ini_set('session.cookie_secure', 1);
-```
-
-Oder setze die Umgebungsvariable `BASE_URL` auf die vollständige HTTPS-URL:
-
-```dotenv
-BASE_URL=/
 ```
 
 ### Firewall
@@ -203,7 +216,7 @@ git pull origin main
 # 2. Image neu bauen und Container neu starten
 docker compose up -d --build
 
-# Die migrations.sql wird beim Neustart automatisch angewendet.
+# database-init.sql wird beim Neustart automatisch angewendet.
 ```
 
 > Uploads (Logos, Dokumente) und Datenbankdaten bleiben durch Docker-Volumes erhalten.
@@ -215,7 +228,6 @@ docker compose up -d --build
 ### Datenbank-Backup
 
 ```bash
-# Backup erstellen (Passwort wird sicher aus der Umgebungsvariable gelesen)
 docker compose exec db sh -c \
   'MYSQL_PWD="${MYSQL_PASSWORD}" mysqldump -u"${MYSQL_USER}" "${MYSQL_DATABASE}"' \
   > backup_$(date +%Y%m%d_%H%M%S).sql
@@ -226,16 +238,12 @@ docker compose exec db sh -c \
 ```bash
 docker compose exec -T db sh -c \
   'MYSQL_PWD="${MYSQL_PASSWORD}" mysql -u"${MYSQL_USER}" "${MYSQL_DATABASE}"' \
-  < backup_2025-01-01.sql
+  < backup_datei.sql
 ```
 
 ### Uploads-Backup (Logos & Dokumente)
 
 ```bash
-# Volume-Pfad ermitteln
-docker volume inspect berufsmesse_uploads
-
-# Dateien kopieren
 docker run --rm \
   -v berufsmesse_uploads:/data \
   -v $(pwd):/backup \
@@ -268,20 +276,18 @@ docker run --rm \
 git clone https://github.com/schlaumischlumpf/Berufsmesse.git
 cd Berufsmesse
 
-# 2. Datenbank anlegen
-mysql -u root -p -e "CREATE DATABASE berufsmesse CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+# 2. Datenbank und alle Tabellen erstellen
+mysql -u root -p -e "CREATE DATABASE IF NOT EXISTS berufsmesse CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+mysql -u root -p berufsmesse < database-init.sql
 
-# 3. Migrationen anwenden
-mysql -u root -p berufsmesse < migrations.sql
-
-# 4. Umgebungsvariablen setzen (oder config.php direkt anpassen)
+# 3. Umgebungsvariablen setzen (oder config.php direkt anpassen)
 export DB_HOST=127.0.0.1
 export DB_USER=root
 export DB_PASS=dein_passwort
 export DB_NAME=berufsmesse
 export APP_ENV=development
 
-# 5. Eingebetteten PHP-Server starten (nur für Entwicklung)
+# 4. Eingebetteten PHP-Server starten (nur für Entwicklung)
 php -S localhost:8000
 ```
 
@@ -293,21 +299,45 @@ php -S localhost:8000
 
 ```
 Berufsmesse/
-├── api/                    # JSON-APIs (AJAX-Endpunkte)
-├── assets/                 # CSS, JS, Bilder
-├── fpdf/                   # FPDF-Bibliothek für PDF-Export
-├── pages/                  # Seitenmodule (per ?page= geladen)
+├── api/                       # JSON-APIs (AJAX-Endpunkte)
+├── assets/                    # CSS, JS, Bilder
+├── fpdf/                      # FPDF-Bibliothek für PDF-Export
+├── pages/                     # Seitenmodule (per ?page= geladen)
+│   ├── admin-dashboard.php
 │   ├── admin-exhibitors.php
-│   ├── admin-settings.php  # inkl. Branchen-CRUD
-│   └── exhibitors.php
-├── uploads/                # Hochgeladene Dateien (per Docker Volume persistiert)
-├── .env.example            # Vorlage für Umgebungsvariablen
-├── compose.yaml            # Docker Compose Konfiguration
-├── config.php              # App-Konfiguration (liest Env-Variablen)
-├── docker-entrypoint.sh    # Wartet auf DB, führt Migrationen aus
-├── Dockerfile              # Multi-stage-ready PHP/Apache Image
-├── functions.php           # Hilfsfunktionen (DB, Berechtigungen, Audit-Log …)
-├── index.php               # Einstiegspunkt / Router
-├── migrations.sql          # Alle Datenbankmigrationen (idempotent)
-└── setup.php               # Webbasiertes Setup-Tool (nur für Admins)
+│   ├── admin-rooms.php
+│   ├── admin-settings.php     # inkl. Branchen-CRUD
+│   ├── admin-users.php
+│   ├── admin-permissions.php
+│   ├── admin-registrations.php
+│   ├── admin-room-capacities.php
+│   ├── admin-audit-logs.php
+│   ├── admin-qr-codes.php
+│   ├── admin-print.php
+│   ├── admin-print-export.php
+│   ├── teacher-dashboard.php
+│   ├── teacher-class-list.php
+│   ├── dashboard.php
+│   ├── exhibitors.php
+│   ├── registration.php
+│   ├── my-registrations.php
+│   ├── schedule.php
+│   ├── print-view.php
+│   └── qr-checkin.php
+├── uploads/                   # Hochgeladene Dateien (per Docker Volume persistiert)
+├── .env.example               # Vorlage für Umgebungsvariablen
+├── compose.yaml               # Docker Compose Konfiguration
+├── config.php                 # App-Konfiguration (liest Env-Variablen)
+├── database-init.sql          # Vollständiges DB-Schema + alle Migrationen (idempotent)
+├── docker-entrypoint.sh       # Wartet auf DB, führt database-init.sql aus
+├── Dockerfile                 # PHP/Apache Image
+├── functions.php              # Hilfsfunktionen (DB, Berechtigungen, Audit-Log …)
+├── index.php                  # Einstiegspunkt / Router
+├── login.php                  # Login-Seite
+├── register.php               # Registrierungsseite (nur für Entwicklung/Setup)
+├── change-password.php        # Erzwungene Passwortänderung
+├── logout.php                 # Logout-Handler
+├── setup.php                  # Webbasiertes Migrationstool (nur für Admins)
+├── migrations.sql             # Ältere Migrationen (ersetzt durch database-init.sql)
+└── migration_allow_null_timeslot.sql  # Ältere Migration (in database-init.sql enthalten)
 ```

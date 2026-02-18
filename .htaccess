@@ -12,7 +12,7 @@ php_value max_execution_time 300
     Deny from all
 </Files>
 
-<Files "database.sql">
+<Files "*.sql">
     Order Allow,Deny
     Deny from all
 </Files>
