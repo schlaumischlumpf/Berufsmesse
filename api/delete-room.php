@@ -79,6 +79,7 @@ try {
             'message' => 'Raum wurde erfolgreich gelöscht',
             'room' => $roomName
         ]);
+        logAuditAction('raum_geloescht', "Raum '$roomName' (ID: $roomId) gelöscht");
         
     } catch (Exception $e) {
         // Rollback bei Fehler

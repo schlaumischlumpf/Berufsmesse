@@ -1,7 +1,7 @@
 <?php
 /**
  * PDF-Generator für Klassenübersichten
- * Verwendet FPDF zur Erstellung professioneller PDFs
+ * Tabellenformat, sortiert nach Nachname, keine Farben
  */
 session_start();
 require_once '../config.php';
@@ -18,10 +18,14 @@ $db = getDB();
 // Filter
 $filterClass = $_GET['class'] ?? '';
 
+// Timeslots laden (für Spaltenüberschriften) - nur Slots 1, 3, 5
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");
+$timeslots = $stmt->fetchAll();
+
 // Daten laden
 $query = "
     SELECT
-        u.firstname, u.lastname, u.class,
+        u.id as user_id, u.firstname, u.lastname, u.class,
         e.name as exhibitor_name,
         t.slot_name, t.slot_number, t.start_time, t.end_time,
         r.room_number, r.room_name, r.building
@@ -45,146 +49,202 @@ $stmt = $db->prepare($query);
 $stmt->execute($params);
 $registrations = $stmt->fetchAll();
 
-// Nach Klasse gruppieren
+// Nach Klasse → Schüler (user_id) gruppieren, Slots indexieren
 $groupedByClass = [];
 foreach ($registrations as $reg) {
     $class = $reg['class'] ?: 'Keine Klasse';
-    $studentKey = $reg['lastname'] . ', ' . $reg['firstname'];
-    $groupedByClass[$class][$studentKey][] = $reg;
+    $uid   = $reg['user_id'];
+    if (!isset($groupedByClass[$class][$uid])) {
+        $groupedByClass[$class][$uid] = [
+            'name'  => $reg['lastname'] . ', ' . $reg['firstname'],
+            'slots' => [],
+        ];
+    }
+    $groupedByClass[$class][$uid]['slots'][$reg['slot_number']] = [
+        'exhibitor' => $reg['exhibitor_name'],
+        'room'      => $reg['room_number'] ?? '-',
+        'slot_name' => $reg['slot_name'],
+        'start'     => $reg['start_time'],
+        'end'       => $reg['end_time'],
+    ];
 }
 ksort($groupedByClass);
 
 // Helper: UTF-8 zu Latin-1 konvertieren
 function conv($str) {
-    return iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $str);
+    return iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $str ?? '');
 }
 
 // Titel bestimmen
-if ($filterClass) {
-    $docTitle = "Klasse $filterClass";
-} else {
-    $docTitle = 'Alle Klassen';
-}
-
+$docTitle = $filterClass ? "Klasse $filterClass" : 'Alle Klassen';
 $eventDate = getSetting('event_date') ?? date('Y-m-d');
 
+// -------------------------------------------------------------------------
 // PDF Klasse
+// -------------------------------------------------------------------------
 class ClassPDF extends FPDF {
     public $eventDate;
     public $docTitle;
 
     function Header() {
-        // Mint-farbener Header-Balken
-        $this->SetFillColor(168, 230, 207);
-        $this->Rect(10, 10, 190, 22, 'F');
+        // Schwarze Rahmenlinie oben
+        $this->SetDrawColor(0, 0, 0);
+        $this->SetLineWidth(0.5);
 
-        // Titel
-        $this->SetFont('Arial', 'B', 16);
-        $this->SetXY(15, 13);
-        $this->Cell(100, 8, 'Berufsmesse ' . date('Y'), 0, 1);
+        $pageW = $this->GetPageWidth();
 
-        $this->SetFont('Arial', '', 10);
-        $this->SetXY(15, 21);
-        $this->Cell(100, 5, conv($this->docTitle), 0, 1);
+        // Titel links
+        $this->SetFont('Arial', 'B', 14);
+        $this->SetXY(10, 10);
+        $this->Cell($pageW - 100, 7, conv("Berufsmesse " . date('Y') . "  \u{2013}  " . $this->docTitle), 0, 0);
 
         // Datum rechts
-        $this->SetFont('Arial', 'B', 11);
-        $this->SetXY(140, 13);
-        $this->Cell(55, 6, date('d.m.Y', strtotime($this->eventDate)), 0, 1, 'R');
-
-        $this->SetFont('Arial', '', 8);
-        $this->SetXY(140, 19);
-        $this->SetTextColor(100, 100, 100);
-        $this->Cell(55, 4, 'Erstellt am ' . date('d.m.Y, H:i') . ' Uhr', 0, 1, 'R');
+        $this->SetFont('Arial', '', 9);
+        $this->SetXY($pageW - 80, 10);
+        $this->Cell(70, 4, date('d.m.Y', strtotime($this->eventDate)), 0, 1, 'R');
+        $this->SetXY($pageW - 80, 14);
+        $this->SetTextColor(80, 80, 80);
+        $this->Cell(70, 3, 'Erstellt: ' . date('d.m.Y H:i') . ' Uhr', 0, 1, 'R');
         $this->SetTextColor(0, 0, 0);
 
-        $this->Ln(15);
-    }
-
-    function Footer() {
-        $this->SetY(-15);
-        $this->SetFont('Arial', 'I', 8);
-        $this->SetTextColor(150, 150, 150);
-        $this->Cell(0, 10, 'Berufsmesse ' . date('Y') . ' - ' . conv($this->docTitle) . ' - Seite ' . $this->PageNo() . '/{nb}', 0, 0, 'C');
-        $this->SetTextColor(0, 0, 0);
-    }
-
-    function ClassHeader($className, $studentCount) {
-        $this->SetFillColor(212, 245, 228);
-        $this->SetDrawColor(168, 230, 207);
-        $this->SetFont('Arial', 'B', 12);
-        $this->Cell(0, 10, conv($className) . ' (' . $studentCount . ' ' . conv('Schüler') . ')', 1, 1, 'L', true);
+        // Trennlinie
+        $this->SetY(20);
+        $this->SetDrawColor(0, 0, 0);
+        $this->Line(10, $this->GetY(), $pageW - 10, $this->GetY());
         $this->Ln(3);
     }
 
-    function StudentCard($studentName, $registrations) {
-        // Linke Bordüre
-        $y = $this->GetY();
-        $this->SetFillColor(168, 230, 207);
-        $this->Rect(10, $y, 2, 8, 'F');
+    function Footer() {
+        $this->SetY(-13);
+        $this->SetFont('Arial', 'I', 7);
+        $this->SetTextColor(100, 100, 100);
+        $pageW = $this->GetPageWidth();
+        $this->Line(10, $this->GetY(), $pageW - 10, $this->GetY());
+        $this->Ln(1);
+        $this->Cell(0, 5, conv('Berufsmesse ' . date('Y') . ' – ' . $this->docTitle . ' – Seite ') . $this->PageNo() . '/{nb}', 0, 0, 'C');
+        $this->SetTextColor(0, 0, 0);
+    }
 
-        // Student Name
-        $this->SetFont('Arial', 'B', 10);
-        $this->SetX(14);
-        $this->Cell(0, 8, conv($studentName), 0, 1);
+    /**
+     * Tabellenüberschrift für eine Klasse inkl. Spaltenköpfen
+     */
+    function ClassTableHeader($className, $studentCount, $timeslots) {
+        // Klassenzeile – einfache Überschrift ohne Box
+        $this->SetFont('Arial', 'B', 12);
+        $this->Cell(0, 8,
+            conv($className) . '  (' . $studentCount . ' ' . conv('Schüler') . ')',
+            0, 1, 'L', false);
+        $this->Ln(1);
 
-        // Tabelle Header
-        $this->SetFillColor(243, 244, 246);
-        $this->SetDrawColor(200, 200, 200);
+        // Spaltenköpfe
         $this->SetFont('Arial', 'B', 8);
-        $this->Cell(30, 6, 'Slot', 1, 0, 'L', true);
-        $this->Cell(30, 6, 'Zeit', 1, 0, 'L', true);
-        $this->Cell(85, 6, 'Aussteller', 1, 0, 'L', true);
-        $this->Cell(30, 6, 'Raum', 1, 1, 'L', true);
+        $this->SetFillColor(240, 240, 240);
+        $this->SetDrawColor(0, 0, 0);
+        $this->SetLineWidth(0.3);
 
-        // Registrierungen
-        $this->SetFont('Arial', '', 8);
-        usort($registrations, fn($a, $b) => $a['slot_number'] <=> $b['slot_number']);
+        // Breiten: Querformat (277mm nutzbar)
+        $nameW  = 55;
+        $rest   = $this->GetPageWidth() - 20 - $nameW;
+        $slotW  = $rest / max(1, count($timeslots));
 
-        $alt = false;
-        foreach ($registrations as $reg) {
-            if ($alt) {
-                $this->SetFillColor(249, 250, 251);
-            } else {
-                $this->SetFillColor(255, 255, 255);
+        // Name-Spalte (volle Höhe)
+        $this->Cell($nameW, 12, conv('Name'), 1, 0, 'L', true);
+        
+        // Slot-Spalten mit zweizeiligem Header
+        $startX = $this->GetX();
+        $startY = $this->GetY();
+        foreach ($timeslots as $idx => $ts) {
+            $slotNum = $ts['slot_number'];
+            $times = '';
+            if (!empty($ts['start_time']) && !empty($ts['end_time'])) {
+                $times = '(' . date('H:i', strtotime($ts['start_time'])) . '-' . date('H:i', strtotime($ts['end_time'])) . ')';
             }
-            $this->Cell(30, 6, conv($reg['slot_name']), 1, 0, 'L', true);
-            $this->Cell(30, 6, date('H:i', strtotime($reg['start_time'])) . '-' . date('H:i', strtotime($reg['end_time'])), 1, 0, 'L', true);
-            $this->Cell(85, 6, conv($reg['exhibitor_name']), 1, 0, 'L', true);
-            $this->Cell(30, 6, conv($reg['room_number'] ?? '-'), 1, 1, 'L', true);
-            $alt = !$alt;
+            
+            $xPos = $startX + ($idx * $slotW);
+            
+            // Hintergrund-Rechteck für die gesamte Zelle
+            $this->Rect($xPos, $startY, $slotW, 12, 'FD');
+            
+            // Zeile 1: Slot-Nummer
+            $this->SetXY($xPos, $startY + 2);
+            $this->Cell($slotW, 4, 'Slot ' . $slotNum, 0, 0, 'C', false);
+            
+            // Zeile 2: Zeiten
+            $this->SetXY($xPos, $startY + 6);
+            $this->Cell($slotW, 4, $times, 0, 0, 'C', false);
         }
+        
+        $this->SetXY($startX, $startY + 12);
+        $this->Ln();
+    }
 
-        $this->Ln(5);
+    /**
+     * Eine Schülerzeile in der Tabelle
+     */
+    function StudentRow($studentName, $slots, $timeslots, $nameW, $slotW, $rowAlt) {
+        $fill = $rowAlt ? 250 : 255; // leicht abwechselnde Zeilen (fast weiß)
+        $this->SetFillColor($fill, $fill, $fill);
+        $this->SetFont('Arial', '', 8);
+        $this->SetDrawColor(160, 160, 160);
+        $this->SetLineWidth(0.2);
+
+        // Zeilenhöhe
+        $h = 6;
+
+        $this->Cell($nameW, $h, conv($studentName), 1, 0, 'L', true);
+        foreach ($timeslots as $ts) {
+            $sn   = $ts['slot_number'];
+            $cell = '';
+            if (isset($slots[$sn])) {
+                $info = $slots[$sn];
+                $cell = conv($info['exhibitor']);
+                // Raum wird nicht mehr angezeigt
+            }
+            $this->Cell($slotW, $h, $cell, 1, 0, 'C', true);
+        }
+        $this->Ln();
     }
 }
 
-// PDF erstellen
+// -------------------------------------------------------------------------
+// PDF erzeugen
+// -------------------------------------------------------------------------
 $pdf = new ClassPDF();
 $pdf->eventDate = $eventDate;
-$pdf->docTitle = $docTitle;
+$pdf->docTitle  = $docTitle;
 $pdf->SetTitle('Berufsmesse - ' . $docTitle);
 $pdf->SetAuthor($_SESSION['firstname'] . ' ' . $_SESSION['lastname']);
 $pdf->SetCreator('Berufsmesse System');
 $pdf->AliasNbPages();
+$pdf->SetMargins(10, 10, 10);
+$pdf->SetAutoPageBreak(true, 18);
+
+// Spaltenbreiten vorab berechnen (Querformat: 297mm - 20mm Ränder = 277mm)
+$nameW = 55;
+$rest  = 222;
+$slotW = count($timeslots) > 0 ? $rest / count($timeslots) : $rest;
 
 if (empty($groupedByClass)) {
-    $pdf->AddPage();
+    $pdf->AddPage('L'); // Querformat
     $pdf->SetFont('Arial', '', 12);
     $pdf->Cell(0, 20, conv('Keine Registrierungen gefunden.'), 0, 1, 'C');
 } else {
-    foreach ($groupedByClass as $class => $students) {
-        $pdf->AddPage();
-        $pdf->ClassHeader($class, count($students));
+    foreach ($groupedByClass as $class => $studentsById) {
+        // Schüler nach Name (Nachname, Vorname) sortieren
+        uasort($studentsById, fn($a, $b) => strcmp($a['name'], $b['name']));
 
-        ksort($students);
-        foreach ($students as $studentName => $regs) {
-            // Seitenumbruch prüfen (genug Platz für Name + Header + mind. 1 Zeile)
-            $neededHeight = 8 + 6 + (count($regs) * 6) + 5;
-            if ($pdf->GetY() + $neededHeight > 270) {
-                $pdf->AddPage();
+        $pdf->AddPage('L'); // Querformat
+        $pdf->ClassTableHeader($class, count($studentsById), $timeslots);
+
+        $rowAlt = false;
+        foreach ($studentsById as $studentData) {
+            // Seitenumbruch: Header-Wiederholung auf neuer Seite
+            if ($pdf->GetY() + 7 > $pdf->GetPageHeight() - 18) {
+                $pdf->AddPage('L');
+                $pdf->ClassTableHeader($class . ' (Forts.)', count($studentsById), $timeslots);
             }
-            $pdf->StudentCard($studentName, $regs);
+            $pdf->StudentRow($studentData['name'], $studentData['slots'], $timeslots, $nameW, $slotW, $rowAlt);
+            $rowAlt = !$rowAlt;
         }
     }
 }

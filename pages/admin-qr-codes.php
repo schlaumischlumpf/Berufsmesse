@@ -4,30 +4,63 @@
  * Generiert und zeigt QR-Codes für Anwesenheitsprüfung
  */
 
+// Debugging: Sicherstellen dass die Seite lädt
+if (!isset($db)) {
+    die('Datenbank nicht verfügbar');
+}
+
 // Alle Aussteller mit Räumen laden
-$stmt = $db->query("
-    SELECT e.*, r.room_number, r.room_name, r.building
-    FROM exhibitors e
-    LEFT JOIN rooms r ON e.room_id = r.id
-    WHERE e.active = 1
-    ORDER BY e.name
-");
-$exhibitors = $stmt->fetchAll();
+try {
+    $stmt = $db->query("
+        SELECT e.*, r.room_number, r.room_name, r.building
+        FROM exhibitors e
+        LEFT JOIN rooms r ON e.room_id = r.id
+        WHERE e.active = 1
+        ORDER BY e.name
+    ");
+    $exhibitors = $stmt->fetchAll();
+} catch (Exception $e) {
+    $exhibitors = [];
+    error_log('QR-Codes Page - Exhibitors Query Error: ' . $e->getMessage());
+}
 
 // Alle Timeslots laden (inkl. Slots 2 und 4 für freie Wahl)
-$stmt = $db->query("SELECT * FROM timeslots ORDER BY slot_number ASC");
-$timeslots = $stmt->fetchAll();
+try {
+    $stmt = $db->query("SELECT * FROM timeslots ORDER BY slot_number ASC");
+    $timeslots = $stmt->fetchAll();
+} catch (Exception $e) {
+    $timeslots = [];
+    error_log('QR-Codes Page - Timeslots Query Error: ' . $e->getMessage());
+}
 
 // Bestehende Tokens laden
-$stmt = $db->query("
-    SELECT qt.*, e.name as exhibitor_name, t.slot_name, t.slot_number
-    FROM qr_tokens qt
-    JOIN exhibitors e ON qt.exhibitor_id = e.id
-    JOIN timeslots t ON qt.timeslot_id = t.id
-    WHERE qt.expires_at > NOW()
-    ORDER BY e.name, t.slot_number
-");
-$existingTokens = $stmt->fetchAll();
+try {
+    // Zuerst prüfen: Existiert die Tabelle überhaupt?
+    $tableCheck = $db->query("SHOW TABLES LIKE 'qr_tokens'")->fetch();
+    if (!$tableCheck) {
+        throw new Exception("Tabelle 'qr_tokens' existiert nicht. Bitte führen Sie das Setup erneut aus.");
+    }
+    
+    // Zuerst prüfen: Sind überhaupt Tokens in der DB?
+    $stmtCheck = $db->query("SELECT COUNT(*) as total, MIN(expires_at) as earliest, MAX(expires_at) as latest FROM qr_tokens");
+    $tokenCheck = $stmtCheck->fetch();
+    $tokenCheck['current_time'] = date('Y-m-d H:i:s');
+    
+    $stmt = $db->query("
+        SELECT qt.*, e.name as exhibitor_name, t.slot_name, t.slot_number
+        FROM qr_tokens qt
+        JOIN exhibitors e ON qt.exhibitor_id = e.id
+        JOIN timeslots t ON qt.timeslot_id = t.id
+        WHERE qt.expires_at > NOW()
+        ORDER BY e.name, t.slot_number
+    ");
+    $existingTokens = $stmt->fetchAll();
+} catch (Exception $e) {
+    $existingTokens = [];
+    $tokenCheck = ['total' => 0, 'earliest' => null, 'latest' => null, 'current_time' => date('Y-m-d H:i:s')];
+    $dbError = $e->getMessage();
+    error_log('QR-Codes Page - Tokens Query Error: ' . $e->getMessage());
+}
 
 // Tokens nach Aussteller+Slot gruppieren
 $tokenMap = [];
@@ -36,38 +69,65 @@ foreach ($existingTokens as $token) {
     $tokenMap[$key] = $token;
 }
 
+// Such-Filter für Aussteller
+$searchQuery = $_GET['search'] ?? '';
+$filteredExhibitors = $exhibitors;
+if (!empty($searchQuery)) {
+    $filteredExhibitors = array_filter($exhibitors, function($exhibitor) use ($searchQuery) {
+        return stripos($exhibitor['name'], $searchQuery) !== false ||
+               stripos($exhibitor['room_number'], $searchQuery) !== false ||
+               stripos($exhibitor['building'], $searchQuery) !== false;
+    });
+}
+
 // Anwesenheitsstatistik laden
-$stmt = $db->query("
-    SELECT a.exhibitor_id, a.timeslot_id, COUNT(*) as present_count
-    FROM attendance a
-    GROUP BY a.exhibitor_id, a.timeslot_id
-");
-$attendanceStats = [];
-foreach ($stmt->fetchAll() as $row) {
-    $attendanceStats[$row['exhibitor_id'] . '_' . $row['timeslot_id']] = $row['present_count'];
+try {
+    $stmt = $db->query("
+        SELECT a.exhibitor_id, a.timeslot_id, COUNT(*) as present_count
+        FROM attendance a
+        GROUP BY a.exhibitor_id, a.timeslot_id
+    ");
+    $attendanceStats = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $attendanceStats[$row['exhibitor_id'] . '_' . $row['timeslot_id']] = $row['present_count'];
+    }
+} catch (Exception $e) {
+    $attendanceStats = [];
+    error_log('QR-Codes Page - Attendance Stats Error: ' . $e->getMessage());
 }
 
 // Gesamte Anwesenheit laden (Issue #27)
-$stmt = $db->query("
-    SELECT a.exhibitor_id, a.timeslot_id, a.checked_in_at, u.firstname, u.lastname, u.class, u.id as user_id
-    FROM attendance a
-    JOIN users u ON a.user_id = u.id
-    ORDER BY a.exhibitor_id, a.timeslot_id, u.lastname, u.firstname
-");
-$attendanceDetails = [];
-foreach ($stmt->fetchAll() as $row) {
-    $key = $row['exhibitor_id'] . '_' . $row['timeslot_id'];
-    if (!isset($attendanceDetails[$key])) {
-        $attendanceDetails[$key] = [];
+try {
+    $stmt = $db->query("
+        SELECT a.exhibitor_id, a.timeslot_id, a.checked_in_at, u.firstname, u.lastname, u.class, u.id as user_id
+        FROM attendance a
+        JOIN users u ON a.user_id = u.id
+        ORDER BY a.exhibitor_id, a.timeslot_id, u.lastname, u.firstname
+    ");
+    $attendanceDetails = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $key = $row['exhibitor_id'] . '_' . $row['timeslot_id'];
+        if (!isset($attendanceDetails[$key])) {
+            $attendanceDetails[$key] = [];
+        }
+        $attendanceDetails[$key][] = $row;
     }
-    $attendanceDetails[$key][] = $row;
+} catch (Exception $e) {
+    $attendanceDetails = [];
+    error_log('QR-Codes Page - Attendance Details Error: ' . $e->getMessage());
 }
 
 // Gesamt-Statistik
-$stmt = $db->query("SELECT COUNT(DISTINCT user_id) as total FROM attendance");
-$totalAttendees = $stmt->fetchColumn();
-$stmt = $db->query("SELECT COUNT(*) as total FROM attendance");
-$totalCheckins = $stmt->fetchColumn();
+try {
+    $stmt = $db->query("SELECT COUNT(DISTINCT user_id) as total FROM attendance");
+    $totalAttendees = $stmt->fetchColumn();
+    $stmt = $db->query("SELECT COUNT(*) as total FROM attendance");
+    $totalCheckins = $stmt->fetchColumn();
+} catch (Exception $e) {
+    $totalAttendees = 0;
+    $totalCheckins = 0;
+    error_log('QR-Codes Page - Total Stats Error: ' . $e->getMessage());
+}
 
 // QR-Code Base URL aus Einstellungen laden
 $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
@@ -76,6 +136,34 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
 ?>
 
 <div class="space-y-6">
+    <!-- Datenbank-Fehler anzeigen -->
+    <?php if (isset($dbError)): ?>
+    <div class="bg-red-50 border border-red-200 p-4 rounded-xl">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-exclamation-circle text-red-500"></i>
+            <div>
+                <p class="text-red-800 font-medium text-sm">Datenbankfehler</p>
+                <p class="text-red-700 text-xs mt-1 font-mono"><?php echo htmlspecialchars($dbError); ?></p>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <?php if (empty($tokenMap)): ?>
+    <div class="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+        <div class="flex items-center gap-2">
+            <i class="fas fa-info-circle text-blue-500"></i>
+            <div>
+                <p class="text-blue-800 font-medium text-sm">Keine gültigen QR-Codes gefunden</p>
+                <p class="text-blue-700 text-xs mt-1">
+                    Es sind aktuell keine QR-Codes in der Datenbank vorhanden.
+                    <br>Klicken Sie auf <strong>"Alle QR-Codes generieren"</strong> um neue QR-Codes zu erstellen.
+                </p>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+    
     <!-- Header -->
     <div class="flex items-center justify-between flex-wrap gap-4">
         <div>
@@ -100,6 +188,18 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
         <div class="flex items-center">
             <i class="fas fa-check-circle text-emerald-500 mr-3"></i>
             <p class="text-emerald-700 text-sm"><?php echo intval($_GET['generated']); ?> QR-Code(s) erfolgreich generiert.</p>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if (isset($_GET['error'])): ?>
+    <div class="bg-red-50 border border-red-200 p-4 rounded-xl">
+        <div class="flex items-center">
+            <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
+            <div>
+                <p class="text-red-700 font-medium text-sm">Fehler beim Generieren der QR-Codes</p>
+                <p class="text-red-600 text-xs mt-1"><?php echo htmlspecialchars($_GET['error']); ?></p>
+            </div>
         </div>
     </div>
     <?php endif; ?>
@@ -136,8 +236,37 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
         </ol>
     </div>
 
+    <!-- Suchfeld für Aussteller -->
+    <div class="bg-white rounded-xl border border-gray-100 p-4">
+        <form method="GET" class="flex items-center gap-3">
+            <input type="hidden" name="page" value="admin-qr-codes">
+            <div class="flex-1 relative">
+                <input type="text" 
+                       name="search" 
+                       value="<?php echo htmlspecialchars($searchQuery); ?>" 
+                       placeholder="Aussteller suchen (Name, Raum, Gebäude)..." 
+                       class="w-full px-4 py-2.5 pl-10 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
+                <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            </div>
+            <button type="submit" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
+                <i class="fas fa-search mr-2"></i>Suchen
+            </button>
+            <?php if (!empty($searchQuery)): ?>
+            <a href="?page=admin-qr-codes" class="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium text-sm">
+                <i class="fas fa-times mr-2"></i>Zurücksetzen
+            </a>
+            <?php endif; ?>
+        </form>
+        <?php if (!empty($searchQuery)): ?>
+        <p class="text-xs text-gray-500 mt-2">
+            <i class="fas fa-info-circle mr-1"></i>
+            <?php echo count($filteredExhibitors); ?> von <?php echo count($exhibitors); ?> Ausstellern gefunden
+        </p>
+        <?php endif; ?>
+    </div>
+
     <!-- QR-Code Übersicht nach Aussteller -->
-    <?php foreach ($exhibitors as $exhibitor): ?>
+    <?php foreach ($filteredExhibitors as $exhibitor): ?>
     <div class="bg-white rounded-xl border border-gray-100 p-5">
         <div class="flex items-center justify-between mb-4">
             <div>

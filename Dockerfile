@@ -1,56 +1,55 @@
 # syntax=docker/dockerfile:1
+
+# Comments are provided throughout this file to help you get started.
+# If you need more help, visit the Dockerfile reference guide at
+# https://docs.docker.com/go/dockerfile-reference/
+
+# Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
+
+################################################################################
+
+# The example below uses the PHP Apache image as the foundation for running the app.
+# By specifying the "8.2-apache" tag, it will also use whatever happens to be the
+# most recent version of that tag when you build your Dockerfile.
+# If reproducibility is important, consider using a specific digest SHA, like
+# php@sha256:99cede493dfd88720b610eb8077c8688d3cca50003d76d1d539b0efc8cca72b4.
 FROM php:8.2-apache
 
-# Install system dependencies and PHP extensions required by the app
-RUN apt-get update && apt-get install -y \
-        libfreetype-dev \
-        libjpeg62-turbo-dev \
-        libpng-dev \
-        libzip-dev \
-        zip \
-        unzip \
-        default-mysql-client \
-    && rm -rf /var/lib/apt/lists/* \
-    && docker-php-ext-configure gd --with-freetype --with-jpeg \
-    && docker-php-ext-install -j$(nproc) \
-        pdo_mysql \
-        mysqli \
-        gd \
-        mbstring \
-        zip \
-        opcache
+# Your PHP application may require additional PHP extensions to be installed
+# manually. For detailed instructions for installing extensions can be found, see
+# https://github.com/docker-library/docs/tree/master/php#how-to-install-more-php-extensions
+# The following code blocks provide examples that you can edit and use.
+#
+# Add core PHP extensions, see
+# https://github.com/docker-library/docs/tree/master/php#php-core-extensions
+# This example adds the apt packages for the 'gd' extension's dependencies and then
+# installs the 'gd' extension. For additional tips on running apt-get:
+# https://docs.docker.com/go/dockerfile-aptget-best-practices/
+# RUN apt-get update && apt-get install -y \
+#     libfreetype-dev \
+#     libjpeg62-turbo-dev \
+#     libpng-dev \
+# && rm -rf /var/lib/apt/lists/* \
+#     && docker-php-ext-configure gd --with-freetype --with-jpeg \
+#     && docker-php-ext-install -j$(nproc) gd
+#
+# Add PECL extensions, see
+# https://github.com/docker-library/docs/tree/master/php#pecl-extensions
+# This example adds the 'redis' and 'xdebug' extensions.
+# RUN pecl install redis-5.3.7 \
+#    && pecl install xdebug-3.2.1 \
+#    && docker-php-ext-enable redis xdebug
 
-# Enable Apache mod_rewrite (required for .htaccess)
-RUN a2enmod rewrite
-
-# Use the production PHP configuration
+# Use the default production configuration for PHP runtime arguments, see
+# https://github.com/docker-library/docs/tree/master/php#configuration
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
-# Tune PHP for uploads and performance
-RUN echo "upload_max_filesize = 10M" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "post_max_size = 12M"       >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "max_execution_time = 300"  >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.enable = 1"        >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.revalidate_freq = 60" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini"
+# Install MySQL/PDO extensions
+RUN docker-php-ext-install pdo_mysql mysqli
 
-# Allow .htaccess overrides in the web root
-RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
+# Copy app files from the app directory.
+COPY . /var/www/html
 
-# Copy application files
-COPY --chown=www-data:www-data . /var/www/html
-
-# Ensure the uploads directory exists and is writable by www-data
-RUN mkdir -p /var/www/html/uploads \
- && chown -R www-data:www-data /var/www/html/uploads \
- && chmod 775 /var/www/html/uploads
-
-# Copy and enable the entrypoint script
-COPY --chown=root:root docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-VOLUME ["/var/www/html/uploads"]
-
-EXPOSE 80
-
-ENTRYPOINT ["docker-entrypoint.sh"]
-CMD ["apache2-foreground"]
+# Switch to a non-privileged user (defined in the base image) that the app will run under.
+# See https://docs.docker.com/go/dockerfile-user-best-practices/
+USER www-data

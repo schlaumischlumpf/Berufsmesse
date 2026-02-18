@@ -37,6 +37,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
         } else {
             $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority) VALUES (?, ?, NULL, 'admin', ?)");
             $stmt->execute([$studentId, $exhibitorId, $priority]);
+            // Für Audit-Log Namen lesen
+            $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM users u, exhibitors e WHERE u.id = ? AND e.id = ?");
+            $stmtN->execute([$studentId, $exhibitorId]);
+            $logR = $stmtN->fetch();
+            $logDesc = $logR ? "Schüler '{$logR['firstname']} {$logR['lastname']}' (Klasse {$logR['class']}) bei '{$logR['ename']}' eingeschrieben" : "Schüler #$studentId bei Aussteller #$exhibitorId";
+            logAuditAction('einschreibung_admin', $logDesc);
             $message = ['type' => 'success', 'text' => 'Schüler erfolgreich eingeschrieben.'];
         }
     }
@@ -46,8 +52,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_unregister'])) {
     if (!isAdmin() && !hasPermission('anmeldungen_loeschen')) die('Keine Berechtigung');
     $registrationId = intval($_POST['registration_id']);
+    // Für Audit-Log vor dem Löschen lesen
+    $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM registrations r JOIN users u ON r.user_id = u.id JOIN exhibitors e ON r.exhibitor_id = e.id WHERE r.id = ?");
+    $stmtN->execute([$registrationId]);
+    $logR = $stmtN->fetch();
     $stmt = $db->prepare("DELETE FROM registrations WHERE id = ?");
     if ($stmt->execute([$registrationId])) {
+        $logDesc = $logR ? "Einschreibung von '{$logR['firstname']} {$logR['lastname']}' (Klasse {$logR['class']}) bei '{$logR['ename']}' zurückgenommen" : "Einschreibung #$registrationId gelöscht";
+        logAuditAction('einschreibung_zurueckgenommen', $logDesc);
         $message = ['type' => 'success', 'text' => 'Einschreibung erfolgreich zurückgenommen.'];
     } else {
         $message = ['type' => 'error', 'text' => 'Fehler beim Zurücknehmen der Einschreibung.'];

@@ -116,6 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                 
                 // Nachricht vorbereiten
                 if ($importResult['imported'] > 0) {
+                    logAuditAction('csv_import', $importResult['imported'] . " Benutzer importiert, " . $importResult['skipped'] . " übersprungen");
                     $message = ['type' => 'success', 'text' => $importResult['imported'] . ' Benutzer importiert, ' . $importResult['skipped'] . ' übersprungen'];
                 }
             }
@@ -163,6 +164,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
                 try {
                     if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1])) {
+                        logAuditAction('benutzer_erstellt', "Benutzer '$username' ($firstname $lastname, Rolle: $role) erstellt");
                         $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
                     } else {
                         // fetch error info for logging
@@ -195,6 +197,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             
             $stmt = $db->prepare("UPDATE users SET password = ?, must_change_password = 1 WHERE id = ?");
             if ($stmt->execute([$hashedPassword, $userId])) {
+                logAuditAction('passwort_zurueckgesetzt', "Passwort für Benutzer #$userId zurückgesetzt");
                 $message = ['type' => 'success', 'text' => 'Passwort erfolgreich zurückgesetzt. Der Benutzer muss es beim nächsten Login ändern.'];
             } else {
                 $message = ['type' => 'error', 'text' => 'Fehler beim Zurücksetzen des Passworts'];
@@ -222,8 +225,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute([$userId]);
             
             // Dann den Benutzer löschen
+            $stmt = $db->prepare("SELECT username, firstname, lastname, role FROM users WHERE id = ?");
+            $stmt->execute([$userId]);
+            $delUser = $stmt->fetch();
             $stmt = $db->prepare("DELETE FROM users WHERE id = ?");
             if ($stmt->execute([$userId])) {
+                $uname = $delUser ? "'{$delUser['username']}' ({$delUser['firstname']} {$delUser['lastname']}, {$delUser['role']})" : "#$userId";
+                logAuditAction('benutzer_geloescht', "Benutzer $uname gelöscht");
                 $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich gelöscht'];
             } else {
                 $message = ['type' => 'error', 'text' => 'Fehler beim Löschen des Benutzers'];

@@ -342,34 +342,6 @@ foreach ($userRegistrations as $reg) {
                         </p>
                         <?php endif; ?>
                     </div>
-                    
-                    <!-- Automatic Assignments -->
-                    <?php 
-                    $autoAssigned = array_filter($userRegistrations, fn($r) => $r['registration_type'] === 'automatic');
-                    ?>
-                    <div class="flex items-center justify-between pt-2 border-t border-gray-100">
-                        <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center">
-                                <i class="fas fa-robot text-purple-600 text-sm"></i>
-                            </div>
-                            <span class="text-sm text-gray-600">Auto-Zuteilung</span>
-                        </div>
-                        <span class="font-bold text-gray-800"><?php echo count($autoAssigned); ?></span>
-                    </div>
-                    
-                    <!-- Manual Registrations -->
-                    <?php 
-                    $manualAssigned = array_filter($userRegistrations, fn($r) => $r['registration_type'] === 'manual');
-                    ?>
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center gap-3">
-                            <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                                <i class="fas fa-hand-pointer text-emerald-600 text-sm"></i>
-                            </div>
-                            <span class="text-sm text-gray-600">Eigene Wahl</span>
-                        </div>
-                        <span class="font-bold text-gray-800"><?php echo count($manualAssigned); ?></span>
-                    </div>
                 </div>
             </div>
 

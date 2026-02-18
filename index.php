@@ -10,6 +10,12 @@ $db = getDB();
 // Handle page redirects BEFORE any HTML output
 $currentPage = $_GET['page'] ?? 'dashboard';
 
+// Automatische Weiterleitung: Wenn ?token= vorhanden aber kein page=qr-checkin,
+// direkt zur QR-Checkin-Seite weiterleiten (z.B. QR-Code Scan)
+if (isset($_GET['token']) && !isset($_GET['page'])) {
+    $currentPage = 'qr-checkin';
+}
+
 // Auto-Assign durchführen wenn aufgerufen (VOR jeglichem HTML-Output!)
 if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() || hasPermission('zuteilung_ausfuehren'))) {
     // Direkt die API-Logik ausführen
@@ -248,12 +254,20 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
 // QR-Code Generierung (Bulk) - BEFORE HTML output
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (isAdmin() || hasPermission('qr_codes_erstellen'))) {
     $generated = 0;
+    $errorMsg = '';
     try {
         $stmt = $db->query("SELECT id FROM exhibitors WHERE active = 1");
         $exhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
         $stmt = $db->query("SELECT id FROM timeslots ORDER BY slot_number ASC");
         $timeslots = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if (empty($exhibitors)) {
+            throw new Exception("Keine aktiven Aussteller gefunden");
+        }
+        if (empty($timeslots)) {
+            throw new Exception("Keine Zeitslots gefunden");
+        }
 
         foreach ($exhibitors as $exId) {
             foreach ($timeslots as $tsId) {
@@ -268,10 +282,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (i
             }
         }
     } catch (Exception $e) {
-        error_log('QR generation error: ' . $e->getMessage());
+        $errorMsg = $e->getMessage();
+        error_log('QR generation error: ' . $errorMsg);
     }
-    logAuditAction('QR-Codes generiert', "$generated QR-Codes für alle Aussteller erstellt");
-    header('Location: ?page=admin-qr-codes&generated=' . $generated);
+    
+    if ($errorMsg) {
+        logAuditAction('QR-Codes Generierung fehlgeschlagen', $errorMsg);
+        header('Location: ?page=admin-qr-codes&error=' . urlencode($errorMsg));
+    } else {
+        logAuditAction('QR-Codes generiert', "$generated QR-Codes für alle Aussteller erstellt");
+        header('Location: ?page=admin-qr-codes&generated=' . $generated);
+    }
     exit;
 }
 
@@ -642,6 +663,55 @@ $regEnd = getSetting('registration_end');
                 transform: translateX(0);
             }
             
+            /* Bessere Touch-Targets auf Mobile */
+            .nav-link {
+                padding: 0.875rem 1rem;
+                font-size: 0.9375rem;
+                margin-bottom: 0.125rem;
+            }
+            
+            .nav-link i {
+                width: 1.75rem;
+                font-size: 1.0625rem;
+            }
+            
+            /* Kompakteres Padding auf Mobile */
+            .page-content {
+                padding: 0.75rem !important;
+            }
+            
+            /* Karten auf Mobile: volle Breite, kein seitliches Abschneiden */
+            .card, .bg-white.rounded-xl {
+                border-radius: 0.75rem;
+            }
+            
+            /* Filter-Buttons auf Mobile scrollbar */
+            .flex-wrap.items-center.gap-2.mb-6 {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                padding-bottom: 0.5rem;
+                scrollbar-width: none;
+            }
+            .flex-wrap.items-center.gap-2.mb-6::-webkit-scrollbar {
+                display: none;
+            }
+            .flex-wrap.items-center.gap-2.mb-6 button {
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+            
+            /* Ausstellerkarten: 1 Spalte auf Mobile */
+            .grid.grid-cols-1.md\\:grid-cols-2.xl\\:grid-cols-3 {
+                grid-template-columns: 1fr;
+            }
+            
+            /* Mobile Hamburger Menü: Safe Area beachten */
+            #mobileMenuBtn {
+                top: max(1rem, env(safe-area-inset-top, 1rem));
+                left: max(1rem, env(safe-area-inset-left, 1rem));
+            }
+
             /* Issue #24: Mobile - Buttons mit Text+Icon nur Icon anzeigen */
             .btn-mobile-icon span.btn-text {
                 display: none;
@@ -656,6 +726,31 @@ $regEnd = getSetting('registration_end');
             .schedule-actions .btn span,
             .schedule-actions a span {
                 display: none;
+            }
+            
+            /* Tabellen auf Mobile: horizontal scrollbar */
+            .overflow-x-auto {
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            /* Formulare auf Mobile: größere Inputs */
+            input[type="text"],
+            input[type="email"],
+            input[type="password"],
+            input[type="number"],
+            input[type="date"],
+            input[type="datetime-local"],
+            input[type="url"],
+            select,
+            textarea {
+                font-size: 16px !important; /* verhindert Auto-Zoom auf iOS */
+                min-height: 44px;
+            }
+            
+            /* Buttons auf Mobile größer */
+            button[type="submit"],
+            a.btn, button.btn {
+                min-height: 44px;
             }
         }
         
@@ -696,7 +791,7 @@ $regEnd = getSetting('registration_end');
 </head>
 <body class="bg-gray-50">
     <!-- Mobile Menu Button -->
-    <button id="mobileMenuBtn" class="md:hidden fixed top-4 left-4 z-50 bg-white/90 backdrop-blur-sm text-gray-600 p-3 rounded-xl shadow-lg border border-gray-100 transition-all duration-300 hover:bg-white hover:shadow-xl">
+    <button id="mobileMenuBtn" class="md:hidden fixed top-4 left-4 z-50 bg-white/90 backdrop-blur-sm text-gray-600 p-3 rounded-xl shadow-lg border border-gray-100 transition-all duration-300 hover:bg-white hover:shadow-xl" style="min-width:44px; min-height:44px;">
         <i class="fas fa-bars text-lg"></i>
     </button>
     
@@ -773,14 +868,39 @@ $regEnd = getSetting('registration_end');
 
                 <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen')): ?>
                 
-                <div class="nav-group-title">Verwaltung</div>
+                <!-- GRUPPE: Tagesbetrieb (am häufigsten genutzt) -->
+                <div class="nav-group-title">Tagesbetrieb</div>
+                
+                <?php if (isAdmin() || hasPermission('anmeldungen_sehen')): ?>
+                <a href="<?php echo $currentPage === 'admin-registrations' ? 'javascript:void(0)' : '?page=admin-registrations'; ?>" data-page="admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
+                    <i class="fas fa-clipboard-list"></i>
+                    <span>Einschreibungen</span>
+                </a>
+                <?php endif; ?>
+                
+                <?php if (isAdmin() || hasPermission('qr_codes_sehen')): ?>
+                <a href="<?php echo $currentPage === 'admin-qr-codes' ? 'javascript:void(0)' : '?page=admin-qr-codes'; ?>" data-page="admin-qr-codes" class="nav-link <?php echo $currentPage === 'admin-qr-codes' ? 'active' : ''; ?>">
+                    <i class="fas fa-qrcode"></i>
+                    <span>QR-Anwesenheit</span>
+                </a>
+                <?php endif; ?>
+                
+                <?php if (isAdmin() || hasPermission('berichte_sehen')): ?>
+                <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
+                    <i class="fas fa-print"></i>
+                    <span>Druckzentrale</span>
+                </a>
+                <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('dashboard_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-dashboard' ? 'javascript:void(0)' : '?page=admin-dashboard'; ?>" data-page="admin-dashboard" class="nav-link <?php echo $currentPage === 'admin-dashboard' ? 'active' : ''; ?>">
                     <i class="fas fa-tachometer-alt"></i>
-                    <span>Admin-Dashboard</span>
+                    <span>Übersicht</span>
                 </a>
                 <?php endif; ?>
+
+                <!-- GRUPPE: Inhalte (Aussteller & Räume) -->
+                <div class="nav-group-title">Inhalte</div>
                 
                 <?php if (isAdmin() || hasPermission('aussteller_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-exhibitors' ? 'javascript:void(0)' : '?page=admin-exhibitors'; ?>" data-page="admin-exhibitors" class="nav-link <?php echo $currentPage === 'admin-exhibitors' ? 'active' : ''; ?>">
@@ -802,6 +922,9 @@ $regEnd = getSetting('registration_end');
                     <span>Kapazitäten</span>
                 </a>
                 <?php endif; ?>
+
+                <!-- GRUPPE: Personen & System -->
+                <div class="nav-group-title">System</div>
                 
                 <?php if (isAdmin() || hasPermission('benutzer_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-users' ? 'javascript:void(0)' : '?page=admin-users'; ?>" data-page="admin-users" class="nav-link <?php echo $currentPage === 'admin-users' ? 'active' : ''; ?>">
@@ -821,27 +944,6 @@ $regEnd = getSetting('registration_end');
                 <a href="<?php echo $currentPage === 'admin-settings' ? 'javascript:void(0)' : '?page=admin-settings'; ?>" data-page="admin-settings" class="nav-link <?php echo $currentPage === 'admin-settings' ? 'active' : ''; ?>">
                     <i class="fas fa-cog"></i>
                     <span>Einstellungen</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if (isAdmin() || hasPermission('berichte_sehen')): ?>
-                <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
-                    <i class="fas fa-print"></i>
-                    <span>Druckzentrale</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if (isAdmin() || hasPermission('qr_codes_sehen')): ?>
-                <a href="<?php echo $currentPage === 'admin-qr-codes' ? 'javascript:void(0)' : '?page=admin-qr-codes'; ?>" data-page="admin-qr-codes" class="nav-link <?php echo $currentPage === 'admin-qr-codes' ? 'active' : ''; ?>">
-                    <i class="fas fa-qrcode"></i>
-                    <span>QR-Anwesenheit</span>
-                </a>
-                <?php endif; ?>
-                
-                <?php if (isAdmin() || hasPermission('anmeldungen_sehen')): ?>
-                <a href="<?php echo $currentPage === 'admin-registrations' ? 'javascript:void(0)' : '?page=admin-registrations'; ?>" data-page="admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
-                    <i class="fas fa-clipboard-list"></i>
-                    <span>Einschreibungen</span>
                 </a>
                 <?php endif; ?>
                 

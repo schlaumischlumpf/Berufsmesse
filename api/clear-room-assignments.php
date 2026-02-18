@@ -19,6 +19,7 @@ try {
     $stmt->execute();
     
     $affectedRows = $stmt->rowCount();
+    logAuditAction('raumzuordnungen_geleert', "Alle $affectedRows Raum-Zuordnungen der Aussteller entfernt");
     
     echo json_encode([
         'success' => true,

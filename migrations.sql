@@ -140,6 +140,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password TINYINT(1) DEFAU
 -- Beschreibung: Ermöglicht Registrierungen ohne sofortige Slot-Zuteilung
 -- ===========================================================================
 
+-- 0. Erstelle zuerst separate Indexe, damit die FK-Constraint nach dem DROP des UNIQUE-Index
+--    weiterhin einen passenden Index referenzieren kann (MySQL-Pflicht)
+ALTER TABLE `registrations` ADD INDEX IF NOT EXISTS `idx_timeslot_only` (`timeslot_id`);
+ALTER TABLE `registrations` ADD INDEX IF NOT EXISTS `idx_user_only` (`user_id`);
+
 -- 1. Entferne die alte UNIQUE constraint (user_id, timeslot_id)
 ALTER TABLE `registrations` DROP INDEX IF EXISTS `unique_user_timeslot`;
 

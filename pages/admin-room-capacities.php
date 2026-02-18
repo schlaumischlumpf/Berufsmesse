@@ -29,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_capacities'])) {
         }
         
         $db->commit();
+        logAuditAction('kapazitaeten_geaendert', 'Raumkapazitäten pro Zeitslot aktualisiert');
         $message = ['type' => 'success', 'text' => 'Kapazitäten erfolgreich gespeichert'];
     } catch (Exception $e) {
         $db->rollBack();

@@ -58,6 +58,7 @@ try {
         'message' => 'Raum wurde erfolgreich hinzugefügt',
         'room_id' => $db->lastInsertId()
     ]);
+    logAuditAction('raum_erstellt', "Raum '{$data['room_number']}' erstellt (Kap.: {$data['capacity']})");
     
 } catch (PDOException $e) {
     http_response_code(500);

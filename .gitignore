@@ -1,6 +1,14 @@
 # Umgebungsvariablen (enthält Passwörter)
 .env
 
+# Claude
+.claude/*
+
+# Log-Dateien
+.htaccess
+
+
+
 # Hochgeladene Dateien
 uploads/*
 !uploads/.gitkeep
@@ -8,9 +16,15 @@ uploads/*
 # IDE/Editor
 .vscode/
 .idea/
+.github/
 *.swp
 *.swo
 
 # Betriebssystem
 .DS_Store
 Thumbs.db
+
+# register.php
+register.php
+
+

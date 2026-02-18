@@ -14,8 +14,8 @@ $categories = !empty($industryList)
             Alle Aussteller
         </button>
         <?php foreach ($categories as $cat): ?>
-        <button onclick="filterCategory('<?php echo htmlspecialchars($cat); ?>')" class="filter-btn px-4 py-2 text-sm font-medium rounded-lg transition-all" data-category="<?php echo htmlspecialchars($cat); ?>">
-            <?php echo htmlspecialchars($cat); ?>
+        <button onclick="filterCategory('<?php echo htmlspecialchars(html_entity_decode($cat, ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>')" class="filter-btn px-4 py-2 text-sm font-medium rounded-lg transition-all" data-category="<?php echo htmlspecialchars(html_entity_decode($cat, ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>">
+            <?php echo htmlspecialchars(html_entity_decode($cat, ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>
         </button>
         <?php endforeach; ?>
     </div>
@@ -72,7 +72,7 @@ $categories = !empty($industryList)
         ?>
         <div class="exhibitor-card bg-white rounded-xl border border-gray-100 p-5 hover:border-gray-200"
              data-name="<?php echo strtolower(htmlspecialchars($exhibitor['name'])); ?>"
-             data-category="<?php echo htmlspecialchars($exhibitor['category'] ?? ''); ?>">
+             data-category="<?php echo htmlspecialchars(html_entity_decode($exhibitor['category'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>">
             
             <!-- Card Header mit Logo und Name -->
             <div class="flex items-start space-x-4 mb-4">
@@ -80,7 +80,12 @@ $categories = !empty($industryList)
                     <?php if ($exhibitor['logo']): ?>
                         <img src="<?php echo BASE_URL . 'uploads/' . $exhibitor['logo']; ?>" 
                              alt="<?php echo htmlspecialchars($exhibitor['name']); ?>" 
-                             class="w-12 h-12 object-contain">
+                             class="w-full h-full object-contain p-1"
+                             style="max-width: 100%; max-height: 100%; display: block;"
+                             onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                        <span style="display:none; width:100%; height:100%; align-items:center; justify-content:center;">
+                            <i class="fas fa-building text-gray-300 text-2xl"></i>
+                        </span>
                     <?php else: ?>
                         <i class="fas fa-building text-gray-300 text-2xl"></i>
                     <?php endif; ?>
@@ -90,7 +95,7 @@ $categories = !empty($industryList)
                         <?php echo htmlspecialchars($exhibitor['name']); ?>
                     </h3>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style="background: var(--color-pastel-<?php echo $colorClass; ?>-light, #d4f5e4); color: var(--color-pastel-<?php echo $colorClass; ?>-dark, #6bc4a6);">
-                        <?php echo htmlspecialchars($branche); ?>
+                        <?php echo htmlspecialchars(html_entity_decode($branche, ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>
                     </span>
                 </div>
             </div>
@@ -101,7 +106,7 @@ $categories = !empty($industryList)
                 <div class="flex flex-wrap gap-1.5">
                     <?php foreach ($angebot as $a): ?>
                     <span class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-gray-100 text-gray-700 transition-colors hover:bg-gray-200">
-                        <?php echo $a; ?>
+                        <?php echo htmlspecialchars(html_entity_decode($a, ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>
                     </span>
                     <?php endforeach; ?>
                 </div>

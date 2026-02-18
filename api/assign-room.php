@@ -52,10 +52,13 @@ try {
     $stmt->execute([$roomId, $exhibitorId]);
     
     if ($roomId === null) {
+        $logMsg = "Raum-Zuordnung für Aussteller '{$exhibitor['name']}' entfernt";
         $message = 'Raum-Zuordnung wurde entfernt';
     } else {
+        $logMsg = "Aussteller '{$exhibitor['name']}' Raum '{$room['room_number']}' zugeordnet";
         $message = 'Aussteller wurde Raum zugeordnet';
     }
+    logAuditAction('raum_zuordnung', $logMsg);
     
     echo json_encode([
         'success' => true,

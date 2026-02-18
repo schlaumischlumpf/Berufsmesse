@@ -128,9 +128,9 @@ $totalRegistrations = $stmt->fetch()['total'];
                 <div class="relative">
                     <select onchange="window.location.href='?page=admin-print&type='+this.value" 
                             class="w-full appearance-none px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all cursor-pointer">
-                        <option value="all" <?php echo $printType === 'all' ? 'selected' : ''; ?>>📋 Gesamtübersicht</option>
-                        <option value="class" <?php echo $printType === 'class' ? 'selected' : ''; ?>>🎓 Nach Klasse</option>
-                        <option value="rooms" <?php echo $printType === 'rooms' ? 'selected' : ''; ?>>🚪 Nach Raum</option>
+                        <option value="all" <?php echo $printType === 'all' ? 'selected' : ''; ?>>Gesamtübersicht</option>
+                        <option value="class" <?php echo $printType === 'class' ? 'selected' : ''; ?>>Nach Klasse</option>
+                        <option value="rooms" <?php echo $printType === 'rooms' ? 'selected' : ''; ?>>Nach Raum</option>
                     </select>
                     <i class="fas fa-chevron-down absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"></i>
                 </div>

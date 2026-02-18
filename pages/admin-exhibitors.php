@@ -101,16 +101,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Aussteller loeschen
         $id = intval($_POST['exhibitor_id']);
         
-        // Logo loeschen
-        $stmt = $db->prepare("SELECT logo FROM exhibitors WHERE id = ?");
+        // Name für Audit-Log vorab laden
+        $stmt = $db->prepare("SELECT name, logo FROM exhibitors WHERE id = ?");
         $stmt->execute([$id]);
-        $logo = $stmt->fetch()['logo'];
+        $exRow = $stmt->fetch();
+        $deletedName = $exRow['name'] ?? "ID $id";
+        $logo = $exRow['logo'] ?? null;
         if ($logo && file_exists('uploads/' . $logo)) {
             unlink('uploads/' . $logo);
         }
         
         $stmt = $db->prepare("DELETE FROM exhibitors WHERE id = ?");
         if ($stmt->execute([$id])) {
+            logAuditAction('aussteller_geloescht', "Aussteller '$deletedName' (ID: $id) gelöscht");
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich geloescht'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Loeschen'];

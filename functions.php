@@ -69,7 +69,13 @@ function isOrga() {
 
 function requireLogin() {
     if (!isLoggedIn()) {
-        header('Location: ' . BASE_URL . 'login.php');
+        // Aktuelle URL merken, damit nach Login dorthin zurückgeleitet wird
+        $returnUrl = $_SERVER['REQUEST_URI'] ?? '';
+        $loginUrl = BASE_URL . 'login.php';
+        if (!empty($returnUrl) && $returnUrl !== '/') {
+            $loginUrl .= '?redirect=' . urlencode($returnUrl);
+        }
+        header('Location: ' . $loginUrl);
         exit();
     }
 

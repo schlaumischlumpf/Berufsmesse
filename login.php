@@ -5,7 +5,12 @@ require_once 'functions.php';
 
 // Wenn bereits eingeloggt, weiterleiten
 if (isLoggedIn()) {
-    header('Location: ' . BASE_URL . 'index.php');
+    $redirect = $_GET['redirect'] ?? '';
+    if (!empty($redirect) && strpos($redirect, '/') === 0) {
+        header('Location: ' . $redirect);
+    } else {
+        header('Location: ' . BASE_URL . 'index.php');
+    }
     exit();
 }
 
@@ -44,7 +49,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit();
             }
             
-            header('Location: ' . BASE_URL . 'index.php');
+            // Nach Login zur ursprünglichen Seite zurückkehren (z.B. QR-Checkin)
+            $redirect = $_GET['redirect'] ?? ($_POST['redirect'] ?? '');
+            if (!empty($redirect) && strpos($redirect, '/') === 0) {
+                header('Location: ' . $redirect);
+            } else {
+                header('Location: ' . BASE_URL . 'index.php');
+            }
             exit();
         } else {
             $error = 'Ungültiger Benutzername oder Passwort';
@@ -152,6 +163,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="" class="space-y-5">
+                <?php if (!empty($_GET['redirect'])): ?>
+                <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($_GET['redirect']); ?>">
+                <?php endif; ?>
                 <!-- Username -->
                 <div>
                     <label for="username" class="block text-sm font-medium text-gray-700 mb-2">

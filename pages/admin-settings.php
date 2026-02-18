@@ -20,6 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
     $autoClose = isset($_POST['auto_close_registration']) ? '1' : '0';
     updateSetting('auto_close_registration', $autoClose);
     
+    logAuditAction('einstellungen_geaendert', "Einschreibezeitraum: $regStart – $regEnd, Veranstaltung: $eventDate, Max. Registrierungen: $maxReg, Auto-Close: $autoClose");
     $message = ['type' => 'success', 'text' => 'Einstellungen erfolgreich gespeichert'];
 }
 
@@ -30,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
     }
     $qrUrl = sanitize($_POST['qr_url']);
     updateSetting('qr_code_url', $qrUrl);
+    logAuditAction('qr_url_geaendert', "QR-Code Base-URL auf '$qrUrl' gesetzt");
     $message = ['type' => 'success', 'text' => 'QR-Code URL erfolgreich gespeichert'];
 }
 
@@ -112,412 +114,422 @@ $currentSettings = [
 $allIndustries = getIndustries();
 ?>
 
-<div class="max-w-4xl mx-auto space-y-6">
+<!-- Einstellungen – Tab-basiertes Mobile-First Layout -->
+<div class="max-w-4xl mx-auto space-y-4">
+    
+    <!-- Header -->
+    <div class="flex items-center justify-between">
+        <h2 class="text-xl font-bold text-gray-800">
+            <i class="fas fa-cog text-emerald-500 mr-2"></i>Einstellungen
+        </h2>
+    </div>
+
     <?php if (isset($message)): ?>
-    <div class="animate-pulse">
-        <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
-            <div class="flex items-center">
-                <i class="fas fa-check-circle text-green-500 mr-3"></i>
-                <p class="text-green-700"><?php echo $message['text']; ?></p>
-            </div>
-        </div>
+    <div class="bg-<?php echo $message['type'] === 'success' ? 'emerald' : 'red'; ?>-50 border border-<?php echo $message['type'] === 'success' ? 'emerald' : 'red'; ?>-200 p-3 rounded-lg flex items-center gap-2 text-sm">
+        <i class="fas fa-<?php echo $message['type'] === 'success' ? 'check-circle text-emerald-500' : 'exclamation-circle text-red-500'; ?>"></i>
+        <span class="<?php echo $message['type'] === 'success' ? 'text-emerald-700' : 'text-red-700'; ?>"><?php echo $message['text']; ?></span>
     </div>
     <?php endif; ?>
 
-    <!-- Settings Form -->
+    <!-- Tab Navigation -->
     <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-100">
-            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
-                <i class="fas fa-cog text-emerald-500 mr-2"></i>
-                System-Einstellungen
-            </h3>
-        </div>
-
-        <form method="POST" class="p-6 space-y-6">
-            <!-- Registrierungszeitraum -->
-            <div class="border-b border-gray-200 pb-6">
-                <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                    <i class="fas fa-calendar-alt text-purple-600 mr-3"></i>
-                    Einschreibezeitraum
-                </h4>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">
-                            Einschreibebeginn *
-                        </label>
-                        <input type="datetime-local" 
-                               name="registration_start" 
-                               value="<?php echo date('Y-m-d\TH:i', strtotime($currentSettings['registration_start'])); ?>"
-                               required
-                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                        <p class="text-xs text-gray-500 mt-1">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            Ab diesem Zeitpunkt können sich Schüler einschreiben
-                        </p>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-sm font-semibold text-gray-700 mb-2">
-                            Einschreibeschluss *
-                        </label>
-                        <input type="datetime-local" 
-                               name="registration_end" 
-                               value="<?php echo date('Y-m-d\TH:i', strtotime($currentSettings['registration_end'])); ?>"
-                               required
-                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                        <p class="text-xs text-gray-500 mt-1">
-                            <i class="fas fa-info-circle mr-1"></i>
-                            Nach diesem Zeitpunkt erfolgt automatische Zuteilung
-                        </p>
-                    </div>
-                </div>
-
-                <!-- Status Preview -->
-                <div class="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                    <p class="text-sm text-blue-800">
-                        <i class="fas fa-info-circle mr-2"></i>
-                        <strong>Aktueller Status:</strong>
-                        <?php 
-                        $status = getRegistrationStatus();
-                        if ($status === 'open') {
-                            echo '<span class="text-green-600 font-semibold">Einschreibung läuft</span>';
-                        } elseif ($status === 'upcoming') {
-                            echo '<span class="text-yellow-600 font-semibold">Noch nicht gestartet</span>';
-                        } else {
-                            echo '<span class="text-red-600 font-semibold">Geschlossen</span>';
-                        }
-                        ?>
-                    </p>
-                </div>
-            </div>
-
-            <!-- Event Datum -->
-            <div class="border-b border-gray-200 pb-6">
-                <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                    <i class="fas fa-calendar-check text-green-600 mr-3"></i>
-                    Veranstaltungsdatum
-                </h4>
-                
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Datum der Berufsmesse *
-                    </label>
-                    <input type="date" 
-                           name="event_date" 
-                           value="<?php echo $currentSettings['event_date']; ?>"
-                           required
-                           class="w-full md:w-1/2 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent">
-                    <p class="text-xs text-gray-500 mt-1">
-                        <i class="fas fa-info-circle mr-1"></i>
-                        Das Datum, an dem die Berufsmesse stattfindet
-                    </p>
-                </div>
-            </div>
-
-            <!-- Einschreibungsparameter -->
-            <div class="pb-6">
-                <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-                    <i class="fas fa-sliders-h text-blue-600 mr-3"></i>
-                    Einschreibungsparameter
-                </h4>
-                
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Maximale Einschreibungen pro Schüler *
-                    </label>
-                    <div class="flex items-center space-x-4">
-                        <input type="number" 
-                               name="max_registrations_per_student" 
-                               value="<?php echo $currentSettings['max_registrations_per_student']; ?>"
-                               min="1" 
-                               max="3"
-                               required
-                               class="w-32 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent text-center font-bold text-2xl">
-                        <span class="text-gray-600">Aussteller (entspricht den 3 Zeitslots)</span>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-2">
-                        <i class="fas fa-info-circle mr-1"></i>
-                        Standard: 3 (ein Aussteller pro Zeitslot). Empfohlen wird dieser Wert beizubehalten.
-                    </p>
-                </div>
-                
-                <!-- Auto-Close Toggle (Issue #12) -->
-                <div class="mt-6">
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" 
-                               name="auto_close_registration" 
-                               value="1"
-                               <?php echo $currentSettings['auto_close_registration'] === '1' ? 'checked' : ''; ?>
-                               class="w-5 h-5 text-emerald-500 rounded border-gray-300 focus:ring-emerald-400">
-                        <div>
-                            <span class="text-sm font-semibold text-gray-700">Einschreibung nach Zuteilung automatisch schliessen</span>
-                            <p class="text-xs text-gray-500 mt-0.5">
-                                <i class="fas fa-info-circle mr-1"></i>
-                                Nach der automatischen Zuteilung wird die Einschreibung automatisch geschlossen. Nur Admins können danach noch Änderungen vornehmen.
-                            </p>
-                        </div>
-                    </label>
-                </div>
-            </div>
-
-            <!-- Submit Button -->
-            <div class="flex justify-end pt-4 border-t border-gray-100">
-                <button type="submit" 
-                        name="save_settings"
-                        class="bg-emerald-500 text-white px-6 py-2.5 rounded-lg hover:bg-emerald-600 transition font-medium">
-                    <i class="fas fa-save mr-2"></i>Speichern
-                </button>
-            </div>
-        </form>
-    </div>
-
-    <!-- QR Code Generator -->
-    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-100">
-            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
-                <i class="fas fa-qrcode text-emerald-500 mr-2"></i>
-                QR-Code Generator
-            </h3>
-        </div>
-
-        <div class="p-6 space-y-6">
-            <form method="POST" class="space-y-4">
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        URL für QR-Code *
-                    </label>
-                    <input type="url" 
-                           name="qr_url" 
-                           value="<?php echo htmlspecialchars($currentSettings['qr_code_url']); ?>"
-                           required
-                           placeholder="https://beispiel.de/berufsmesse"
-                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent">
-                    <p class="text-xs text-gray-500 mt-1">
-                        <i class="fas fa-info-circle mr-1"></i>
-                        Diese URL wird im QR-Code eingebettet (z.B. Anmeldeseite vor Ort)
-                    </p>
-                </div>
-                
-                <div class="flex justify-end">
-                    <button type="submit" 
-                            name="save_qr_url"
-                            class="bg-gradient-to-r from-green-600 to-teal-600 text-white px-6 py-2 rounded-lg hover:from-green-700 hover:to-teal-700 transition font-semibold">
-                        <i class="fas fa-save mr-2"></i>URL speichern
-                    </button>
-                </div>
-            </form>
-
-            <div class="border-t border-gray-200 pt-6">
-                <div class="flex flex-col md:flex-row gap-6 items-center">
-                    <div class="flex-1">
-                        <h4 class="font-semibold text-gray-800 mb-3">QR-Code Vorschau</h4>
-                        <p class="text-sm text-gray-600 mb-4">
-                            Scanne diesen QR-Code mit einem Smartphone, um zur konfigurierten URL zu gelangen.
-                        </p>
-                        <div class="bg-gray-50 p-4 rounded-lg border-2 border-gray-200 inline-block">
-                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
-                                 alt="QR Code" 
-                                 class="w-48 h-48"
-                                 id="qrCodePreview">
-                        </div>
-                    </div>
-                    
-                    <div class="flex-1">
-                        <h4 class="font-semibold text-gray-800 mb-3">Aktionen</h4>
-                        <div class="space-y-3">
-                            <a href="https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
-                               download="berufsmesse-qrcode.png"
-                               target="_blank"
-                               class="block w-full bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition text-center font-semibold">
-                                <i class="fas fa-download mr-2"></i>QR-Code herunterladen (600x600)
-                            </a>
-                            
-                            <a href="https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
-                               download="berufsmesse-qrcode-hd.png"
-                               target="_blank"
-                               class="block w-full bg-indigo-600 text-white px-6 py-3 rounded-lg hover:bg-indigo-700 transition text-center font-semibold">
-                                <i class="fas fa-download mr-2"></i>QR-Code herunterladen (HD 1200x1200)
-                            </a>
-                            
-                            <button onclick="window.print()" 
-                                    class="block w-full bg-gray-600 text-white px-6 py-3 rounded-lg hover:bg-gray-700 transition font-semibold">
-                                <i class="fas fa-print mr-2"></i>QR-Code drucken
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- System Information -->
-    <div class="bg-white rounded-xl shadow-md p-6">
-        <h4 class="text-lg font-semibold text-gray-800 mb-4 flex items-center">
-            <i class="fas fa-info-circle text-blue-600 mr-3"></i>
-            System-Information
-        </h4>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-            <div class="p-4 bg-gray-50 rounded-lg">
-                <p class="text-gray-600 mb-1">PHP Version</p>
-                <p class="font-semibold text-gray-800"><?php echo phpversion(); ?></p>
-            </div>
-            
-            <div class="p-4 bg-gray-50 rounded-lg">
-                <p class="text-gray-600 mb-1">Datenbank</p>
-                <p class="font-semibold text-gray-800"><?php echo DB_NAME; ?></p>
-            </div>
-            
-            <div class="p-4 bg-gray-50 rounded-lg">
-                <p class="text-gray-600 mb-1">Max. Upload-Größe</p>
-                <p class="font-semibold text-gray-800"><?php echo round(MAX_FILE_SIZE / 1048576, 1); ?> MB</p>
-            </div>
-            
-            <div class="p-4 bg-gray-50 rounded-lg">
-                <p class="text-gray-600 mb-1">Upload-Verzeichnis</p>
-                <p class="font-semibold text-gray-800 text-xs"><?php echo UPLOAD_DIR; ?></p>
-            </div>
-        </div>
-    </div>
-
-    <!-- Warning Box -->
-    <div class="bg-yellow-50 border-l-4 border-yellow-500 p-6 rounded-lg">
-        <h4 class="font-semibold text-yellow-900 mb-3 flex items-center">
-            <i class="fas fa-exclamation-triangle mr-2"></i>
-            Wichtige Hinweise
-        </h4>
-        <ul class="space-y-2 text-sm text-yellow-800">
-            <li class="flex items-start">
-                <i class="fas fa-check text-yellow-600 mr-2 mt-1"></i>
-                <span>Änderungen am Einschreibezeitraum wirken sich sofort aus.</span>
-            </li>
-            <li class="flex items-start">
-                <i class="fas fa-check text-yellow-600 mr-2 mt-1"></i>
-                <span>Nach Ablauf der Einschreibefrist solltest Du die automatische Zuteilung durchführen.</span>
-            </li>
-            <li class="flex items-start">
-                <i class="fas fa-check text-yellow-600 mr-2 mt-1"></i>
-                <span>Stelle sicher, dass genügend Ausstellerplätze für alle Schüler vorhanden sind.</span>
-            </li>
-            <li class="flex items-start">
-                <i class="fas fa-check text-yellow-600 mr-2 mt-1"></i>
-                <span>Die maximale Anzahl an Einschreibungen sollte 3 sein (ein Aussteller pro Zeitslot).</span>
-            </li>
-        </ul>
-    </div>
-
-    <!-- Branchen-Verwaltung -->
-    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
-                <i class="fas fa-industry text-emerald-500 mr-2"></i>
-                Branchen-Verwaltung
-            </h3>
-            <button onclick="document.getElementById('addIndustryForm').classList.toggle('hidden')"
-                    class="bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-emerald-600 transition">
-                <i class="fas fa-plus mr-1"></i>Neue Branche
+        <div class="flex border-b border-gray-100 overflow-x-auto" id="settingsTabs" style="-webkit-overflow-scrolling: touch; scrollbar-width: none;">
+            <button onclick="switchSettingsTab('allgemein')" data-tab="allgemein"
+                    class="settings-tab active flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-emerald-500 text-emerald-600 bg-emerald-50/50 transition-all">
+                <i class="fas fa-sliders-h"></i> <span>Allgemein</span>
+            </button>
+            <button onclick="switchSettingsTab('qrcodes')" data-tab="qrcodes"
+                    class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-qrcode"></i> <span>QR-Codes</span>
+            </button>
+            <button onclick="switchSettingsTab('branchen')" data-tab="branchen"
+                    class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-industry"></i> <span>Branchen</span>
+            </button>
+            <button onclick="switchSettingsTab('system')" data-tab="system"
+                    class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-info-circle"></i> <span>System</span>
             </button>
         </div>
 
-        <div class="p-6 space-y-4">
-            <?php if (isset($industryMessage)): ?>
-            <div class="<?php echo $industryMessage['type'] === 'success' ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'; ?> p-4 rounded-lg">
-                <div class="flex items-center">
-                    <i class="fas <?php echo $industryMessage['type'] === 'success' ? 'fa-check-circle text-emerald-500' : 'fa-exclamation-circle text-red-500'; ?> mr-3"></i>
-                    <p class="<?php echo $industryMessage['type'] === 'success' ? 'text-emerald-700' : 'text-red-700'; ?>"><?php echo htmlspecialchars($industryMessage['text']); ?></p>
+        <!-- ============================================================ -->
+        <!-- TAB 1: Allgemein -->
+        <!-- ============================================================ -->
+        <div id="tab-allgemein" class="settings-tab-content p-4 sm:p-6">
+            <form method="POST" class="space-y-6">
+                
+                <!-- Schnellstatus -->
+                <div class="p-3 rounded-lg border <?php 
+                    $status = getRegistrationStatus();
+                    echo $status === 'open' ? 'bg-emerald-50 border-emerald-200' : ($status === 'upcoming' ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200');
+                ?>">
+                    <div class="flex items-center gap-2 text-sm font-medium">
+                        <span class="w-2.5 h-2.5 rounded-full <?php echo $status === 'open' ? 'bg-emerald-500' : ($status === 'upcoming' ? 'bg-amber-500' : 'bg-red-500'); ?>"></span>
+                        <span class="<?php echo $status === 'open' ? 'text-emerald-700' : ($status === 'upcoming' ? 'text-amber-700' : 'text-red-700'); ?>">
+                            Einschreibung: <?php echo $status === 'open' ? 'Offen' : ($status === 'upcoming' ? 'Noch nicht gestartet' : 'Geschlossen'); ?>
+                        </span>
+                    </div>
                 </div>
-            </div>
-            <?php endif; ?>
 
-            <!-- Neue Branche hinzufügen -->
-            <div id="addIndustryForm" class="hidden bg-gray-50 rounded-lg p-4 border border-gray-200">
-                <h4 class="text-sm font-semibold text-gray-700 mb-3">Neue Branche anlegen</h4>
-                <form method="POST" class="flex flex-col sm:flex-row gap-3">
-                    <input type="text" name="industry_name" placeholder="Branchenname" maxlength="100" required
-                           aria-label="Branchenname"
-                           class="flex-1 px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
-                    <input type="number" name="industry_sort_order" placeholder="Reihenfolge" min="0" value="0"
-                           aria-label="Sortierreihenfolge"
-                           class="w-32 px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 text-sm">
-                    <button type="submit" name="add_industry"
-                            class="bg-emerald-500 text-white px-5 py-2.5 rounded-lg hover:bg-emerald-600 transition text-sm font-medium whitespace-nowrap">
-                        <i class="fas fa-plus mr-1"></i>Anlegen
+                <!-- Einschreibezeitraum -->
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-calendar-alt text-purple-500"></i> Einschreibezeitraum
+                    </h4>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Beginn *</label>
+                            <input type="datetime-local" name="registration_start" 
+                                   value="<?php echo date('Y-m-d\TH:i', strtotime($currentSettings['registration_start'])); ?>"
+                                   required
+                                   class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Ende *</label>
+                            <input type="datetime-local" name="registration_end" 
+                                   value="<?php echo date('Y-m-d\TH:i', strtotime($currentSettings['registration_end'])); ?>"
+                                   required
+                                   class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 text-sm">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Veranstaltungsdatum -->
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-calendar-check text-green-500"></i> Veranstaltung
+                    </h4>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Datum der Berufsmesse *</label>
+                        <input type="date" name="event_date" 
+                               value="<?php echo $currentSettings['event_date']; ?>"
+                               required
+                               class="w-full sm:w-auto px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 text-sm">
+                    </div>
+                </div>
+
+                <!-- Einschreibungsparameter -->
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-sliders-h text-blue-500"></i> Parameter
+                    </h4>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-600 mb-1">Max. Einschreibungen pro Schüler *</label>
+                            <div class="flex items-center gap-3">
+                                <input type="number" name="max_registrations_per_student" 
+                                       value="<?php echo $currentSettings['max_registrations_per_student']; ?>"
+                                       min="1" max="3" required
+                                       class="w-20 px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 text-sm text-center font-bold text-lg">
+                                <span class="text-xs text-gray-500">Aussteller (= Zeitslots)</span>
+                            </div>
+                        </div>
+                        
+                        <label class="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition">
+                            <input type="checkbox" name="auto_close_registration" value="1"
+                                   <?php echo $currentSettings['auto_close_registration'] === '1' ? 'checked' : ''; ?>
+                                   class="w-5 h-5 text-emerald-500 rounded border-gray-300 focus:ring-emerald-400 mt-0.5 flex-shrink-0">
+                            <div>
+                                <span class="text-sm font-medium text-gray-700 block">Automatisch schliessen nach Zuteilung</span>
+                                <span class="text-xs text-gray-500">Einschreibung wird nach der automatischen Zuteilung geschlossen.</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Speichern -->
+                <div class="pt-2">
+                    <button type="submit" name="save_settings"
+                            class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
+                        <i class="fas fa-save mr-2"></i>Einstellungen speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- TAB 2: QR-Codes -->
+        <!-- ============================================================ -->
+        <div id="tab-qrcodes" class="settings-tab-content hidden p-4 sm:p-6">
+            <div class="space-y-6">
+                
+                <!-- Base URL Einstellung -->
+                <form method="POST" class="space-y-4">
+                    <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-link text-emerald-500"></i> Base-URL für QR-Codes
+                    </h4>
+                    <p class="text-xs text-gray-500">Diese URL wird als Basis für die QR-Code-Check-in-Links verwendet. Die Schüler scannen Codes, die auf diese URL mit Token verweisen.</p>
+                    
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">URL *</label>
+                        <input type="url" name="qr_url" id="qrUrlInput"
+                               value="<?php echo htmlspecialchars($currentSettings['qr_code_url']); ?>"
+                               required placeholder="https://beispiel.de/berufsmesse"
+                               oninput="updateQrPreview()"
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 text-sm font-mono">
+                    </div>
+                    
+                    <!-- Live QR-Vorschau -->
+                    <div class="flex flex-col sm:flex-row gap-4 items-start">
+                        <div class="bg-white p-3 rounded-lg border-2 border-gray-200 inline-block flex-shrink-0">
+                            <img id="qrPreviewImg" 
+                                 src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
+                                 alt="QR-Code Vorschau" class="w-36 h-36 sm:w-44 sm:h-44">
+                        </div>
+                        <div class="flex-1 space-y-2">
+                            <p class="text-xs text-gray-500">
+                                <i class="fas fa-info-circle mr-1"></i>
+                                Vorschau-URL für Check-in: <br>
+                                <code id="qrPreviewUrl" class="text-xs text-emerald-600 break-all"><?php echo htmlspecialchars($currentSettings['qr_code_url']); ?>?page=qr-checkin&amp;token=BEISPIEL</code>
+                            </p>
+                            <div class="grid grid-cols-1 gap-2">
+                                <a href="https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
+                                   download="berufsmesse-qrcode.png" target="_blank"
+                                   class="flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-xs font-medium">
+                                    <i class="fas fa-download"></i> Download (600px)
+                                </a>
+                                <a href="https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
+                                   download="berufsmesse-qrcode-hd.png" target="_blank"
+                                   class="flex items-center justify-center gap-2 px-3 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition text-xs font-medium">
+                                    <i class="fas fa-download"></i> Download HD (1200px)
+                                </a>
+                                <button type="button" onclick="window.print()"
+                                        class="flex items-center justify-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-xs font-medium">
+                                    <i class="fas fa-print"></i> QR-Code drucken
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit" name="save_qr_url"
+                            class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
+                        <i class="fas fa-save mr-2"></i>URL speichern
                     </button>
                 </form>
             </div>
+        </div>
 
-            <!-- Branchen-Liste -->
-            <?php if (empty($allIndustries)): ?>
-            <p class="text-center text-gray-400 py-6 italic">Keine Branchen vorhanden. Führe zuerst die migrations.sql aus.</p>
-            <?php else: ?>
-            <div class="overflow-hidden rounded-lg border border-gray-200">
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="px-4 py-3 text-left font-medium text-gray-600">Name</th>
-                            <th class="px-4 py-3 text-center font-medium text-gray-600 w-28">Reihenfolge</th>
-                            <th class="px-4 py-3 text-center font-medium text-gray-600 w-36">Aktionen</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        <?php foreach ($allIndustries as $ind): ?>
-                        <tr class="hover:bg-gray-50" id="industry-row-<?php echo $ind['id']; ?>">
-                            <td class="px-4 py-3 font-medium text-gray-800">
-                                <span id="ind-name-display-<?php echo $ind['id']; ?>"><?php echo htmlspecialchars($ind['name']); ?></span>
-                                <form id="ind-edit-form-<?php echo $ind['id']; ?>" method="POST" class="hidden flex gap-2 mt-1">
-                                    <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
-                                    <input type="text" name="industry_name" value="<?php echo htmlspecialchars($ind['name']); ?>" maxlength="100" required
-                                           aria-label="Branchenname bearbeiten"
-                                           class="flex-1 px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm">
-                                    <input type="number" name="industry_sort_order" value="<?php echo $ind['sort_order']; ?>" min="0"
-                                           aria-label="Sortierreihenfolge"
-                                           class="w-20 px-3 py-1.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm">
-                                    <button type="submit" name="edit_industry" class="bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-xs hover:bg-emerald-600 transition">
+        <!-- ============================================================ -->
+        <!-- TAB 3: Branchen -->
+        <!-- ============================================================ -->
+        <div id="tab-branchen" class="settings-tab-content hidden p-4 sm:p-6">
+            <div class="space-y-4">
+                
+                <?php if (isset($industryMessage)): ?>
+                <div class="<?php echo $industryMessage['type'] === 'success' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'; ?> border p-3 rounded-lg flex items-center gap-2 text-sm">
+                    <i class="fas <?php echo $industryMessage['type'] === 'success' ? 'fa-check-circle text-emerald-500' : 'fa-exclamation-circle text-red-500'; ?>"></i>
+                    <span class="<?php echo $industryMessage['type'] === 'success' ? 'text-emerald-700' : 'text-red-700'; ?>"><?php echo htmlspecialchars($industryMessage['text']); ?></span>
+                </div>
+                <?php endif; ?>
+
+                <!-- Neue Branche -->
+                <div class="flex items-center justify-between">
+                    <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-industry text-emerald-500"></i> Branchen verwalten
+                    </h4>
+                    <button onclick="document.getElementById('addIndustryForm').classList.toggle('hidden')"
+                            class="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs hover:bg-emerald-600 transition font-medium">
+                        <i class="fas fa-plus mr-1"></i>Neue Branche
+                    </button>
+                </div>
+
+                <!-- Formular: Neue Branche -->
+                <div id="addIndustryForm" class="hidden bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <form method="POST" class="space-y-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div class="sm:col-span-2">
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Name</label>
+                                <input type="text" name="industry_name" placeholder="Branchenname" maxlength="100" required
+                                       class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-medium text-gray-600 mb-1">Reihenfolge</label>
+                                <input type="number" name="industry_sort_order" placeholder="0" min="0" value="0"
+                                       class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                            </div>
+                        </div>
+                        <button type="submit" name="add_industry"
+                                class="w-full sm:w-auto px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition text-sm font-medium">
+                            <i class="fas fa-plus mr-1"></i>Anlegen
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Branchen-Liste -->
+                <?php if (empty($allIndustries)): ?>
+                <p class="text-center text-gray-400 py-8 text-sm italic">Keine Branchen vorhanden.</p>
+                <?php else: ?>
+                <div class="space-y-2">
+                    <?php foreach ($allIndustries as $ind): ?>
+                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition" id="industry-row-<?php echo $ind['id']; ?>">
+                        <!-- Anzeige-Modus -->
+                        <div class="flex items-center gap-3 flex-1 min-w-0" id="ind-display-<?php echo $ind['id']; ?>">
+                            <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 text-xs font-bold flex-shrink-0">
+                                <?php echo $ind['sort_order']; ?>
+                            </span>
+                            <span class="text-sm font-medium text-gray-800 truncate"><?php echo htmlspecialchars($ind['name']); ?></span>
+                        </div>
+                        <div class="flex items-center gap-1 flex-shrink-0" id="ind-actions-<?php echo $ind['id']; ?>">
+                            <button onclick="editIndustry(<?php echo $ind['id']; ?>)"
+                                    class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Bearbeiten">
+                                <i class="fas fa-edit text-sm"></i>
+                            </button>
+                            <form method="POST" class="inline" onsubmit="return confirm('Branche wirklich löschen?')">
+                                <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
+                                <button type="submit" name="delete_industry"
+                                        class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Löschen">
+                                    <i class="fas fa-trash text-sm"></i>
+                                </button>
+                            </form>
+                        </div>
+                        
+                        <!-- Bearbeiten-Modus (hidden) -->
+                        <form id="ind-edit-form-<?php echo $ind['id']; ?>" method="POST" class="hidden w-full">
+                            <div class="flex flex-col sm:flex-row gap-2 w-full">
+                                <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
+                                <input type="text" name="industry_name" value="<?php echo htmlspecialchars($ind['name']); ?>" maxlength="100" required
+                                       class="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                                <input type="number" name="industry_sort_order" value="<?php echo $ind['sort_order']; ?>" min="0"
+                                       class="w-20 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                                <div class="flex gap-1">
+                                    <button type="submit" name="edit_industry" class="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition">
                                         <i class="fas fa-check"></i>
                                     </button>
-                                    <button type="button" onclick="cancelEditIndustry(<?php echo $ind['id']; ?>)" class="bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-xs hover:bg-gray-300 transition">
+                                    <button type="button" onclick="cancelEditIndustry(<?php echo $ind['id']; ?>)" class="p-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
                                         <i class="fas fa-times"></i>
                                     </button>
-                                </form>
-                            </td>
-                            <td class="px-4 py-3 text-center text-gray-500"><?php echo $ind['sort_order']; ?></td>
-                            <td class="px-4 py-3 text-center">
-                                <div class="flex items-center justify-center gap-2" id="ind-actions-<?php echo $ind['id']; ?>">
-                                    <button onclick="editIndustry(<?php echo $ind['id']; ?>)"
-                                            class="px-3 py-1.5 text-xs bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
-                                        <i class="fas fa-edit mr-1"></i>Bearbeiten
-                                    </button>
-                                    <form method="POST" class="inline" onsubmit="return confirm('Branche wirklich löschen?')">
-                                        <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
-                                        <button type="submit" name="delete_industry"
-                                                class="px-3 py-1.5 text-xs bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
                                 </div>
-                            </td>
-                        </tr>
-                        <?php endforeach; ?>
-                    </tbody>
-                </table>
+                            </div>
+                        </form>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+                <?php endif; ?>
             </div>
-            <?php endif; ?>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- TAB 4: System -->
+        <!-- ============================================================ -->
+        <div id="tab-system" class="settings-tab-content hidden p-4 sm:p-6">
+            <div class="space-y-4">
+                <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <i class="fas fa-server text-blue-500"></i> System-Information
+                </h4>
+                
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <p class="text-xs text-gray-500 mb-0.5">PHP Version</p>
+                        <p class="text-sm font-semibold text-gray-800"><?php echo phpversion(); ?></p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <p class="text-xs text-gray-500 mb-0.5">Datenbank</p>
+                        <p class="text-sm font-semibold text-gray-800"><?php echo DB_NAME; ?></p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <p class="text-xs text-gray-500 mb-0.5">Max. Upload-Größe</p>
+                        <p class="text-sm font-semibold text-gray-800"><?php echo round(MAX_FILE_SIZE / 1048576, 1); ?> MB</p>
+                    </div>
+                    <div class="p-3 bg-gray-50 rounded-lg border border-gray-100">
+                        <p class="text-xs text-gray-500 mb-0.5">Upload-Verzeichnis</p>
+                        <p class="text-sm font-semibold text-gray-800 text-xs break-all"><?php echo UPLOAD_DIR; ?></p>
+                    </div>
+                </div>
+
+                <!-- Hinweise -->
+                <div class="bg-amber-50 border border-amber-200 p-4 rounded-lg mt-4">
+                    <h5 class="text-sm font-semibold text-amber-800 flex items-center gap-2 mb-2">
+                        <i class="fas fa-exclamation-triangle text-amber-500"></i> Wichtige Hinweise
+                    </h5>
+                    <ul class="space-y-1.5 text-xs text-amber-700">
+                        <li class="flex items-start gap-2">
+                            <i class="fas fa-check text-amber-500 mt-0.5 flex-shrink-0"></i>
+                            <span>Änderungen am Einschreibezeitraum wirken sich sofort aus.</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fas fa-check text-amber-500 mt-0.5 flex-shrink-0"></i>
+                            <span>Nach Ablauf der Frist → automatische Zuteilung durchführen.</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fas fa-check text-amber-500 mt-0.5 flex-shrink-0"></i>
+                            <span>Genügend Plätze für alle Schüler sicherstellen.</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fas fa-check text-amber-500 mt-0.5 flex-shrink-0"></i>
+                            <span>Max. Einschreibungen = 3 (1 pro Zeitslot) empfohlen.</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </div>
 </div>
 
+<style>
+    /* Tab-Scrollbar auf Mobile verbergen */
+    #settingsTabs::-webkit-scrollbar { display: none; }
+</style>
+
 <script>
+function switchSettingsTab(tabName) {
+    // Alle Tabs deaktivieren
+    document.querySelectorAll('.settings-tab').forEach(btn => {
+        btn.classList.remove('active', 'border-emerald-500', 'text-emerald-600', 'bg-emerald-50/50');
+        btn.classList.add('border-transparent', 'text-gray-500');
+    });
+    document.querySelectorAll('.settings-tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    
+    // Aktiven Tab aktivieren
+    const activeBtn = document.querySelector(`.settings-tab[data-tab="${tabName}"]`);
+    if (activeBtn) {
+        activeBtn.classList.add('active', 'border-emerald-500', 'text-emerald-600', 'bg-emerald-50/50');
+        activeBtn.classList.remove('border-transparent', 'text-gray-500');
+    }
+    const activeContent = document.getElementById('tab-' + tabName);
+    if (activeContent) {
+        activeContent.classList.remove('hidden');
+    }
+    
+    // URL Hash setzen für Deep-Linking
+    history.replaceState(null, '', location.pathname + location.search + '#' + tabName);
+}
+
+// Tab aus URL Hash laden
+document.addEventListener('DOMContentLoaded', function() {
+    const hash = location.hash.replace('#', '');
+    if (hash && document.getElementById('tab-' + hash)) {
+        switchSettingsTab(hash);
+    }
+    <?php if (isset($industryMessage)): ?>
+    // Bei Branchen-Aktionen automatisch zum Branchen-Tab
+    switchSettingsTab('branchen');
+    <?php endif; ?>
+});
+
+// Live QR-Vorschau
+let qrUpdateTimer;
+function updateQrPreview() {
+    clearTimeout(qrUpdateTimer);
+    qrUpdateTimer = setTimeout(function() {
+        const url = document.getElementById('qrUrlInput').value;
+        if (url) {
+            document.getElementById('qrPreviewImg').src = 
+                'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(url);
+            document.getElementById('qrPreviewUrl').textContent = url + '?page=qr-checkin&token=BEISPIEL';
+        }
+    }, 500);
+}
+
 function editIndustry(id) {
-    document.getElementById('ind-name-display-' + id).classList.add('hidden');
+    document.getElementById('ind-display-' + id).classList.add('hidden');
     document.getElementById('ind-actions-' + id).classList.add('hidden');
     document.getElementById('ind-edit-form-' + id).classList.remove('hidden');
-    document.getElementById('ind-edit-form-' + id).classList.add('flex');
 }
 function cancelEditIndustry(id) {
-    document.getElementById('ind-name-display-' + id).classList.remove('hidden');
+    document.getElementById('ind-display-' + id).classList.remove('hidden');
     document.getElementById('ind-actions-' + id).classList.remove('hidden');
     document.getElementById('ind-edit-form-' + id).classList.add('hidden');
-    document.getElementById('ind-edit-form-' + id).classList.remove('flex');
 }
 </script>
