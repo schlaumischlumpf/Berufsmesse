@@ -497,6 +497,17 @@ function logAuditAction($action, $details = '') {
     }
 }
 
+// Branchen/Kategorien aus DB laden
+function getIndustries() {
+    try {
+        $db = getDB();
+        $stmt = $db->query("SELECT id, name, sort_order FROM industries ORDER BY sort_order, name");
+        return $stmt->fetchAll();
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
 // Berechtigungsgruppen (Issue #26)
 function getPermissionGroups() {
     try {

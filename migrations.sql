@@ -27,6 +27,36 @@ ALTER TABLE exhibitors
 ADD COLUMN IF NOT EXISTS offer_types VARCHAR(255) DEFAULT NULL COMMENT 'Angebote: Ausbildung, Studium, Praktikum etc.';
 
 -- ===========================================================================
+-- Feature: Angebotstypen als JSON speichern
+-- ===========================================================================
+ALTER TABLE exhibitors MODIFY COLUMN offer_types TEXT DEFAULT NULL 
+  COMMENT 'JSON: {selected: [...], custom: "..."}';
+
+-- ===========================================================================
+-- Feature: Branchen/Kategorien dynamisch verwalten
+-- ===========================================================================
+CREATE TABLE IF NOT EXISTS industries (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY unique_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci 
+  COMMENT='Verwaltbare Branchen/Kategorien fuer Aussteller';
+
+INSERT IGNORE INTO industries (name, sort_order) VALUES
+('Automobilindustrie', 1),
+('Handwerk', 2),
+('Gesundheitswesen', 3),
+('IT & Software', 4),
+('Dienstleistung', 5),
+('Öffentlicher Dienst', 6),
+('Bildung', 7),
+('Gastronomie & Hotellerie', 8),
+('Handel & Verkauf', 9),
+('Sonstiges', 99);
+
+-- ===========================================================================
 -- Logo-Upload für Aussteller
 -- ===========================================================================
 ALTER TABLE exhibitors 
