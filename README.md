@@ -39,7 +39,78 @@ Eine PHP/MySQL-Webanwendung zur Organisation und Durchführung von Berufsmessen 
 
 ## Schnellstart mit Docker
 
-### Voraussetzungen
+### Option A: Vorgefertigtes Docker Image verwenden
+
+Das fertige Docker Image wird automatisch bei jedem Push auf den `main` Branch erstellt und ist verfügbar über GitHub Container Registry.
+
+#### 1. Docker Compose mit vorgefertigtem Image
+
+Erstelle eine `docker-compose.yml`:
+
+```yaml
+version: '3.8'
+
+services:
+  db:
+    image: mariadb:10.9
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASS}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASS}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: ghcr.io/schlaumischlumpf/berufsmesse:latest
+    ports:
+      - "${APP_PORT:-9000}:80"
+    environment:
+      DB_HOST: db
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      DB_NAME: ${DB_NAME}
+      BASE_URL: ${BASE_URL:-/}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db_data:
+```
+
+#### 2. Environment-Variablen setzen
+
+Erstelle eine `.env` Datei:
+
+```bash
+DB_ROOT_PASS=mein_sicheres_root_passwort
+DB_USER=berufsmesse
+DB_PASS=mein_sicheres_app_passwort
+DB_NAME=berufsmesse
+APP_PORT=9000
+BASE_URL=/
+```
+
+#### 3. Container starten
+
+```bash
+docker compose up -d
+```
+
+Die Anwendung ist dann unter `http://localhost:9000` erreichbar.
+
+---
+
+### Option B: Selbst bauen
+
+#### Voraussetzungen
 
 - [Docker Engine](https://docs.docker.com/engine/install/) ≥ 24
 - [Docker Compose](https://docs.docker.com/compose/install/) ≥ 2 (in neueren Docker-Versionen als `docker compose` enthalten)
