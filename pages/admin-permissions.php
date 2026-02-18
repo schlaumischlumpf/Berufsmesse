@@ -10,12 +10,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
     $userId = intval($_POST['user_id']);
     $permissions = $_POST['permissions'] ?? [];
     
-    // Alle aktuellen Berechtigungen löschen
-    $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$userId]);
-    
-    // Neue Berechtigungen setzen
-    foreach ($permissions as $permission) {
-        grantPermission($userId, $permission);
+    if (isAdmin()) {
+        // Admins können alle Berechtigungen verwalten
+        $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$userId]);
+        foreach ($permissions as $permission) {
+            grantPermission($userId, $permission);
+        }
+    } else {
+        // Nicht-Admins können nur eigene Berechtigungen vergeben/entziehen
+        $ownPermissions = getUserPermissions($_SESSION['user_id']);
+        // Nur eigene Berechtigungen beim Zielbenutzer entfernen
+        foreach ($ownPermissions as $perm) {
+            $db->prepare("DELETE FROM user_permissions WHERE user_id = ? AND permission = ?")->execute([$userId, $perm]);
+        }
+        // Nur eigene Berechtigungen neu setzen
+        foreach ($permissions as $permission) {
+            if (in_array($permission, $ownPermissions)) {
+                grantPermission($userId, $permission);
+            }
+        }
     }
     
     logAuditAction('Berechtigungen geändert', "Berechtigungen für Benutzer #$userId aktualisiert: " . implode(', ', $permissions));
@@ -98,6 +111,9 @@ $users = $stmt->fetchAll();
 $availablePermissions = getAvailablePermissions();
 $allPermissions = getAllPermissionKeys();
 $permissionDependencies = getPermissionDependencies();
+
+// Berechtigungen des aktuellen Nutzers (für Einschränkung im Modal)
+$currentUserPermissions = isAdmin() ? array_keys($allPermissions) : getUserPermissions($_SESSION['user_id']);
 
 // Berechtigungsgruppen laden
 $permissionGroups = getPermissionGroups();
@@ -393,17 +409,23 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                         <?php echo htmlspecialchars($groupName); ?>
                     </div>
                     <div class="divide-y divide-gray-100">
-                    <?php foreach ($groupPerms as $key => $description): ?>
-                    <label class="flex items-start p-3 bg-white hover:bg-gray-50 cursor-pointer transition permission-label" data-key="<?php echo $key; ?>">
+                    <?php foreach ($groupPerms as $key => $description): 
+                        $canManage = in_array($key, $currentUserPermissions);
+                    ?>
+                    <label class="flex items-start p-3 <?php echo $canManage ? 'bg-white hover:bg-gray-50 cursor-pointer' : 'bg-gray-50 cursor-not-allowed opacity-50'; ?> transition permission-label" data-key="<?php echo $key; ?>">
                         <input type="checkbox" 
                                name="permissions[]" 
                                value="<?php echo $key; ?>"
                                class="perm-checkbox mt-1 mr-3 rounded text-purple-600 w-4 h-4"
                                data-key="<?php echo $key; ?>"
-                               data-deps='<?php echo htmlspecialchars(json_encode(getPermissionDependencies()[$key] ?? []), ENT_QUOTES); ?>'>
+                               data-deps='<?php echo htmlspecialchars(json_encode(getPermissionDependencies()[$key] ?? []), ENT_QUOTES); ?>'
+                               <?php echo $canManage ? '' : 'disabled'; ?>>
                         <div class="flex-1">
                             <div class="font-semibold text-sm text-gray-800"><?php echo $key; ?></div>
                             <div class="text-xs text-gray-600 mt-0.5"><?php echo $description; ?></div>
+                            <?php if (!$canManage): ?>
+                            <div class="text-xs text-amber-600 mt-0.5"><i class="fas fa-lock mr-1"></i>Keine eigene Berechtigung</div>
+                            <?php endif; ?>
                         </div>
                     </label>
                     <?php endforeach; ?>
@@ -447,7 +469,7 @@ function checkDependencies(key, checked) {
         const deps = permDeps[key] || [];
         deps.forEach(dep => {
             const cb = getCheckbox(dep);
-            if (cb && !cb.checked) {
+            if (cb && !cb.checked && !cb.disabled) {
                 cb.checked = true;
                 checkDependencies(dep, true);
             }
@@ -457,7 +479,7 @@ function checkDependencies(key, checked) {
         const dependents = permDependents[key] || [];
         dependents.forEach(dep => {
             const cb = getCheckbox(dep);
-            if (cb && cb.checked) {
+            if (cb && cb.checked && !cb.disabled) {
                 cb.checked = false;
                 checkDependencies(dep, false);
             }

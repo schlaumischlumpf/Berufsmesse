@@ -353,6 +353,11 @@ function grantPermission($userId, $permission, &$visited = []) {
         return false;
     }
 
+    // Non-admins can only grant permissions they have themselves (checks current session user)
+    if (!isAdmin() && !hasPermission($permission)) {
+        return false;
+    }
+
     // Prevent infinite recursion
     if (in_array($permission, $visited)) {
         return true;
