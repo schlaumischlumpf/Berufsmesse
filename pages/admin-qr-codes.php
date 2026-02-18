@@ -12,7 +12,7 @@ if (!isset($db)) {
 // Alle Aussteller mit Räumen laden
 try {
     $stmt = $db->query("
-        SELECT e.*, r.room_number, r.room_name, r.building
+        SELECT e.*, r.room_number
         FROM exhibitors e
         LEFT JOIN rooms r ON e.room_id = r.id
         WHERE e.active = 1
@@ -274,8 +274,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                 <?php if ($exhibitor['room_number']): ?>
                 <p class="text-xs text-gray-500">
                     <i class="fas fa-map-marker-alt mr-1"></i>
-                    <?php echo htmlspecialchars($exhibitor['building'] . ' - ' . $exhibitor['room_number']); ?>
-                    <?php if ($exhibitor['room_name']): ?>(<?php echo htmlspecialchars($exhibitor['room_name']); ?>)<?php endif; ?>
+                    <?php echo htmlspecialchars($exhibitor['room_number']); ?>
                 </p>
                 <?php endif; ?>
             </div>

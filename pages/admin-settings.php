@@ -115,7 +115,7 @@ $allIndustries = getIndustries();
 ?>
 
 <!-- Einstellungen – Tab-basiertes Mobile-First Layout -->
-<div class="max-w-4xl mx-auto space-y-4">
+<div class="max-w-7xl mx-auto space-y-4">
     
     <!-- Header -->
     <div class="flex items-center justify-between">

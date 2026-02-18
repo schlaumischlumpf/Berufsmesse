@@ -34,13 +34,13 @@ try {
     // ============================================================
     
     $stmt = $db->query("
-        SELECT r.id as registration_id, r.user_id, r.exhibitor_id, e.name as exhibitor_name, e.room_id
+        SELECT r.id as registration_id, r.user_id, r.exhibitor_id, e.name as exhibitor_name, e.room_id, COALESCE(r.priority, 2) as priority
         FROM registrations r
         JOIN exhibitors e ON r.exhibitor_id = e.id
         WHERE r.timeslot_id IS NULL
         AND e.active = 1
         AND e.room_id IS NOT NULL
-        ORDER BY r.registered_at ASC
+        ORDER BY COALESCE(r.priority, 2) ASC, r.registered_at ASC
     ");
     $pendingRegistrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
@@ -48,6 +48,7 @@ try {
         $studentId = $reg['user_id'];
         $exhibitorId = $reg['exhibitor_id'];
         $roomId = $reg['room_id'];
+        $priority = intval($reg['priority']);
         
         // Welche Slots hat der Schüler bereits?
         $stmt = $db->prepare("
@@ -83,7 +84,7 @@ try {
             $stmt->execute([$exhibitorId, $timeslotId]);
             $currentCount = $stmt->fetchColumn();
             
-            $slotCapacity = getRoomSlotCapacity($roomId, $timeslotId);
+            $slotCapacity = getRoomSlotCapacity($roomId, $timeslotId, $priority);
             
             if ($slotCapacity > 0 && $currentCount < $slotCapacity && $currentCount < $lowestCount) {
                 $bestSlot = ['slot_number' => $slotNumber, 'timeslot_id' => $timeslotId];

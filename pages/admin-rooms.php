@@ -1,8 +1,8 @@
 <?php
 // Raum-Zuteilungssystem für Admins
 
-// Alle Räume abrufen
-$stmt = $db->query("SELECT * FROM rooms ORDER BY building, floor, room_number");
+// Alle Räume abrufen  
+$stmt = $db->query("SELECT * FROM rooms ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Alle Aussteller abrufen
@@ -10,8 +10,7 @@ $stmt = $db->query("
     SELECT 
         e.*,
         r.room_number,
-        r.room_name,
-        r.building
+        r.equipment as room_equipment
     FROM exhibitors e
     LEFT JOIN rooms r ON e.room_id = r.id
     WHERE e.active = 1
@@ -110,12 +109,22 @@ foreach ($exhibitors as $ex) {
                         <div class="exhibitor-card p-4 bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 hover:border-blue-500 cursor-move transition"
                              draggable="true"
                              data-id="<?php echo $ex['id']; ?>"
-                             data-name="<?php echo htmlspecialchars($ex['name']); ?>">
+                             data-name="<?php echo htmlspecialchars($ex['name']); ?>"
+                             data-equipment="<?php echo htmlspecialchars($ex['equipment'] ?? ''); ?>">
                             <div class="flex items-center">
                                 <i class="fas fa-grip-vertical text-gray-400 mr-3"></i>
-                                <div class="flex-1">
+                                <div class="flex-1 min-w-0">
                                     <h4 class="font-bold text-gray-800"><?php echo htmlspecialchars($ex['name']); ?></h4>
                                     <p class="text-sm text-gray-600 truncate"><?php echo htmlspecialchars($ex['short_description']); ?></p>
+                                    <?php if (!empty($ex['equipment'])): ?>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <?php foreach (explode(',', $ex['equipment']) as $equip): ?>
+                                            <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs bg-orange-50 text-orange-600 border border-orange-100">
+                                                <i class="fas fa-tools text-[10px] mr-1"></i><?php echo htmlspecialchars(trim($equip)); ?>
+                                            </span>
+                                        <?php endforeach; ?>
+                                    </div>
+                                    <?php endif; ?>
                                 </div>
                             </div>
                         </div>
@@ -130,9 +139,49 @@ foreach ($exhibitors as $ex) {
                 <i class="fas fa-door-open text-blue-500 mr-2"></i>
                 Räume
                 <span class="ml-auto text-sm font-normal text-gray-500">
-                    <?php echo count($rooms); ?> Räume
+                    <span id="roomCount"><?php echo count($rooms); ?></span> Räume
                 </span>
             </h3>
+
+            <!-- Filter Section -->
+            <div class="bg-gray-50 rounded-lg p-4 mb-4 space-y-3">
+                <div class="flex items-center justify-between">
+                    <span class="text-sm font-semibold text-gray-700">
+                        <i class="fas fa-filter text-gray-400 mr-2"></i>Filter
+                    </span>
+                    <button onclick="clearRoomFilters()" class="text-xs text-blue-600 hover:text-blue-800">
+                        Zurücksetzen
+                    </button>
+                </div>
+                
+                <!-- Equipment Filter -->
+                <div>
+                    <label class="block text-xs text-gray-600 mb-1">Ausstattung</label>
+                    <select id="equipmentFilter" onchange="filterRooms()" class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="">Alle Ausstattungen</option>
+                        <option value="Beamer">Beamer</option>
+                        <option value="Smartboard">Smartboard</option>
+                        <option value="Whiteboard">Whiteboard</option>
+                        <option value="Lautsprecher">Lautsprecher</option>
+                        <option value="WLAN">WLAN</option>
+                        <option value="Steckdosen">Steckdosen</option>
+                    </select>
+                </div>
+                
+                <!-- Capacity Filter -->
+                <div class="grid grid-cols-2 gap-2">
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Min. Kapazität</label>
+                        <input type="number" id="minCapacity" onchange="filterRooms()" min="0" placeholder="0"
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs text-gray-600 mb-1">Max. Kapazität</label>
+                        <input type="number" id="maxCapacity" onchange="filterRooms()" min="0" placeholder="∞"
+                               class="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    </div>
+                </div>
+            </div>
 
             <div id="roomsList" class="space-y-3 max-h-[600px] overflow-y-auto">
                 <?php foreach ($rooms as $room): ?>
@@ -145,16 +194,12 @@ foreach ($exhibitors as $ex) {
                                 <div>
                                     <h4 class="font-bold text-gray-800">
                                         <?php echo htmlspecialchars($room['room_number']); ?>
-                                        <?php if ($room['room_name']): ?>
-                                            <span class="text-gray-600 font-normal">- <?php echo htmlspecialchars($room['room_name']); ?></span>
-                                        <?php endif; ?>
                                     </h4>
                                     <p class="text-sm text-gray-600">
-                                        <?php echo htmlspecialchars($room['building']); ?>
                                         <?php if ($room['floor']): ?>
-                                            • <?php echo $room['floor']; ?>. Stock
+                                            <?php echo $room['floor']; ?>. Stock •
                                         <?php endif; ?>
-                                        • Max. <?php echo $room['capacity']; ?> Pers.
+                                        Max. <?php echo $room['capacity']; ?> Pers.
                                     </p>
                                     <?php if (!empty($room['equipment'])): ?>
                                     <div class="flex flex-wrap gap-1 mt-1">
@@ -185,22 +230,47 @@ foreach ($exhibitors as $ex) {
                         <div class="room-dropzone min-h-[80px] bg-blue-50 border-2 border-dashed border-blue-200 rounded-lg p-3"
                              data-room-id="<?php echo $room['id']; ?>">
                             <?php if (isset($assignedExhibitors[$room['id']])): ?>
-                                <?php foreach ($assignedExhibitors[$room['id']] as $ex): ?>
-                                    <div class="exhibitor-card p-3 bg-white rounded-lg border border-blue-300 mb-2 cursor-move hover:shadow-md transition"
+                                <?php foreach ($assignedExhibitors[$room['id']] as $ex): 
+                                    // Equipment-Kompatibilität prüfen
+                                    $exhibitorEquipment = !empty($ex['equipment']) ? explode(',', $ex['equipment']) : [];
+                                    $roomEquipment = !empty($room['equipment']) ? explode(',', $room['equipment']) : [];
+                                    $exhibitorEquipment = array_map('trim', $exhibitorEquipment);
+                                    $roomEquipment = array_map('trim', $roomEquipment);
+                                    
+                                    $missingEquipment = array_diff($exhibitorEquipment, $roomEquipment);
+                                    $hasCompatibilityIssue = !empty($exhibitorEquipment) && !empty($missingEquipment);
+                                ?>
+                                    <div class="exhibitor-card p-3 bg-white rounded-lg border <?php echo $hasCompatibilityIssue ? 'border-amber-400' : 'border-blue-300'; ?> mb-2 cursor-move hover:shadow-md transition"
                                          draggable="true"
                                          data-id="<?php echo $ex['id']; ?>"
                                          data-name="<?php echo htmlspecialchars($ex['name']); ?>"
+                                         data-equipment="<?php echo htmlspecialchars($ex['equipment'] ?? ''); ?>"
                                          data-room-id="<?php echo $room['id']; ?>">
                                         <div class="flex items-center justify-between">
-                                            <div class="flex items-center flex-1">
+                                            <div class="flex items-center flex-1 min-w-0">
                                                 <i class="fas fa-grip-vertical text-gray-400 mr-3"></i>
                                                 <div class="flex-1 min-w-0">
-                                                    <h5 class="font-semibold text-gray-800 truncate"><?php echo htmlspecialchars($ex['name']); ?></h5>
+                                                    <div class="flex items-center gap-2">
+                                                        <h5 class="font-semibold text-gray-800 truncate"><?php echo htmlspecialchars($ex['name']); ?></h5>
+                                                        <?php if (!empty($ex['equipment'])): ?>
+                                                            <button type="button" 
+                                                                    onclick="showEquipmentInfo(event, <?php echo htmlspecialchars(json_encode($exhibitorEquipment)); ?>, <?php echo htmlspecialchars(json_encode($roomEquipment)); ?>)"
+                                                                    class="<?php echo $hasCompatibilityIssue ? 'text-amber-500 hover:text-amber-600' : 'text-blue-500 hover:text-blue-600'; ?> transition"
+                                                                    title="Equipment-Info anzeigen">
+                                                                <i class="fas fa-info-circle text-sm"></i>
+                                                            </button>
+                                                        <?php endif; ?>
+                                                    </div>
                                                     <p class="text-xs text-gray-600 truncate"><?php echo htmlspecialchars($ex['short_description']); ?></p>
+                                                    <?php if ($hasCompatibilityIssue): ?>
+                                                    <p class="text-xs text-amber-600 mt-1">
+                                                        <i class="fas fa-exclamation-triangle mr-1"></i>Fehlendes Equipment: <?php echo implode(', ', $missingEquipment); ?>
+                                                    </p>
+                                                    <?php endif; ?>
                                                 </div>
                                             </div>
                                             <button onclick="removeAssignment(<?php echo $ex['id']; ?>)" 
-                                                    class="ml-2 text-red-500 hover:text-red-700 transition" title="Zuordnung entfernen">
+                                                    class="ml-2 text-red-500 hover:text-red-700 transition flex-shrink-0" title="Zuordnung entfernen">
                                                 <i class="fas fa-times"></i>
                                             </button>
                                         </div>
@@ -255,26 +325,6 @@ foreach ($exhibitors as $ex) {
                     <input type="text" id="room_number" name="room_number" required
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                            placeholder="z.B. A101">
-                </div>
-
-                <!-- Room Name -->
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Raumname
-                    </label>
-                    <input type="text" id="room_name" name="room_name"
-                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                           placeholder="z.B. Workshopraum 1">
-                </div>
-
-                <!-- Building -->
-                <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                        Gebäude
-                    </label>
-                    <input type="text" id="building" name="building"
-                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                           placeholder="z.B. Hauptgebäude">
                 </div>
 
                 <!-- Floor and Capacity -->
@@ -367,8 +417,6 @@ document.getElementById('addRoomForm').addEventListener('submit', function(e) {
     
     const formData = {
         room_number: document.getElementById('room_number').value,
-        room_name: document.getElementById('room_name').value,
-        building: document.getElementById('building').value,
         floor: document.getElementById('floor').value,
         capacity: document.getElementById('capacity').value,
         equipment: getSelectedEquipment()
@@ -604,6 +652,115 @@ function showNotification(type, message) {
     setTimeout(() => {
         notification.remove();
     }, 3000);
+}
+
+// Filter Rooms
+function filterRooms() {
+    const equipmentFilter = document.getElementById('equipmentFilter').value.toLowerCase();
+    const minCapacity = parseInt(document.getElementById('minCapacity').value) || 0;
+    const maxCapacity = parseInt(document.getElementById('maxCapacity').value) || Infinity;
+    
+    const roomContainers = document.querySelectorAll('.room-container');
+    let visibleCount = 0;
+    
+    roomContainers.forEach(container => {
+        const equipmentTags = container.querySelectorAll('.inline-flex.items-center');
+        const capacityText = container.querySelector('p.text-sm.text-gray-600').textContent;
+        const capacity = parseInt(capacityText.match(/Max\. (\d+) Pers\./)?.[1] || 0);
+        
+        let hasEquipment = true;
+        if (equipmentFilter) {
+            hasEquipment = false;
+            equipmentTags.forEach(tag => {
+                if (tag.textContent.toLowerCase().includes(equipmentFilter)) {
+                    hasEquipment = true;
+                }
+            });
+        }
+        
+        const meetsCapacity = capacity >= minCapacity && capacity <= maxCapacity;
+        
+        if (hasEquipment && meetsCapacity) {
+            container.style.display = '';
+            visibleCount++;
+        } else {
+            container.style.display = 'none';
+        }
+    });
+    
+    document.getElementById('roomCount').textContent = visibleCount;
+}
+
+// Clear Room Filters
+function clearRoomFilters() {
+    document.getElementById('equipmentFilter').value = '';
+    document.getElementById('minCapacity').value = '';
+    document.getElementById('maxCapacity').value = '';
+    filterRooms();
+}
+
+// Show Equipment Info Tooltip
+function showEquipmentInfo(event, exhibitorEquipment, roomEquipment) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    // Remove existing tooltip
+    const existingTooltip = document.getElementById('equipmentTooltip');
+    if (existingTooltip) {
+        existingTooltip.remove();
+        return;
+    }
+    
+    const button = event.currentTarget;
+    const rect = button.getBoundingClientRect();
+    
+    const tooltip = document.createElement('div');
+    tooltip.id = 'equipmentTooltip';
+    tooltip.className = 'fixed bg-white border border-gray-300 rounded-lg shadow-xl p-4 z-50 min-w-[280px]';
+    tooltip.style.left = rect.left + 'px';
+    tooltip.style.top = (rect.bottom + 8) + 'px';
+    
+    const missingEquipment = exhibitorEquipment.filter(eq => !roomEquipment.includes(eq));
+    const availableEquipment = exhibitorEquipment.filter(eq => roomEquipment.includes(eq));
+    
+    let html = '<div class="space-y-2">';
+    html += '<h4 class="text-sm font-semibold text-gray-800 mb-2">Equipment-Übersicht</h4>';
+    
+    if (availableEquipment.length > 0) {
+        html += '<div class="space-y-1">';
+        html += '<p class="text-xs font-medium text-emerald-600"><i class="fas fa-check-circle mr-1"></i>Verfügbar:</p>';
+        availableEquipment.forEach(eq => {
+            html += `<div class="text-xs text-gray-700 ml-4">• ${eq}</div>`;
+        });
+        html += '</div>';
+    }
+    
+    if (missingEquipment.length > 0) {
+        html += '<div class="space-y-1">';
+        html += '<p class="text-xs font-medium text-amber-600"><i class="fas fa-exclamation-triangle mr-1"></i>Fehlt:</p>';
+        missingEquipment.forEach(eq => {
+            html += `<div class="text-xs text-gray-700 ml-4">• ${eq}</div>`;
+        });
+        html += '</div>';
+    }
+    
+    if (exhibitorEquipment.length === 0) {
+        html += '<p class="text-xs text-gray-500">Kein Equipment benötigt</p>';
+    }
+    
+    html += '</div>';
+    tooltip.innerHTML = html;
+    document.body.appendChild(tooltip);
+    
+    // Close on click outside
+    setTimeout(() => {
+        document.addEventListener('click', function closeTooltip(e) {
+            if (!tooltip.contains(e.target) && e.target !== button) {
+                tooltip.remove();
+                document.removeEventListener('click', closeTooltip);
+            }
+        });
+    }, 100);
 }
 </script>
 

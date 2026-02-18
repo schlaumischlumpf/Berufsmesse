@@ -151,7 +151,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                         <div class="flex-1">
                             <div class="flex items-center gap-2 mb-1">
                                 <h4 class="font-semibold text-gray-800">
-                                    <?php echo htmlspecialchars($reg['exhibitor_name']); ?>
+                                    <?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>
                                 </h4>
                                 <?php if ($reg['registration_type'] === 'automatic'): ?>
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
@@ -219,7 +219,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                         <div class="flex-1">
                             <div class="flex items-center gap-2 mb-1">
                                 <h4 class="font-semibold text-gray-800">
-                                    <?php echo htmlspecialchars($reg['exhibitor_name']); ?>
+                                    <?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>
                                 </h4>
                                 <?php if ($reg['registration_type'] === 'automatic'): ?>
                                     <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">

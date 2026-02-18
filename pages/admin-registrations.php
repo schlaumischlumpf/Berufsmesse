@@ -224,7 +224,7 @@ $registrations = $stmt->fetchAll();
                             <?php echo htmlspecialchars($reg['firstname'] . ' ' . $reg['lastname']); ?>
                         </td>
                         <td class="px-4 py-3 text-sm text-gray-500"><?php echo htmlspecialchars($reg['class'] ?? '-'); ?></td>
-                        <td class="px-4 py-3 text-sm text-gray-700"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></td>
+                        <td class="px-4 py-3 text-sm text-gray-700"><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></td>
                         <td class="px-4 py-3 text-sm">
                             <?php if ($reg['slot_name']): ?>
                             <span class="px-2 py-1 bg-blue-50 text-blue-700 rounded-md text-xs font-medium">

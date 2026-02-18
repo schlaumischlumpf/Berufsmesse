@@ -47,6 +47,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
             $studentId = $reg['user_id'];
             $exhibitorId = $reg['exhibitor_id'];
             $roomId = $reg['room_id'];
+            $priority = intval($reg['priority']);
             
             // Welche Slots hat der Schüler bereits?
             $stmt = $db->prepare("
@@ -88,8 +89,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 $stmt->execute([$exhibitorId, $timeslotId]);
                 $currentCount = $stmt->fetchColumn();
                 
-                // Kapazität prüfen
-                $slotCapacity = getRoomSlotCapacity($roomId, $timeslotId);
+                // Kapazität prüfen (mit Priorität)
+                $slotCapacity = getRoomSlotCapacity($roomId, $timeslotId, $priority);
                 
                 if ($slotCapacity > 0 && $currentCount < $slotCapacity && $currentCount < $lowestCount) {
                     $bestSlot = ['slot_number' => $slotNumber, 'timeslot_id' => $timeslotId, 'count' => $currentCount];

@@ -389,7 +389,7 @@ $recentRegistrations = $stmt->fetchAll();
                                 </div>
                             </td>
                             <td class="py-3 px-4 text-gray-700">
-                                <?php echo htmlspecialchars($reg['exhibitor_name']); ?>
+                                <?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>
                             </td>
                             <td class="py-3 px-4">
                                 <span class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-800 border border-gray-300">

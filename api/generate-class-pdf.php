@@ -28,7 +28,7 @@ $query = "
         u.id as user_id, u.firstname, u.lastname, u.class,
         e.name as exhibitor_name,
         t.slot_name, t.slot_number, t.start_time, t.end_time,
-        r.room_number, r.room_name, r.building
+        r.room_number
     FROM registrations reg
     JOIN users u ON reg.user_id = u.id
     JOIN exhibitors e ON reg.exhibitor_id = e.id

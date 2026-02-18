@@ -2,7 +2,7 @@
 // Admin Room Capacity Management (Issue #4)
 
 // Alle Räume laden
-$stmt = $db->query("SELECT * FROM rooms ORDER BY building, floor, room_number");
+$stmt = $db->query("SELECT * FROM rooms ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Alle Timeslots laden
@@ -116,7 +116,9 @@ foreach ($stmt->fetchAll() as $cap) {
                     </thead>
                     <tbody>
                         <?php foreach ($rooms as $room): 
-                            $defaultCapacity = $room['capacity'] ? floor(intval($room['capacity']) / DEFAULT_CAPACITY_DIVISOR) : 0;
+                            // Standardkapazität: 25 oder Raumkapazität (falls kleiner)
+                            $roomCap = intval($room['capacity']);
+                            $defaultCapacity = min(25, $roomCap);
                         ?>
                         <tr class="border-b border-gray-200 hover:bg-gray-50">
                             <td class="px-4 py-3 font-semibold text-gray-800 sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
@@ -124,9 +126,6 @@ foreach ($stmt->fetchAll() as $cap) {
                                     <i class="fas fa-door-open text-indigo-600 mr-2"></i>
                                     <div>
                                         <div><?php echo htmlspecialchars($room['room_number']); ?></div>
-                                        <?php if ($room['room_name']): ?>
-                                            <div class="text-xs text-gray-500"><?php echo htmlspecialchars($room['room_name']); ?></div>
-                                        <?php endif; ?>
                                     </div>
                                 </div>
                             </td>

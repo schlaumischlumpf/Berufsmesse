@@ -92,7 +92,7 @@ $categories = !empty($industryList)
                 </div>
                 <div class="flex-1 min-w-0">
                     <h3 class="font-semibold text-gray-900 text-base leading-tight mb-1 truncate">
-                        <?php echo htmlspecialchars($exhibitor['name']); ?>
+                        <?php echo htmlspecialchars(html_entity_decode($exhibitor['name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>
                     </h3>
                     <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium" style="background: var(--color-pastel-<?php echo $colorClass; ?>-light, #d4f5e4); color: var(--color-pastel-<?php echo $colorClass; ?>-dark, #6bc4a6);">
                         <?php echo htmlspecialchars(html_entity_decode($branche, ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>

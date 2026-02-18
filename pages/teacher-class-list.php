@@ -148,7 +148,7 @@ $timeslots = $stmt->fetchAll();
                             ?>
                                 <div class="bg-blue-50 border border-blue-200 rounded-lg p-2">
                                     <div class="font-semibold text-xs text-blue-900 truncate">
-                                        <?php echo htmlspecialchars($reg['exhibitor_name']); ?>
+                                        <?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>
                                     </div>
                                     <div class="text-xs text-blue-600 mt-1">
                                         <?php echo $reg['registration_type'] === 'automatic' ? 'Auto' : 'Manuell'; ?>

@@ -21,7 +21,7 @@ $filterRoom = $_GET['room'] ?? '';
 // Daten laden
 $query = "
     SELECT
-        r.room_number, r.room_name, r.building,
+        r.room_number,
         e.name as exhibitor_name,
         t.slot_name, t.slot_number, t.start_time, t.end_time,
         u.firstname, u.lastname, u.class
@@ -45,7 +45,7 @@ $stmt->execute($params);
 $registrations = $stmt->fetchAll();
 
 // Räume für Titel
-$stmt = $db->query("SELECT id, room_number, room_name FROM rooms ORDER BY room_number");
+$stmt = $db->query("SELECT id, room_number FROM rooms ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Nach Raum und Slot gruppieren

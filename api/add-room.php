@@ -40,14 +40,12 @@ try {
     
     // Insert new room (with equipment - Issue #17)
     $stmt = $db->prepare("
-        INSERT INTO rooms (room_number, room_name, building, floor, capacity, equipment) 
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO rooms (room_number, floor, capacity, equipment) 
+        VALUES (?, ?, ?, ?)
     ");
     
     $stmt->execute([
         $data['room_number'],
-        $data['room_name'] ?: null,
-        $data['building'] ?: null,
         $data['floor'] ?: null,
         $data['capacity'],
         $data['equipment'] ?? null

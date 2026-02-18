@@ -18,7 +18,7 @@ if ($printType === 'all' || $printType === 'class') {
             u.firstname, u.lastname, u.class,
             e.name as exhibitor_name,
             t.slot_name, t.slot_number, t.start_time, t.end_time,
-            r.room_number, r.room_name, r.building
+            r.room_number
         FROM registrations reg
         JOIN users u ON reg.user_id = u.id
         JOIN exhibitors e ON reg.exhibitor_id = e.id
@@ -42,7 +42,7 @@ if ($printType === 'all' || $printType === 'class') {
     // Raum-basierte Ansicht
     $query = "
         SELECT 
-            r.room_number, r.room_name, r.building,
+            r.room_number,
             e.name as exhibitor_name,
             t.slot_name, t.slot_number, t.start_time, t.end_time,
             u.firstname, u.lastname, u.class
@@ -71,7 +71,7 @@ $stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND 
 $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // Alle Räume für Filter
-$stmt = $db->query("SELECT id, room_number, room_name FROM rooms ORDER BY room_number");
+$stmt = $db->query("SELECT id, room_number FROM rooms ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Statistiken
@@ -166,7 +166,6 @@ $totalRegistrations = $stmt->fetch()['total'];
                         <?php foreach ($rooms as $room): ?>
                             <option value="<?php echo $room['id']; ?>" <?php echo $filterRoom == $room['id'] ? 'selected' : ''; ?>>
                                 Raum <?php echo htmlspecialchars($room['room_number']); ?>
-                                <?php echo $room['room_name'] ? ' - ' . htmlspecialchars($room['room_name']) : ''; ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -259,7 +258,7 @@ $totalRegistrations = $stmt->fetch()['total'];
                                                         <?php echo htmlspecialchars($reg['slot_name']); ?>
                                                     </span>
                                                 </td>
-                                                <td class="px-4 py-3 text-gray-600"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></td>
+                                                <td class="px-4 py-3 text-gray-600"><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></td>
                                                 <td class="px-4 py-3 text-gray-500"><?php echo htmlspecialchars($reg['room_number'] ?: '—'); ?></td>
                                             </tr>
                                             <?php endforeach; ?>
@@ -316,7 +315,7 @@ $totalRegistrations = $stmt->fetch()['total'];
                                                         <?php echo htmlspecialchars($reg['slot_name']); ?>
                                                     </span>
                                                 </td>
-                                                <td class="px-4 py-3 font-medium text-gray-800"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></td>
+                                                <td class="px-4 py-3 font-medium text-gray-800"><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></td>
                                                 <td class="px-4 py-3 text-gray-600"><?php echo htmlspecialchars($reg['lastname'] . ', ' . $reg['firstname']); ?></td>
                                                 <td class="px-4 py-3 text-gray-500"><?php echo htmlspecialchars($reg['class'] ?: '—'); ?></td>
                                             </tr>

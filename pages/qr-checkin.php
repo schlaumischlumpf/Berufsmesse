@@ -11,7 +11,7 @@ if (!empty($token)) {
     // Token validieren
     $stmt = $db->prepare("
         SELECT qt.*, e.name as exhibitor_name, e.short_description, t.slot_name, t.slot_number,
-               r.room_number, r.room_name, r.building
+               r.room_number
         FROM qr_tokens qt
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
@@ -109,7 +109,7 @@ if (!empty($token)) {
             
             <?php if (isset($checkinResult['exhibitor'])): ?>
             <div class="mt-4 bg-white rounded-lg p-4 border border-<?php echo $c['bg']; ?>-100">
-                <p class="font-semibold text-gray-800"><?php echo htmlspecialchars($checkinResult['exhibitor']['exhibitor_name']); ?></p>
+                <p class="font-semibold text-gray-800"><?php echo htmlspecialchars(html_entity_decode($checkinResult['exhibitor']['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></p>
                 <p class="text-sm text-gray-500 mt-1">
                     <i class="fas fa-clock mr-1"></i><?php echo htmlspecialchars($checkinResult['exhibitor']['slot_name']); ?>
                 </p>
@@ -178,7 +178,7 @@ if (!empty($token)) {
             <?php foreach ($myAttendance as $att): ?>
             <div class="flex items-center justify-between p-3 bg-emerald-50 rounded-lg border border-emerald-100">
                 <div>
-                    <p class="text-sm font-medium text-gray-800"><?php echo htmlspecialchars($att['exhibitor_name']); ?></p>
+                    <p class="text-sm font-medium text-gray-800"><?php echo htmlspecialchars(html_entity_decode($att['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></p>
                     <p class="text-xs text-gray-500"><?php echo htmlspecialchars($att['slot_name']); ?></p>
                 </div>
                 <div class="flex items-center text-emerald-600 text-xs font-medium">

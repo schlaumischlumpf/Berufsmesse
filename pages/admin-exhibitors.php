@@ -6,16 +6,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_exhibitor'])) {
         if (!isAdmin() && !hasPermission('aussteller_erstellen')) die('Keine Berechtigung');
         // Neuen Aussteller hinzufuegen
-        $name = sanitize($_POST['name']);
+        $name = strip_tags(trim($_POST['name']));
         $shortDesc = sanitize($_POST['short_description']);
         $description = sanitize($_POST['description']);
-        $category = sanitize($_POST['category'] ?? '');
+        $category = html_entity_decode(strip_tags(trim($_POST['category'] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $contactPerson = sanitize($_POST['contact_person'] ?? '');
         $email = sanitize($_POST['email'] ?? '');
         $phone = sanitize($_POST['phone'] ?? '');
         $website = sanitize($_POST['website'] ?? '');
         $jobs = sanitize($_POST['jobs'] ?? '');
         $features = sanitize($_POST['features'] ?? '');
+        
+        // Equipment als kommaseparierter String speichern
+        $equipment = isset($_POST['equipment']) ? implode(',', $_POST['equipment']) : '';
         
         // Angebotstypen als JSON speichern
         $offerSelected = isset($_POST['offer_types_selected']) ? (array)$_POST['offer_types_selected'] : [];
@@ -34,9 +37,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $logoPath = handleLogoUpload($_FILES['logo']);
         }
         
-        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields, logo, offer_types, jobs, features) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features])) {
+        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields, logo, offer_types, jobs, features, equipment) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $equipment])) {
             logAuditAction('aussteller_erstellt', "Aussteller '$name' erstellt");
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich hinzugefuegt'];
         } else {
@@ -46,16 +49,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!isAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
         // Aussteller bearbeiten
         $id = intval($_POST['exhibitor_id']);
-        $name = sanitize($_POST['name']);
+        $name = strip_tags(trim($_POST['name']));
         $shortDesc = sanitize($_POST['short_description']);
         $description = sanitize($_POST['description']);
-        $category = sanitize($_POST['category'] ?? '');
+        $category = html_entity_decode(strip_tags(trim($_POST['category'] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $contactPerson = sanitize($_POST['contact_person'] ?? '');
         $email = sanitize($_POST['email'] ?? '');
         $phone = sanitize($_POST['phone'] ?? '');
         $website = sanitize($_POST['website'] ?? '');
         $jobs = sanitize($_POST['jobs'] ?? '');
         $features = sanitize($_POST['features'] ?? '');
+        
+        // Equipment als kommaseparierter String speichern
+        $equipment = isset($_POST['equipment']) ? implode(',', $_POST['equipment']) : '';
         
         // Angebotstypen als JSON speichern
         $offerSelected = isset($_POST['offer_types_selected']) ? (array)$_POST['offer_types_selected'] : [];
@@ -82,12 +88,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             
             $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, 
-                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, logo = ?, offer_types = ?, jobs = ?, features = ? WHERE id = ?");
-            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $id]);
+                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, logo = ?, offer_types = ?, jobs = ?, features = ?, equipment = ? WHERE id = ?");
+            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $equipment, $id]);
         } else {
             $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, 
-                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, offer_types = ?, jobs = ?, features = ? WHERE id = ?");
-            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $offerTypesJson, $jobs, $features, $id]);
+                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, offer_types = ?, jobs = ?, features = ?, equipment = ? WHERE id = ?");
+            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $offerTypesJson, $jobs, $features, $equipment, $id]);
         }
         
         if ($result) {
@@ -378,8 +384,10 @@ $allExhibitors = $stmt->fetchAll();
                     <select name="category" id="category" required
                             class="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
                         <option value="">-- Bitte waehlen --</option>
-                        <?php foreach ($industryNames as $ind): ?>
-                        <option value="<?php echo htmlspecialchars($ind); ?>"><?php echo htmlspecialchars($ind); ?></option>
+                        <?php foreach ($industryNames as $ind): 
+                            $cleanInd = html_entity_decode($ind, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                        ?>
+                        <option value="<?php echo htmlspecialchars($cleanInd, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($cleanInd); ?></option>
                         <?php endforeach; ?>
                         <?php if (empty($industryNames)): ?>
                         <option disabled>-- Keine Branchen vorhanden (migrations.sql ausführen) --</option>
@@ -438,6 +446,39 @@ $allExhibitors = $stmt->fetchAll();
                     <textarea name="features" id="features" rows="2"
                               class="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                               placeholder="z.B. familienfreundliches Unternehmen, internationale Standorte..."></textarea>
+                </div>
+
+                <!-- Technisches Equipment -->
+                <div class="md:col-span-2 border-t border-gray-100 pt-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-3">
+                        <i class="fas fa-tools mr-2 text-blue-500"></i>Benötigtes technisches Equipment
+                    </label>
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
+                            <input type="checkbox" name="equipment[]" value="Beamer" class="mr-2 rounded text-blue-500 equipment-checkbox">
+                            <span class="text-sm text-gray-700">Beamer</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
+                            <input type="checkbox" name="equipment[]" value="Smartboard" class="mr-2 rounded text-blue-500 equipment-checkbox">
+                            <span class="text-sm text-gray-700">Smartboard</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
+                            <input type="checkbox" name="equipment[]" value="Whiteboard" class="mr-2 rounded text-blue-500 equipment-checkbox">
+                            <span class="text-sm text-gray-700">Whiteboard</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
+                            <input type="checkbox" name="equipment[]" value="Lautsprecher" class="mr-2 rounded text-blue-500 equipment-checkbox">
+                            <span class="text-sm text-gray-700">Lautsprecher</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
+                            <input type="checkbox" name="equipment[]" value="WLAN" class="mr-2 rounded text-blue-500 equipment-checkbox">
+                            <span class="text-sm text-gray-700">WLAN</span>
+                        </label>
+                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
+                            <input type="checkbox" name="equipment[]" value="Steckdosen" class="mr-2 rounded text-blue-500 equipment-checkbox">
+                            <span class="text-sm text-gray-700">Steckdosen</span>
+                        </label>
+                    </div>
                 </div>
 
                 <!-- Angebote fuer Schueler -->
@@ -598,6 +639,15 @@ function openEditModal(exhibitor) {
     document.getElementById('website').value = exhibitor.website || '';
     document.getElementById('jobs').value = exhibitor.jobs || '';
     document.getElementById('features').value = exhibitor.features || '';
+    
+    // Equipment setzen
+    document.querySelectorAll('.equipment-checkbox').forEach(cb => { cb.checked = false; });
+    if (exhibitor.equipment) {
+        const equipmentArray = exhibitor.equipment.split(',').map(e => e.trim()).filter(e => e);
+        document.querySelectorAll('.equipment-checkbox').forEach(cb => {
+            cb.checked = equipmentArray.includes(cb.value);
+        });
+    }
     
     // Angebotstypen setzen
     document.querySelectorAll('.offer-type-checkbox').forEach(cb => { cb.checked = false; });

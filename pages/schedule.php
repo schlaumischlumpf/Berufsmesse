@@ -9,8 +9,6 @@ $stmt = $db->prepare("
         e.short_description,
         e.room_id,
         rm.room_number,
-        rm.room_name,
-        rm.building,
         rm.floor,
         t.slot_number,
         t.slot_name,
@@ -28,7 +26,6 @@ $registrations = $stmt->fetchAll();
 
 // Tagesablauf definieren
 $timeline = [
-    ['time' => '08:45', 'end' => '09:00', 'type' => 'arrival', 'label' => 'Ankunft & Begrüßung', 'icon' => 'fa-door-open', 'color' => 'gray'],
     ['time' => '09:00', 'end' => '09:30', 'type' => 'slot', 'slot_number' => 1, 'label' => 'Slot 1 (Feste Zuteilung)', 'icon' => 'fa-clipboard-check', 'color' => 'blue', 'assigned' => true],
     ['time' => '09:30', 'end' => '09:40', 'type' => 'break', 'label' => 'Kurze Pause', 'icon' => 'fa-coffee', 'color' => 'green', 'description' => 'Austausch & Ausstellersuche'],
     ['time' => '09:40', 'end' => '10:10', 'type' => 'slot', 'slot_number' => 2, 'label' => 'Slot 2 (Freie Wahl)', 'icon' => 'fa-hand-pointer', 'color' => 'purple', 'assigned' => false],
@@ -37,8 +34,7 @@ $timeline = [
     ['time' => '11:10', 'end' => '11:20', 'type' => 'break', 'label' => 'Kurze Pause', 'icon' => 'fa-coffee', 'color' => 'green', 'description' => 'Austausch & Ausstellersuche'],
     ['time' => '11:20', 'end' => '11:50', 'type' => 'slot', 'slot_number' => 4, 'label' => 'Slot 4 (Freie Wahl)', 'icon' => 'fa-hand-pointer', 'color' => 'purple', 'assigned' => false],
     ['time' => '11:50', 'end' => '12:20', 'type' => 'break', 'label' => 'Essenspause', 'icon' => 'fa-utensils', 'color' => 'orange', 'description' => 'Zeit für Speisen & Getränke'],
-    ['time' => '12:20', 'end' => '12:50', 'type' => 'slot', 'slot_number' => 5, 'label' => 'Slot 5 (Feste Zuteilung)', 'icon' => 'fa-clipboard-check', 'color' => 'blue', 'assigned' => true],
-    ['time' => '12:50', 'end' => '13:00', 'type' => 'end', 'label' => 'Ende & Verabschiedung', 'icon' => 'fa-flag-checkered', 'color' => 'gray']
+    ['time' => '12:20', 'end' => '12:50', 'type' => 'slot', 'slot_number' => 5, 'label' => 'Slot 5 (Feste Zuteilung)', 'icon' => 'fa-clipboard-check', 'color' => 'blue', 'assigned' => true]
 ];
 
 // Helper function for pastel colors
@@ -133,18 +129,12 @@ foreach ($registrations as $reg) {
                                     <?php if ($item['type'] === 'slot'): ?>
                                         <?php if ($hasRegistration): ?>
                                             <div class="mt-3 bg-white/50 rounded-lg p-3 backdrop-blur-sm">
-                                                <h4 class="font-bold text-lg mb-1"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></h4>
+                                                <h4 class="font-bold text-lg mb-1"><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></h4>
                                                 <div class="flex items-center space-x-4 text-sm opacity-90">
                                                     <span class="flex items-center">
                                                         <i class="fas fa-map-marker-alt mr-2"></i>
-                                                        <?php echo htmlspecialchars($reg['room_name'] ?? $reg['room_number']); ?>
+                                                        Raum: <?php echo htmlspecialchars($reg['room_number']); ?>
                                                     </span>
-                                                    <?php if ($reg['building']): ?>
-                                                    <span class="flex items-center">
-                                                        <i class="fas fa-building mr-2"></i>
-                                                        <?php echo htmlspecialchars($reg['building']); ?>
-                                                    </span>
-                                                    <?php endif; ?>
                                                 </div>
                                             </div>
                                         <?php elseif ($item['assigned']): ?>

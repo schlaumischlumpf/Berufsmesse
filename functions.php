@@ -225,7 +225,7 @@ function deleteFile($documentId) {
 }
 
 // Helper-Funktion für Raumkapazität pro Slot (Issue #4)
-function getRoomSlotCapacity($roomId, $timeslotId) {
+function getRoomSlotCapacity($roomId, $timeslotId, $priority = 2) {
     $db = getDB();
     
     // Erst prüfen ob spezifische Kapazität definiert ist
@@ -234,18 +234,34 @@ function getRoomSlotCapacity($roomId, $timeslotId) {
     $result = $stmt->fetch();
     
     if ($result) {
-        return intval($result['capacity']);
+        $customCapacity = intval($result['capacity']);
+        
+        // Bei Priorität 1 (hoch): Volle Raumkapazität nutzen
+        if ($priority == 1) {
+            $stmt = $db->prepare("SELECT capacity FROM rooms WHERE id = ?");
+            $stmt->execute([$roomId]);
+            $room = $stmt->fetch();
+            return $room ? max($customCapacity, intval($room['capacity'])) : $customCapacity;
+        }
+        
+        return $customCapacity;
     }
     
-    // Fallback: Jeder Slot bekommt die volle Raumkapazität
+    // Fallback: Standard ist 25, bei Priorität 1 die volle Raumkapazität
     $stmt = $db->prepare("SELECT capacity FROM rooms WHERE id = ?");
     $stmt->execute([$roomId]);
     $room = $stmt->fetch();
 
     if ($room && $room['capacity']) {
-        $capacity = intval($room['capacity']);
-        // Jeder Slot bekommt die volle Raumkapazität (nicht geteilt)
-        return $capacity;
+        $roomCapacity = intval($room['capacity']);
+        
+        // Bei Priorität 1 (hohe Nachfrage): Volle Raumkapazität
+        if ($priority == 1) {
+            return $roomCapacity;
+        }
+        
+        // Standard: Max 25 Schüler pro Slot (oder Raumkapazität wenn kleiner)
+        return min(25, $roomCapacity);
     }
     
     return 0;

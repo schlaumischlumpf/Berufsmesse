@@ -25,7 +25,7 @@ try {
     $db = getDB();
     
     // Raum existiert?
-    $stmt = $db->prepare("SELECT id, room_number, room_name FROM rooms WHERE id = ?");
+    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ?");
     $stmt->execute([$roomId]);
     $room = $stmt->fetch();
     
@@ -70,9 +70,6 @@ try {
         $db->commit();
         
         $roomName = $room['room_number'];
-        if ($room['room_name']) {
-            $roomName .= ' - ' . $room['room_name'];
-        }
         
         echo json_encode([
             'success' => true,

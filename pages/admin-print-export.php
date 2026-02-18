@@ -32,7 +32,7 @@ if ($printType === 'all' || $printType === 'class') {
             u.firstname, u.lastname, u.class,
             e.name as exhibitor_name,
             t.slot_name, t.slot_number, t.start_time, t.end_time,
-            r.room_number, r.room_name, r.building
+            r.room_number
         FROM registrations reg
         JOIN users u ON reg.user_id = u.id
         JOIN exhibitors e ON reg.exhibitor_id = e.id
@@ -56,7 +56,7 @@ if ($printType === 'all' || $printType === 'class') {
 } elseif ($printType === 'rooms') {
     $query = "
         SELECT 
-            r.room_number, r.room_name, r.building,
+            r.room_number,
             e.name as exhibitor_name,
             t.slot_name, t.slot_number, t.start_time, t.end_time,
             u.firstname, u.lastname, u.class
@@ -81,7 +81,7 @@ if ($printType === 'all' || $printType === 'class') {
 }
 
 // Räume für Titel
-$stmt = $db->query("SELECT id, room_number, room_name FROM rooms ORDER BY room_number");
+$stmt = $db->query("SELECT id, room_number FROM rooms ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Titel bestimmen
@@ -528,7 +528,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                                             </span>
                                         </td>
                                         <td><?php echo date('H:i', strtotime($reg['start_time'])) . ' - ' . date('H:i', strtotime($reg['end_time'])); ?></td>
-                                        <td><strong><?php echo htmlspecialchars($reg['exhibitor_name']); ?></strong></td>
+                                        <td><strong><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></strong></td>
                                         <td><?php echo htmlspecialchars($reg['room_number'] ?? '—'); ?></td>
                                     </tr>
                                     <?php endforeach; ?>
@@ -577,7 +577,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                                     <?php echo htmlspecialchars($info['slot_name']); ?> 
                                     (<?php echo date('H:i', strtotime($info['start_time'])) . ' - ' . date('H:i', strtotime($info['end_time'])); ?>)
                                 </span>
-                                <span class="slot-exhibitor">— <?php echo htmlspecialchars($info['exhibitor_name']); ?></span>
+                                <span class="slot-exhibitor">— <?php echo htmlspecialchars(html_entity_decode($info['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></span>
                             </div>
                             <table class="data-table">
                                 <thead>

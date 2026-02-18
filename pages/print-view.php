@@ -29,8 +29,6 @@ $stmt = $db->prepare("
         e.website,
         e.room_id,
         rm.room_number,
-        rm.room_name,
-        rm.building,
         rm.floor,
         t.slot_number,
         t.slot_name,
@@ -55,7 +53,6 @@ foreach ($registrations as $reg) {
 
 // Tagesablauf
 $schedule = [
-    ['time' => '08:45', 'end' => '09:00', 'label' => 'Ankunft & Begrüßung', 'type' => 'info', 'slot' => null, 'icon' => '🚪'],
     ['time' => '09:00', 'end' => '09:30', 'label' => 'Slot 1', 'type' => 'assigned', 'slot' => 1, 'icon' => '📋'],
     ['time' => '09:30', 'end' => '09:40', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => '☕'],
     ['time' => '09:40', 'end' => '10:10', 'label' => 'Slot 2', 'type' => 'free', 'slot' => 2, 'icon' => '👆'],
@@ -65,7 +62,6 @@ $schedule = [
     ['time' => '11:20', 'end' => '11:50', 'label' => 'Slot 4', 'type' => 'free', 'slot' => 4, 'icon' => '👆'],
     ['time' => '11:50', 'end' => '12:20', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => '🍽️'],
     ['time' => '12:20', 'end' => '12:50', 'label' => 'Slot 5', 'type' => 'assigned', 'slot' => 5, 'icon' => '📋'],
-    ['time' => '12:50', 'end' => '13:00', 'label' => 'Verabschiedung', 'type' => 'info', 'slot' => null, 'icon' => '🏁'],
 ];
 
 // Messedatum (kann über Einstellungen gesetzt werden)
@@ -718,7 +714,7 @@ function getPrintColor($type) {
                                 </div>
                                 <div class="event-content">
                                     <?php if ($hasReg): ?>
-                                        <div class="event-title"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></div>
+                                        <div class="event-title"><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></div>
                                         <div class="event-subtitle"><?php echo $item['label']; ?> (<?php echo $item['type'] === 'assigned' ? 'Zuteilung' : 'Freie Wahl'; ?>)</div>
                                     <?php elseif ($item['slot']): ?>
                                         <div class="event-title"><?php echo $item['label']; ?></div>
@@ -740,11 +736,8 @@ function getPrintColor($type) {
                             <?php if ($hasReg && $reg['room_number']): ?>
                                 <div class="location-room">
                                     <i class="fas fa-map-marker-alt" style="color: #059669;"></i>
-                                    <?php echo htmlspecialchars($reg['room_name'] ?: 'Raum ' . $reg['room_number']); ?>
+                                    Raum: <?php echo htmlspecialchars($reg['room_number']); ?>
                                 </div>
-                                <?php if ($reg['building']): ?>
-                                    <div class="location-building"><?php echo htmlspecialchars($reg['building']); ?></div>
-                                <?php endif; ?>
                             <?php elseif ($item['slot']): ?>
                                 <span style="color: #9ca3af;">—</span>
                             <?php endif; ?>

@@ -37,7 +37,7 @@ try {
     
     // Wenn room_id gesetzt ist, prüfen ob Raum existiert
     if ($roomId !== null) {
-        $stmt = $db->prepare("SELECT id, room_number, room_name FROM rooms WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ?");
         $stmt->execute([$roomId]);
         $room = $stmt->fetch();
         

@@ -48,6 +48,7 @@ try {
         $studentId = $reg['user_id'];
         $exhibitorId = $reg['exhibitor_id'];
         $roomId = $reg['room_id'];
+        $priority = intval($reg['priority']);
         
         // Welche Slots hat der Schüler bereits?
         $stmt = $db->prepare("
@@ -83,7 +84,7 @@ try {
             $stmt->execute([$exhibitorId, $timeslotId]);
             $currentCount = $stmt->fetchColumn();
             
-            $slotCapacity = getRoomSlotCapacity($roomId, $timeslotId);
+            $slotCapacity = getRoomSlotCapacity($roomId, $timeslotId, $priority);
             
             if ($slotCapacity > 0 && $currentCount < $slotCapacity && $currentCount < $lowestCount) {
                 $bestSlot = ['slot_number' => $slotNumber, 'timeslot_id' => $timeslotId];

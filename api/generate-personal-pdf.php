@@ -28,8 +28,6 @@ $stmt = $db->prepare("
         e.short_description,
         e.room_id,
         rm.room_number,
-        rm.room_name,
-        rm.building,
         rm.floor,
         t.slot_number,
         t.slot_name,
@@ -54,7 +52,6 @@ foreach ($registrations as $reg) {
 
 // Tagesablauf
 $schedule = [
-    ['time' => '08:45', 'end' => '09:00', 'label' => 'Ankunft & Begruessung', 'type' => 'info', 'slot' => null],
     ['time' => '09:00', 'end' => '09:30', 'label' => 'Slot 1', 'type' => 'assigned', 'slot' => 1],
     ['time' => '09:30', 'end' => '09:40', 'label' => 'Pause', 'type' => 'break', 'slot' => null],
     ['time' => '09:40', 'end' => '10:10', 'label' => 'Slot 2', 'type' => 'free', 'slot' => 2],
@@ -64,7 +61,6 @@ $schedule = [
     ['time' => '11:20', 'end' => '11:50', 'label' => 'Slot 4', 'type' => 'free', 'slot' => 4],
     ['time' => '11:50', 'end' => '12:20', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null],
     ['time' => '12:20', 'end' => '12:50', 'label' => 'Slot 5', 'type' => 'assigned', 'slot' => 5],
-    ['time' => '12:50', 'end' => '13:00', 'label' => 'Verabschiedung', 'type' => 'info', 'slot' => null],
 ];
 
 $eventDate = getSetting('event_date') ?? date('Y-m-d');
@@ -204,10 +200,7 @@ class PersonalPDF extends FPDF {
             // Raum
             $roomText = '';
             if ($hasReg && $reg['room_number']) {
-                $roomText = ($reg['room_name'] ?: 'Raum ' . $reg['room_number']);
-                if ($reg['building']) {
-                    $roomText .= ' (' . $reg['building'] . ')';
-                }
+                $roomText = 'Raum ' . $reg['room_number'];
             } elseif ($item['slot']) {
                 $roomText = '-';
             }

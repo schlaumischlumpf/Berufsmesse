@@ -8,7 +8,7 @@
 // Registrierungen des Benutzers laden
 $stmt = $db->prepare("
     SELECT r.*, e.name as exhibitor_name, e.short_description, e.logo, e.room_id,
-           rm.room_number, rm.room_name, rm.building,
+           rm.room_number,
            t.slot_number, t.slot_name, t.start_time, t.end_time,
            r.registration_type
     FROM registrations r 
@@ -219,10 +219,10 @@ foreach ($userRegistrations as $reg) {
                         <!-- Content -->
                         <div class="flex-1 min-w-0">
                             <?php if ($hasReg): ?>
-                                <h4 class="font-semibold text-gray-800 truncate"><?php echo htmlspecialchars($reg['exhibitor_name']); ?></h4>
+                                <h4 class="font-semibold text-gray-800 truncate"><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></h4>
                                 <p class="text-xs text-gray-500 truncate">
                                     <i class="fas fa-map-marker-alt mr-1"></i>
-                                    <?php echo htmlspecialchars($reg['room_name'] ?? $reg['room_number'] ?? 'Raum folgt'); ?>
+                                    <?php echo htmlspecialchars($reg['room_number'] ?? 'Raum folgt'); ?>
                                 </p>
                             <?php elseif ($slot['type'] === 'free'): ?>
                                 <h4 class="font-medium text-purple-700">Freie Wahl</h4>
@@ -294,16 +294,16 @@ foreach ($userRegistrations as $reg) {
                 </div>
                 
                 <div class="bg-white rounded-xl p-4 border border-emerald-100">
-                    <h4 class="font-semibold text-gray-800 mb-2"><?php echo htmlspecialchars($nextEvent['exhibitor_name']); ?></h4>
+                    <h4 class="font-semibold text-gray-800 mb-2"><?php echo htmlspecialchars(html_entity_decode($nextEvent['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></h4>
                     <div class="space-y-2 text-sm text-gray-600">
                         <div class="flex items-center gap-2">
                             <i class="fas fa-clock w-4 text-emerald-500"></i>
                             <span><?php echo date('H:i', strtotime($nextEvent['start_time'])); ?> - <?php echo date('H:i', strtotime($nextEvent['end_time'])); ?> Uhr</span>
                         </div>
-                        <?php if ($nextEvent['room_name']): ?>
+                        <?php if ($nextEvent['room_number']): ?>
                         <div class="flex items-center gap-2">
                             <i class="fas fa-map-marker-alt w-4 text-emerald-500"></i>
-                            <span><?php echo htmlspecialchars($nextEvent['room_name']); ?></span>
+                            <span><?php echo htmlspecialchars($nextEvent['room_number']); ?></span>
                         </div>
                         <?php endif; ?>
                     </div>
