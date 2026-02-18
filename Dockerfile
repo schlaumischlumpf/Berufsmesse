@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
         libonig-dev \
         zip \
         unzip \
+        curl \
         default-mysql-client \
     && rm -rf /var/lib/apt/lists/* \
     && docker-php-ext-configure gd --with-freetype --with-jpeg \
@@ -27,19 +28,30 @@ RUN a2enmod rewrite
 # Use the production PHP configuration
 RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
-# Tune PHP for uploads and performance
-RUN echo "upload_max_filesize = 10M" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "post_max_size = 12M"       >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "max_execution_time = 300"  >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.enable = 1"                  >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.memory_consumption = 128"    >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.interned_strings_buffer = 8" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.max_accelerated_files = 4000" >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.revalidate_freq = 60"        >> "$PHP_INI_DIR/conf.d/berufsmesse.ini" \
- && echo "opcache.enable_cli = 0"              >> "$PHP_INI_DIR/conf.d/berufsmesse.ini"
+# Write all PHP tunables in a single step – uses a grouped redirect so
+# every setting ends up in the file regardless of build-cache state.
+RUN { \
+        echo 'upload_max_filesize = 10M'; \
+        echo 'post_max_size = 12M'; \
+        echo 'max_execution_time = 300'; \
+        echo 'opcache.enable = 1'; \
+        echo 'opcache.memory_consumption = 128'; \
+        echo 'opcache.interned_strings_buffer = 8'; \
+        echo 'opcache.max_accelerated_files = 4000'; \
+        echo 'opcache.revalidate_freq = 60'; \
+        echo 'opcache.enable_cli = 0'; \
+    } > "$PHP_INI_DIR/conf.d/berufsmesse.ini"
 
-# Allow .htaccess overrides in the web root
-RUN sed -i 's|AllowOverride None|AllowOverride All|g' /etc/apache2/apache2.conf
+# Allow .htaccess overrides specifically for the web root.
+# A dedicated conf file is more reliable than patching apache2.conf with sed.
+RUN { \
+        echo '<Directory /var/www/html>'; \
+        echo '    AllowOverride All'; \
+        echo '    Options -Indexes +FollowSymLinks'; \
+        echo '    Require all granted'; \
+        echo '</Directory>'; \
+    } > /etc/apache2/conf-available/berufsmesse.conf \
+ && a2enconf berufsmesse
 
 # Copy application files
 COPY --chown=www-data:www-data . /var/www/html
@@ -55,7 +67,12 @@ RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 VOLUME ["/var/www/html/uploads"]
 
+# Declare the port Apache listens on inside the container
 EXPOSE 80
+
+# Report healthy once the login page returns HTTP 200
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+    CMD curl -fsS http://localhost/login.php -o /dev/null || exit 1
 
 ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["apache2-foreground"]

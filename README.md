@@ -64,7 +64,7 @@ DB_ROOT_PASS=mein_sicheres_root_passwort
 DB_USER=berufsmesse
 DB_PASS=mein_sicheres_app_passwort
 DB_NAME=berufsmesse
-APP_PORT=9000
+APP_PORT=8080
 BASE_URL=/
 ```
 
@@ -84,7 +84,7 @@ Beim ersten Start passiert automatisch Folgendes:
 ### 4. Anwendung aufrufen
 
 ```
-http://localhost:9000
+http://localhost:8080
 ```
 
 > Beim ersten Aufruf muss ein Admin-Konto angelegt werden – siehe [Erster Start](#erster-start--admin-konto--setup).
@@ -100,10 +100,10 @@ http://localhost:9000
 | `DB_PASS` | *(leer)* | **Pflichtfeld.** Datenbankpasswort |
 | `DB_ROOT_PASS` | *(leer)* | **Pflichtfeld.** MariaDB-Root-Passwort |
 | `DB_NAME` | `berufsmesse` | Datenbankname |
-| `APP_PORT` | `9000` | Host-Port für die Webanwendung |
+| `APP_PORT` | `8080` | Host-Port für die Webanwendung |
 | `BASE_URL` | `/` | Basis-URL, z. B. `/berufsmesse/` bei Unterverzeichnis |
 | `APP_ENV` | `production` | `development` aktiviert PHP-Fehleranzeige |
-| `PMA_PORT` | `8080` | Host-Port für phpMyAdmin (nur mit `--profile tools`) |
+| `PMA_PORT` | `8090` | Host-Port für phpMyAdmin (nur mit `--profile tools`) |
 
 ---
 
@@ -111,7 +111,7 @@ http://localhost:9000
 
 Nach dem ersten `docker compose up` musst du ein Admin-Konto anlegen:
 
-1. Öffne `http://localhost:9000/register.php`
+1. Öffne `http://localhost:8080/register.php`
 2. Registriere dich mit einem Benutzernamen und Passwort (Rolle **Administrator** wählen)
 3. Falls du dich als Schüler registriert hast, setze die Rolle manuell auf `admin` per SQL:
 
@@ -120,7 +120,7 @@ docker compose exec db mysql -u"berufsmesse" -p"DEIN_DB_PASS" berufsmesse \
   -e "UPDATE users SET role='admin' WHERE username='dein_benutzername';"
 ```
 
-4. Logge dich auf `http://localhost:9000` ein.
+4. Logge dich auf `http://localhost:8080` ein.
 5. Navigiere zu **Einstellungen → System-Einstellungen** und konfiguriere den Einschreibezeitraum und das Veranstaltungsdatum.
 
 > ⚠️ Lösche oder schütze `register.php` vor dem Produktionsbetrieb.
@@ -187,7 +187,7 @@ Beispiel mit **Caddy** (`Caddyfile` auf dem Host-System):
 
 ```caddy
 berufsmesse.example.com {
-    reverse_proxy localhost:9000
+    reverse_proxy localhost:8080
 }
 ```
 
@@ -203,7 +203,7 @@ ini_set('session.cookie_secure', 1);
 
 ### Firewall
 
-In Produktion sollte nur Port 443 (HTTPS) und ggf. 80 (HTTP → Redirect) öffentlich erreichbar sein. Port 9000 und 8080 sollten **nicht** direkt im Internet exponiert werden.
+In Produktion sollte nur Port 443 (HTTPS) und ggf. 80 (HTTP → Redirect) öffentlich erreichbar sein. Port 8080 und 8090 sollten **nicht** direkt im Internet exponiert werden.
 
 ---
 
