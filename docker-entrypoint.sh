@@ -34,17 +34,21 @@ echo "[entrypoint] Datenbankverbindung hergestellt."
 # Die SQL-Datei verwendet IF NOT EXISTS / IF EXISTS,
 # daher ist idempotentes Ausführen sicher.
 # ─────────────────────────────────────────────
-MIGRATION_FILE="/var/www/html/migrations.sql"
-MIGRATION_FLAG="/var/www/html/uploads/.migrations_applied"
+INIT_FILE="/var/www/html/database-init.sql"
+LEGACY_FILE="/var/www/html/migrations.sql"
 
-if [ -f "$MIGRATION_FILE" ]; then
-    echo "[entrypoint] Führe Migrationen aus: ${MIGRATION_FILE}"
-    mysql -h"${DB_HOST}" -u"${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" < "$MIGRATION_FILE" && \
-        touch "$MIGRATION_FLAG" && \
-        echo "[entrypoint] Migrationen erfolgreich ausgeführt." || \
-        echo "[entrypoint] WARNUNG: Migrationen teilweise fehlgeschlagen (evtl. bereits angewendet)."
+if [ -f "$INIT_FILE" ]; then
+    echo "[entrypoint] Führe Datenbank-Initialisierung aus: ${INIT_FILE}"
+    mysql -h"${DB_HOST}" -u"${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" < "$INIT_FILE" && \
+        echo "[entrypoint] Datenbank-Initialisierung erfolgreich." || \
+        echo "[entrypoint] WARNUNG: Datenbank-Initialisierung teilweise fehlgeschlagen (evtl. bereits angewendet)."
+elif [ -f "$LEGACY_FILE" ]; then
+    echo "[entrypoint] Führe Legacy-Migrationen aus: ${LEGACY_FILE}"
+    mysql -h"${DB_HOST}" -u"${DB_USER}" -p"${DB_PASS}" "${DB_NAME}" < "$LEGACY_FILE" && \
+        echo "[entrypoint] Legacy-Migrationen erfolgreich ausgeführt." || \
+        echo "[entrypoint] WARNUNG: Legacy-Migrationen teilweise fehlgeschlagen (evtl. bereits angewendet)."
 else
-    echo "[entrypoint] Keine migrations.sql gefunden – überspringe."
+    echo "[entrypoint] Keine SQL-Datei gefunden – überspringe."
 fi
 
 # ─────────────────────────────────────────────
