@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
         libjpeg62-turbo-dev \
         libpng-dev \
         libzip-dev \
+        libonig-dev \
         zip \
         unzip \
         default-mysql-client \
