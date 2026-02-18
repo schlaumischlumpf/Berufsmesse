@@ -24,10 +24,25 @@ SET time_zone = "+00:00";
 -- --------------------------------------------------------
 
 --
+-- Tabellenstruktur für Tabelle `attendance`
+--
+
+CREATE TABLE IF NOT EXISTS `attendance` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `exhibitor_id` int(11) NOT NULL,
+  `timeslot_id` int(11) NOT NULL,
+  `qr_token` varchar(12) DEFAULT NULL,
+  `checked_in_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Anwesenheit von Schülern bei Ausstellern (QR-Check-In)';
+
+-- --------------------------------------------------------
+
+--
 -- Tabellenstruktur für Tabelle `audit_logs`
 --
 
-CREATE TABLE `audit_logs` (
+CREATE TABLE IF NOT EXISTS `audit_logs` (
   `id` int(11) NOT NULL,
   `user_id` int(11) DEFAULT NULL,
   `username` varchar(100) NOT NULL,
@@ -43,7 +58,7 @@ CREATE TABLE `audit_logs` (
 -- Tabellenstruktur für Tabelle `exhibitors`
 --
 
-CREATE TABLE `exhibitors` (
+CREATE TABLE IF NOT EXISTS `exhibitors` (
   `id` int(11) NOT NULL,
   `name` varchar(255) NOT NULL,
   `description` text DEFAULT NULL,
@@ -62,7 +77,8 @@ CREATE TABLE `exhibitors` (
   `visible_fields` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'Definiert welche Felder für Schüler sichtbar sind' CHECK (json_valid(`visible_fields`)),
   `jobs` text DEFAULT NULL COMMENT 'Typische Berufe/Tätigkeiten im Unternehmen',
   `features` text DEFAULT NULL COMMENT 'Besonderheiten des Unternehmens',
-  `offer_types` text DEFAULT NULL COMMENT 'JSON: {selected: [...], custom: "..."}'
+  `offer_types` text DEFAULT NULL COMMENT 'JSON: {selected: [...], custom: "..."}',
+  `equipment` varchar(500) DEFAULT NULL COMMENT 'Benötigte Ausstattung (z.B. Beamer, WLAN)'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -83,7 +99,7 @@ INSERT INTO `exhibitors` (`id`, `name`, `description`, `short_description`, `cat
 -- Tabellenstruktur für Tabelle `exhibitor_documents`
 --
 
-CREATE TABLE `exhibitor_documents` (
+CREATE TABLE IF NOT EXISTS `exhibitor_documents` (
   `id` int(11) NOT NULL,
   `exhibitor_id` int(11) NOT NULL,
   `filename` varchar(255) NOT NULL,
@@ -99,7 +115,7 @@ CREATE TABLE `exhibitor_documents` (
 -- Tabellenstruktur für Tabelle `industries`
 --
 
-CREATE TABLE `industries` (
+CREATE TABLE IF NOT EXISTS `industries` (
   `id` int(11) NOT NULL,
   `name` varchar(100) NOT NULL,
   `sort_order` int(11) DEFAULT 0,
@@ -125,10 +141,25 @@ INSERT INTO `industries` (`id`, `name`, `sort_order`, `created_at`) VALUES
 -- --------------------------------------------------------
 
 --
+-- Tabellenstruktur für Tabelle `qr_tokens`
+--
+
+CREATE TABLE IF NOT EXISTS `qr_tokens` (
+  `id` int(11) NOT NULL,
+  `exhibitor_id` int(11) NOT NULL,
+  `timeslot_id` int(11) NOT NULL,
+  `token` varchar(12) NOT NULL,
+  `expires_at` datetime DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='QR-Code Tokens für Aussteller-Check-In';
+
+-- --------------------------------------------------------
+
+--
 -- Tabellenstruktur für Tabelle `permission_groups`
 --
 
-CREATE TABLE `permission_groups` (
+CREATE TABLE IF NOT EXISTS `permission_groups` (
   `id` int(11) NOT NULL,
   `name` varchar(100) NOT NULL,
   `description` text DEFAULT NULL,
@@ -142,7 +173,7 @@ CREATE TABLE `permission_groups` (
 -- Tabellenstruktur für Tabelle `permission_group_items`
 --
 
-CREATE TABLE `permission_group_items` (
+CREATE TABLE IF NOT EXISTS `permission_group_items` (
   `id` int(11) NOT NULL,
   `group_id` int(11) NOT NULL,
   `permission` varchar(50) NOT NULL
@@ -154,12 +185,13 @@ CREATE TABLE `permission_group_items` (
 -- Tabellenstruktur für Tabelle `registrations`
 --
 
-CREATE TABLE `registrations` (
+CREATE TABLE IF NOT EXISTS `registrations` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `exhibitor_id` int(11) NOT NULL,
   `timeslot_id` int(11) DEFAULT NULL,
   `registration_type` enum('manual','automatic') DEFAULT 'manual',
+  `priority` int(11) DEFAULT NULL COMMENT 'Priorität der Anmeldung (1 = höchste Priorität)',
   `registered_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
@@ -190,12 +222,13 @@ INSERT INTO `registrations` (`id`, `user_id`, `exhibitor_id`, `timeslot_id`, `re
 -- Tabellenstruktur für Tabelle `rooms`
 --
 
-CREATE TABLE `rooms` (
+CREATE TABLE IF NOT EXISTS `rooms` (
   `id` int(11) NOT NULL,
   `room_number` varchar(50) NOT NULL,
   `room_name` varchar(100) DEFAULT NULL,
   `building` varchar(50) DEFAULT NULL,
   `capacity` int(11) DEFAULT 30,
+  `equipment` varchar(500) DEFAULT NULL COMMENT 'Raumausstattung (z.B. Beamer, Smartboard)',
   `floor` int(11) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
@@ -220,7 +253,7 @@ INSERT INTO `rooms` (`id`, `room_number`, `room_name`, `building`, `capacity`, `
 -- Tabellenstruktur für Tabelle `room_slot_capacities`
 --
 
-CREATE TABLE `room_slot_capacities` (
+CREATE TABLE IF NOT EXISTS `room_slot_capacities` (
   `id` int(11) NOT NULL,
   `room_id` int(11) NOT NULL,
   `timeslot_id` int(11) NOT NULL,
@@ -235,7 +268,7 @@ CREATE TABLE `room_slot_capacities` (
 -- Tabellenstruktur für Tabelle `settings`
 --
 
-CREATE TABLE `settings` (
+CREATE TABLE IF NOT EXISTS `settings` (
   `id` int(11) NOT NULL,
   `setting_key` varchar(100) NOT NULL,
   `setting_value` text DEFAULT NULL,
@@ -258,7 +291,7 @@ INSERT INTO `settings` (`id`, `setting_key`, `setting_value`, `updated_at`) VALU
 -- Tabellenstruktur für Tabelle `timeslots`
 --
 
-CREATE TABLE `timeslots` (
+CREATE TABLE IF NOT EXISTS `timeslots` (
   `id` int(11) NOT NULL,
   `slot_number` int(11) NOT NULL,
   `slot_name` varchar(100) NOT NULL,
@@ -283,7 +316,7 @@ INSERT INTO `timeslots` (`id`, `slot_number`, `slot_name`, `start_time`, `end_ti
 -- Tabellenstruktur für Tabelle `users`
 --
 
-CREATE TABLE `users` (
+CREATE TABLE IF NOT EXISTS `users` (
   `id` int(11) NOT NULL,
   `username` varchar(100) NOT NULL,
   `email` varchar(255) DEFAULT NULL,
@@ -315,7 +348,7 @@ INSERT INTO `users` (`id`, `username`, `email`, `password`, `firstname`, `lastna
 -- Tabellenstruktur für Tabelle `user_permissions`
 --
 
-CREATE TABLE `user_permissions` (
+CREATE TABLE IF NOT EXISTS `user_permissions` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `permission` varchar(50) NOT NULL,
@@ -326,6 +359,17 @@ CREATE TABLE `user_permissions` (
 --
 -- Indizes der exportierten Tabellen
 --
+
+--
+-- Indizes für die Tabelle `attendance`
+--
+ALTER TABLE `attendance`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_user_exhibitor_timeslot` (`user_id`,`exhibitor_id`,`timeslot_id`),
+  ADD KEY `idx_user_id` (`user_id`),
+  ADD KEY `idx_exhibitor_id` (`exhibitor_id`),
+  ADD KEY `idx_timeslot_id` (`timeslot_id`),
+  ADD KEY `idx_checked_in_at` (`checked_in_at`);
 
 --
 -- Indizes für die Tabelle `audit_logs`
@@ -356,6 +400,17 @@ ALTER TABLE `exhibitor_documents`
 ALTER TABLE `industries`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `unique_name` (`name`);
+
+--
+-- Indizes für die Tabelle `qr_tokens`
+--
+ALTER TABLE `qr_tokens`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_exhibitor_timeslot` (`exhibitor_id`,`timeslot_id`),
+  ADD UNIQUE KEY `unique_token` (`token`),
+  ADD KEY `idx_token` (`token`),
+  ADD KEY `idx_exhibitor_id` (`exhibitor_id`),
+  ADD KEY `idx_timeslot_id` (`timeslot_id`);
 
 --
 -- Indizes für die Tabelle `permission_groups`
@@ -434,6 +489,12 @@ ALTER TABLE `user_permissions`
 --
 
 --
+-- AUTO_INCREMENT für Tabelle `attendance`
+--
+ALTER TABLE `attendance`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- AUTO_INCREMENT für Tabelle `audit_logs`
 --
 ALTER TABLE `audit_logs`
@@ -461,6 +522,12 @@ ALTER TABLE `industries`
 -- AUTO_INCREMENT für Tabelle `permission_groups`
 --
 ALTER TABLE `permission_groups`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT für Tabelle `qr_tokens`
+--
+ALTER TABLE `qr_tokens`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
@@ -516,6 +583,14 @@ ALTER TABLE `user_permissions`
 --
 
 --
+-- Constraints der Tabelle `attendance`
+--
+ALTER TABLE `attendance`
+  ADD CONSTRAINT `attendance_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `attendance_ibfk_2` FOREIGN KEY (`exhibitor_id`) REFERENCES `exhibitors` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `attendance_ibfk_3` FOREIGN KEY (`timeslot_id`) REFERENCES `timeslots` (`id`) ON DELETE CASCADE;
+
+--
 -- Constraints der Tabelle `exhibitors`
 --
 ALTER TABLE `exhibitors`
@@ -538,6 +613,13 @@ ALTER TABLE `permission_groups`
 --
 ALTER TABLE `permission_group_items`
   ADD CONSTRAINT `permission_group_items_ibfk_1` FOREIGN KEY (`group_id`) REFERENCES `permission_groups` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints der Tabelle `qr_tokens`
+--
+ALTER TABLE `qr_tokens`
+  ADD CONSTRAINT `qr_tokens_ibfk_1` FOREIGN KEY (`exhibitor_id`) REFERENCES `exhibitors` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `qr_tokens_ibfk_2` FOREIGN KEY (`timeslot_id`) REFERENCES `timeslots` (`id`) ON DELETE CASCADE;
 
 --
 -- Constraints der Tabelle `registrations`
