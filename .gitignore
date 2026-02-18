@@ -16,7 +16,6 @@ uploads/*
 # IDE/Editor
 .vscode/
 .idea/
-.github/
 *.swp
 *.swo
 
