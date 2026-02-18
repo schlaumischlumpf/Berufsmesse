@@ -231,12 +231,14 @@ $recentRegistrations = $stmt->fetchAll();
                             </span>
                         </div>
                     </div>
+                    <?php if (isAdmin() || hasPermission('zuteilung_ausfuehren')): ?>
                     <div class="flex-shrink-0">
                         <button onclick="runAutoAssign()" id="autoAssignBtn" 
                                 class="bg-amber-500 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-amber-600 transition">
                             <i class="fas fa-play-circle mr-2"></i>Ausführen
                         </button>
                     </div>
+                    <?php endif; ?>
                 </div>
             </div>
             

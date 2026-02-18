@@ -63,6 +63,10 @@ function isTeacher() {
     return isset($_SESSION['role']) && $_SESSION['role'] === 'teacher';
 }
 
+function isOrga() {
+    return isset($_SESSION['role']) && $_SESSION['role'] === 'orga';
+}
+
 function requireLogin() {
     if (!isLoggedIn()) {
         header('Location: ' . BASE_URL . 'login.php');
@@ -283,6 +287,15 @@ function hasPermission($permission) {
     return $stmt->fetchColumn() > 0;
 }
 
+function hasAnyPermission(...$permissions) {
+    foreach ($permissions as $permission) {
+        if (hasPermission($permission)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function requirePermission($permission) {
     if (!hasPermission($permission)) {
         die('Keine Berechtigung für diese Aktion');
@@ -296,39 +309,169 @@ function getUserPermissions($userId) {
     return $stmt->fetchAll(PDO::FETCH_COLUMN);
 }
 
-function grantPermission($userId, $permission) {
-    if (!isAdmin()) {
+// Abhängigkeitsbaum für Berechtigungen
+function getPermissionDependencies() {
+    return [
+        // Aussteller
+        'aussteller_erstellen'            => ['aussteller_sehen'],
+        'aussteller_bearbeiten'           => ['aussteller_sehen'],
+        'aussteller_loeschen'             => ['aussteller_sehen'],
+        'aussteller_dokumente_verwalten'  => ['aussteller_sehen'],
+        // Räume
+        'raeume_erstellen'                => ['raeume_sehen'],
+        'raeume_bearbeiten'               => ['raeume_sehen'],
+        'raeume_loeschen'                 => ['raeume_sehen'],
+        // Kapazitäten
+        'kapazitaeten_sehen'              => ['raeume_sehen'],
+        'kapazitaeten_bearbeiten'         => ['kapazitaeten_sehen', 'raeume_sehen'],
+        // Benutzer
+        'benutzer_erstellen'              => ['benutzer_sehen'],
+        'benutzer_bearbeiten'             => ['benutzer_sehen'],
+        'benutzer_loeschen'               => ['benutzer_sehen'],
+        'benutzer_importieren'            => ['benutzer_sehen'],
+        'benutzer_passwort_zuruecksetzen' => ['benutzer_sehen'],
+        // Berechtigungen
+        'berechtigungen_vergeben'          => ['berechtigungen_sehen'],
+        'berechtigungsgruppen_verwalten'   => ['berechtigungen_sehen'],
+        // Einstellungen
+        'einstellungen_bearbeiten'         => ['einstellungen_sehen'],
+        // Berichte
+        'berichte_drucken'                 => ['berichte_sehen'],
+        // QR-Codes
+        'qr_codes_erstellen'               => ['qr_codes_sehen'],
+        // Anmeldungen
+        'anmeldungen_erstellen'            => ['anmeldungen_sehen'],
+        'anmeldungen_loeschen'             => ['anmeldungen_sehen'],
+        // Zuteilung
+        'zuteilung_ausfuehren'             => ['dashboard_sehen'],
+        'zuteilung_zuruecksetzen'          => ['zuteilung_ausfuehren', 'dashboard_sehen'],
+    ];
+}
+
+function grantPermission($userId, $permission, &$visited = []) {
+    if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) {
         return false;
     }
-    
+
+    // Prevent infinite recursion
+    if (in_array($permission, $visited)) {
+        return true;
+    }
+    $visited[] = $permission;
+
     $db = getDB();
     $stmt = $db->prepare("INSERT IGNORE INTO user_permissions (user_id, permission, granted_by) VALUES (?, ?, ?)");
-    return $stmt->execute([$userId, $permission, $_SESSION['user_id']]);
+    $result = $stmt->execute([$userId, $permission, $_SESSION['user_id']]);
+
+    // Auto-grant dependencies
+    $deps = getPermissionDependencies();
+    if (isset($deps[$permission])) {
+        foreach ($deps[$permission] as $dep) {
+            grantPermission($userId, $dep, $visited);
+        }
+    }
+
+    return $result;
 }
 
-function revokePermission($userId, $permission) {
-    if (!isAdmin()) {
+function revokePermission($userId, $permission, &$visited = []) {
+    if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) {
         return false;
     }
-    
+
+    // Prevent infinite recursion
+    if (in_array($permission, $visited)) {
+        return true;
+    }
+    $visited[] = $permission;
+
     $db = getDB();
     $stmt = $db->prepare("DELETE FROM user_permissions WHERE user_id = ? AND permission = ?");
-    return $stmt->execute([$userId, $permission]);
+    $result = $stmt->execute([$userId, $permission]);
+
+    // Auto-revoke higher permissions that depend on this one
+    $deps = getPermissionDependencies();
+    foreach ($deps as $dependent => $requiredList) {
+        if (in_array($permission, $requiredList)) {
+            revokePermission($userId, $dependent, $visited);
+        }
+    }
+
+    return $result;
 }
 
-// Verfügbare Berechtigungen
+// Verfügbare Berechtigungen (gruppiert nach Seitenbereich)
 function getAvailablePermissions() {
     return [
-        'manage_exhibitors' => 'Ausstellerverwaltung – Aussteller erstellen, bearbeiten, löschen und Räume zuordnen',
-        'manage_rooms' => 'Raumverwaltung – Räume erstellen, bearbeiten und Kapazitäten verwalten',
-        'manage_settings' => 'Systemeinstellungen – Einschreibezeitraum, Event-Datum und Parameter anpassen',
-        'manage_users' => 'Benutzerverwaltung – Benutzerkonten erstellen, löschen und Passwörter zurücksetzen',
-        'view_reports' => 'Berichte & Druckzentrale – Übersichten einsehen, Laufzettel und Listen drucken',
-        'auto_assign' => 'Automatische Zuteilung – Schüler automatisch den Zeitslots zuweisen',
-        'view_rooms' => 'Raumplan einsehen – Raumzuordnungen und Belegung ansehen',
-        'manage_qr_codes' => 'QR-Code Verwaltung – QR-Codes für Anwesenheit generieren und verwalten',
-        'view_audit_logs' => 'Audit Logs – Protokolle aller Nutzeraktionen einsehen'
+        'Admin-Dashboard' => [
+            'dashboard_sehen' => 'Admin-Dashboard mit Statistiken und Übersicht anzeigen',
+        ],
+        'Aussteller-Verwaltung' => [
+            'aussteller_sehen'               => 'Ausstellerliste im Admin-Bereich einsehen',
+            'aussteller_erstellen'           => 'Neue Aussteller anlegen (erfordert: aussteller_sehen)',
+            'aussteller_bearbeiten'          => 'Bestehende Aussteller bearbeiten (erfordert: aussteller_sehen)',
+            'aussteller_loeschen'            => 'Aussteller löschen (erfordert: aussteller_sehen)',
+            'aussteller_dokumente_verwalten' => 'Dokumente zu Ausstellern hochladen/löschen (erfordert: aussteller_sehen)',
+        ],
+        'Raum-Verwaltung' => [
+            'raeume_sehen'      => 'Raumliste und Raumplan einsehen',
+            'raeume_erstellen'  => 'Neue Räume anlegen (erfordert: raeume_sehen)',
+            'raeume_bearbeiten' => 'Räume bearbeiten und Aussteller zuordnen (erfordert: raeume_sehen)',
+            'raeume_loeschen'   => 'Räume löschen (erfordert: raeume_sehen)',
+        ],
+        'Raumkapazitäten' => [
+            'kapazitaeten_sehen'      => 'Slot-Kapazitäten der Räume einsehen (erfordert: raeume_sehen)',
+            'kapazitaeten_bearbeiten' => 'Slot-Kapazitäten ändern (erfordert: kapazitaeten_sehen)',
+        ],
+        'Benutzer-Verwaltung' => [
+            'benutzer_sehen'                  => 'Benutzerliste einsehen',
+            'benutzer_erstellen'              => 'Neue Benutzer anlegen (erfordert: benutzer_sehen)',
+            'benutzer_bearbeiten'             => 'Benutzer bearbeiten (erfordert: benutzer_sehen)',
+            'benutzer_loeschen'               => 'Benutzer löschen (erfordert: benutzer_sehen)',
+            'benutzer_importieren'            => 'Benutzer per CSV importieren (erfordert: benutzer_sehen)',
+            'benutzer_passwort_zuruecksetzen' => 'Passwörter zurücksetzen (erfordert: benutzer_sehen)',
+        ],
+        'Berechtigungen' => [
+            'berechtigungen_sehen'           => 'Berechtigungen anderer Benutzer einsehen',
+            'berechtigungen_vergeben'         => 'Berechtigungen vergeben/entziehen (erfordert: berechtigungen_sehen)',
+            'berechtigungsgruppen_verwalten'  => 'Berechtigungsgruppen erstellen/bearbeiten/löschen (erfordert: berechtigungen_sehen)',
+        ],
+        'Einstellungen' => [
+            'einstellungen_sehen'      => 'Systemeinstellungen einsehen',
+            'einstellungen_bearbeiten' => 'Einstellungen ändern (erfordert: einstellungen_sehen)',
+        ],
+        'Druckzentrale / Berichte' => [
+            'berichte_sehen'   => 'Berichte und Druckansichten einsehen',
+            'berichte_drucken' => 'PDFs generieren und drucken (erfordert: berichte_sehen)',
+        ],
+        'QR-Codes' => [
+            'qr_codes_sehen'    => 'QR-Code Übersicht einsehen',
+            'qr_codes_erstellen' => 'QR-Codes und Tokens generieren (erfordert: qr_codes_sehen)',
+        ],
+        'Anmeldungen' => [
+            'anmeldungen_sehen'    => 'Alle Schüler-Anmeldungen einsehen',
+            'anmeldungen_erstellen' => 'Schüler manuell anmelden (erfordert: anmeldungen_sehen)',
+            'anmeldungen_loeschen'  => 'Anmeldungen löschen (erfordert: anmeldungen_sehen)',
+        ],
+        'Automatische Zuteilung' => [
+            'zuteilung_ausfuehren'    => 'Automatische Slot-Zuteilung starten (erfordert: dashboard_sehen)',
+            'zuteilung_zuruecksetzen' => 'Alle Slot-Zuordnungen zurücksetzen (erfordert: zuteilung_ausfuehren)',
+        ],
+        'Audit Logs' => [
+            'audit_logs_sehen' => 'Audit-Protokolle einsehen',
+        ],
     ];
+}
+
+// Gibt alle Berechtigungs-Keys als flaches Array zurück
+function getAllPermissionKeys() {
+    $flat = [];
+    foreach (getAvailablePermissions() as $permissions) {
+        foreach ($permissions as $key => $description) {
+            $flat[$key] = $description;
+        }
+    }
+    return $flat;
 }
 
 // Audit Log System (Issue #21)

@@ -3,6 +3,9 @@
 
 // Handle Settings Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
+    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+        die('Keine Berechtigung');
+    }
     $regStart = $_POST['registration_start'];
     $regEnd = $_POST['registration_end'];
     $eventDate = $_POST['event_date'];
@@ -22,6 +25,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
 
 // Handle QR Code URL Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
+    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+        die('Keine Berechtigung');
+    }
     $qrUrl = sanitize($_POST['qr_url']);
     updateSetting('qr_code_url', $qrUrl);
     $message = ['type' => 'success', 'text' => 'QR-Code URL erfolgreich gespeichert'];

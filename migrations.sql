@@ -158,3 +158,153 @@ CREATE TABLE IF NOT EXISTS permission_group_items (
     FOREIGN KEY (group_id) REFERENCES permission_groups(id) ON DELETE CASCADE,
     UNIQUE KEY unique_group_permission (group_id, permission)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Berechtigungen in Gruppen';
+
+-- ===========================================================================
+-- Neue Rolle "orga" & Granulares Berechtigungssystem
+-- ===========================================================================
+
+-- 1. Sicherstellen dass die users.role-Spalte 'orga' akzeptiert (bereits VARCHAR(50), kein Änderungsbedarf)
+
+-- 2. Alte Berechtigungen in neue granulare Berechtigungen migrieren (user_permissions)
+-- manage_exhibitors → aussteller_*
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'aussteller_sehen', granted_by FROM user_permissions WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'aussteller_erstellen', granted_by FROM user_permissions WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'aussteller_bearbeiten', granted_by FROM user_permissions WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'aussteller_loeschen', granted_by FROM user_permissions WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'aussteller_dokumente_verwalten', granted_by FROM user_permissions WHERE permission = 'manage_exhibitors';
+
+-- manage_rooms → raeume_* + kapazitaeten_*
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'raeume_sehen', granted_by FROM user_permissions WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'raeume_erstellen', granted_by FROM user_permissions WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'raeume_bearbeiten', granted_by FROM user_permissions WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'raeume_loeschen', granted_by FROM user_permissions WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'kapazitaeten_sehen', granted_by FROM user_permissions WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'kapazitaeten_bearbeiten', granted_by FROM user_permissions WHERE permission = 'manage_rooms';
+
+-- manage_settings → einstellungen_*
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'einstellungen_sehen', granted_by FROM user_permissions WHERE permission = 'manage_settings';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'einstellungen_bearbeiten', granted_by FROM user_permissions WHERE permission = 'manage_settings';
+
+-- manage_users → benutzer_*
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'benutzer_sehen', granted_by FROM user_permissions WHERE permission = 'manage_users';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'benutzer_erstellen', granted_by FROM user_permissions WHERE permission = 'manage_users';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'benutzer_bearbeiten', granted_by FROM user_permissions WHERE permission = 'manage_users';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'benutzer_loeschen', granted_by FROM user_permissions WHERE permission = 'manage_users';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'benutzer_importieren', granted_by FROM user_permissions WHERE permission = 'manage_users';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'benutzer_passwort_zuruecksetzen', granted_by FROM user_permissions WHERE permission = 'manage_users';
+
+-- view_reports → berichte_*
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'berichte_sehen', granted_by FROM user_permissions WHERE permission = 'view_reports';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'berichte_drucken', granted_by FROM user_permissions WHERE permission = 'view_reports';
+
+-- auto_assign → zuteilung_*
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'dashboard_sehen', granted_by FROM user_permissions WHERE permission = 'auto_assign';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'zuteilung_ausfuehren', granted_by FROM user_permissions WHERE permission = 'auto_assign';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'zuteilung_zuruecksetzen', granted_by FROM user_permissions WHERE permission = 'auto_assign';
+
+-- view_rooms → raeume_sehen
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'raeume_sehen', granted_by FROM user_permissions WHERE permission = 'view_rooms';
+
+-- manage_qr_codes → qr_codes_*
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'qr_codes_sehen', granted_by FROM user_permissions WHERE permission = 'manage_qr_codes';
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'qr_codes_erstellen', granted_by FROM user_permissions WHERE permission = 'manage_qr_codes';
+
+-- view_audit_logs → audit_logs_sehen
+INSERT IGNORE INTO user_permissions (user_id, permission, granted_by)
+    SELECT user_id, 'audit_logs_sehen', granted_by FROM user_permissions WHERE permission = 'view_audit_logs';
+
+-- 3. Alte Berechtigungen entfernen
+DELETE FROM user_permissions WHERE permission IN (
+    'manage_exhibitors', 'manage_rooms', 'manage_settings', 'manage_users',
+    'view_reports', 'auto_assign', 'view_rooms', 'manage_qr_codes', 'view_audit_logs'
+);
+
+-- 4. Gleiches für permission_group_items
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'aussteller_sehen' FROM permission_group_items WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'aussteller_erstellen' FROM permission_group_items WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'aussteller_bearbeiten' FROM permission_group_items WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'aussteller_loeschen' FROM permission_group_items WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'aussteller_dokumente_verwalten' FROM permission_group_items WHERE permission = 'manage_exhibitors';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'raeume_sehen' FROM permission_group_items WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'raeume_erstellen' FROM permission_group_items WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'raeume_bearbeiten' FROM permission_group_items WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'raeume_loeschen' FROM permission_group_items WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'kapazitaeten_sehen' FROM permission_group_items WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'kapazitaeten_bearbeiten' FROM permission_group_items WHERE permission = 'manage_rooms';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'einstellungen_sehen' FROM permission_group_items WHERE permission = 'manage_settings';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'einstellungen_bearbeiten' FROM permission_group_items WHERE permission = 'manage_settings';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'benutzer_sehen' FROM permission_group_items WHERE permission = 'manage_users';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'benutzer_erstellen' FROM permission_group_items WHERE permission = 'manage_users';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'benutzer_bearbeiten' FROM permission_group_items WHERE permission = 'manage_users';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'benutzer_loeschen' FROM permission_group_items WHERE permission = 'manage_users';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'benutzer_importieren' FROM permission_group_items WHERE permission = 'manage_users';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'benutzer_passwort_zuruecksetzen' FROM permission_group_items WHERE permission = 'manage_users';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'berichte_sehen' FROM permission_group_items WHERE permission = 'view_reports';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'berichte_drucken' FROM permission_group_items WHERE permission = 'view_reports';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'dashboard_sehen' FROM permission_group_items WHERE permission = 'auto_assign';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'zuteilung_ausfuehren' FROM permission_group_items WHERE permission = 'auto_assign';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'zuteilung_zuruecksetzen' FROM permission_group_items WHERE permission = 'auto_assign';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'raeume_sehen' FROM permission_group_items WHERE permission = 'view_rooms';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'qr_codes_sehen' FROM permission_group_items WHERE permission = 'manage_qr_codes';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'qr_codes_erstellen' FROM permission_group_items WHERE permission = 'manage_qr_codes';
+INSERT IGNORE INTO permission_group_items (group_id, permission)
+    SELECT group_id, 'audit_logs_sehen' FROM permission_group_items WHERE permission = 'view_audit_logs';
+
+DELETE FROM permission_group_items WHERE permission IN (
+    'manage_exhibitors', 'manage_rooms', 'manage_settings', 'manage_users',
+    'view_reports', 'auto_assign', 'view_rooms', 'manage_qr_codes', 'view_audit_logs'
+);

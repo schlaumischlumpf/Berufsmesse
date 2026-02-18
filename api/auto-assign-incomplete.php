@@ -14,7 +14,7 @@ require_once '../functions.php';
 
 header('Content-Type: application/json');
 
-if (!isAdmin()) {
+if (!isAdmin() && !hasPermission('zuteilung_ausfuehren')) {
     echo json_encode(['success' => false, 'message' => 'Keine Berechtigung']);
     exit;
 }
