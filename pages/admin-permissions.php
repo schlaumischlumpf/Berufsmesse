@@ -309,21 +309,6 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                         <td class="px-6 py-4 text-right">
                             <?php if ($user['role'] !== 'admin'): ?>
                                 <div class="flex items-center justify-end gap-2">
-                                    <?php if (!empty($permissionGroups)): ?>
-                                    <form method="POST" class="inline-flex items-center gap-1">
-                                        <input type="hidden" name="user_id" value="<?php echo $user['id']; ?>">
-                                        <select name="group_id" class="text-xs border border-gray-300 rounded-lg px-2 py-1.5 focus:ring-2 focus:ring-indigo-500">
-                                            <?php foreach ($permissionGroups as $group): ?>
-                                            <option value="<?php echo $group['id']; ?>"><?php echo htmlspecialchars($group['name']); ?></option>
-                                            <?php endforeach; ?>
-                                        </select>
-                                        <button type="submit" name="apply_group" value="1" 
-                                                class="px-2 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition text-xs font-semibold"
-                                                title="Gruppe anwenden">
-                                            <i class="fas fa-layer-group"></i>
-                                        </button>
-                                    </form>
-                                    <?php endif; ?>
                                     <button type="button"
                                             class="permission-btn px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm hover:shadow-md"
                                             data-user-id="<?php echo htmlspecialchars($user['id']); ?>"
