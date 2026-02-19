@@ -9,16 +9,31 @@ if (!isset($db)) {
     die('Datenbank nicht verfügbar');
 }
 
-// Alle Aussteller mit Räumen laden
+// Aussteller mit Räumen laden - gefiltert nach Orga-Zuordnung
 try {
-    $stmt = $db->query("
-        SELECT e.*, r.room_number
-        FROM exhibitors e
-        LEFT JOIN rooms r ON e.room_id = r.id
-        WHERE e.active = 1
-        ORDER BY e.name
-    ");
-    $exhibitors = $stmt->fetchAll();
+    // Admins und Benutzer mit qr_codes_verwalten sehen alle Aussteller
+    if (isAdmin() || hasPermission('qr_codes_verwalten')) {
+        $stmt = $db->query("
+            SELECT e.*, r.room_number
+            FROM exhibitors e
+            LEFT JOIN rooms r ON e.room_id = r.id
+            WHERE e.active = 1
+            ORDER BY e.name
+        ");
+        $exhibitors = $stmt->fetchAll();
+    } else {
+        // Exhibitor-spezifische Orga-Mitglieder sehen nur ihre zugewiesenen Aussteller
+        $stmt = $db->prepare("
+            SELECT e.*, r.room_number
+            FROM exhibitors e
+            LEFT JOIN rooms r ON e.room_id = r.id
+            INNER JOIN exhibitor_orga_team eot ON e.id = eot.exhibitor_id
+            WHERE e.active = 1 AND eot.user_id = ?
+            ORDER BY e.name
+        ");
+        $stmt->execute([$_SESSION['user_id']]);
+        $exhibitors = $stmt->fetchAll();
+    }
 } catch (Exception $e) {
     $exhibitors = [];
     error_log('QR-Codes Page - Exhibitors Query Error: ' . $e->getMessage());

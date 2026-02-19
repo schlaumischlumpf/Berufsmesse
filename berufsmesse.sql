@@ -356,6 +356,32 @@ CREATE TABLE IF NOT EXISTS `user_permissions` (
   `granted_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Granulare Benutzerberechtigungen';
 
+-- --------------------------------------------------------
+
+--
+-- Tabellenstruktur für Tabelle `user_permission_groups`
+--
+
+CREATE TABLE IF NOT EXISTS `user_permission_groups` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `group_id` int(11) NOT NULL,
+  `assigned_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Zuordnung von Berechtigungsgruppen zu Benutzern';
+
+-- --------------------------------------------------------
+
+--
+-- Tabellenstruktur für Tabelle `exhibitor_orga_team`
+--
+
+CREATE TABLE IF NOT EXISTS `exhibitor_orga_team` (
+  `id` int(11) NOT NULL,
+  `user_id` int(11) NOT NULL,
+  `exhibitor_id` int(11) NOT NULL,
+  `assigned_at` timestamp NOT NULL DEFAULT current_timestamp()
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Orga-Team Zuordnung zu einzelnen Ausstellern';
+
 --
 -- Indizes der exportierten Tabellen
 --
@@ -485,6 +511,24 @@ ALTER TABLE `user_permissions`
   ADD KEY `idx_permission` (`permission`);
 
 --
+-- Indizes für die Tabelle `user_permission_groups`
+--
+ALTER TABLE `user_permission_groups`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_user_group` (`user_id`,`group_id`),
+  ADD KEY `idx_user_id` (`user_id`),
+  ADD KEY `idx_group_id` (`group_id`);
+
+--
+-- Indizes für die Tabelle `exhibitor_orga_team`
+--
+ALTER TABLE `exhibitor_orga_team`
+  ADD PRIMARY KEY (`id`),
+  ADD UNIQUE KEY `unique_user_exhibitor` (`user_id`,`exhibitor_id`),
+  ADD KEY `idx_user_id` (`user_id`),
+  ADD KEY `idx_exhibitor_id` (`exhibitor_id`);
+
+--
 -- AUTO_INCREMENT für exportierte Tabellen
 --
 
@@ -579,6 +623,18 @@ ALTER TABLE `user_permissions`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
+-- AUTO_INCREMENT für Tabelle `user_permission_groups`
+--
+ALTER TABLE `user_permission_groups`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
+-- AUTO_INCREMENT für Tabelle `exhibitor_orga_team`
+--
+ALTER TABLE `exhibitor_orga_team`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+
+--
 -- Constraints der exportierten Tabellen
 --
 
@@ -642,6 +698,20 @@ ALTER TABLE `room_slot_capacities`
 ALTER TABLE `user_permissions`
   ADD CONSTRAINT `user_permissions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
   ADD CONSTRAINT `user_permissions_ibfk_2` FOREIGN KEY (`granted_by`) REFERENCES `users` (`id`) ON DELETE SET NULL;
+
+--
+-- Constraints der Tabelle `user_permission_groups`
+--
+ALTER TABLE `user_permission_groups`
+  ADD CONSTRAINT `user_permission_groups_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `user_permission_groups_ibfk_2` FOREIGN KEY (`group_id`) REFERENCES `permission_groups` (`id`) ON DELETE CASCADE;
+
+--
+-- Constraints der Tabelle `exhibitor_orga_team`
+--
+ALTER TABLE `exhibitor_orga_team`
+  ADD CONSTRAINT `exhibitor_orga_team_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  ADD CONSTRAINT `exhibitor_orga_team_ibfk_2` FOREIGN KEY (`exhibitor_id`) REFERENCES `exhibitors` (`id`) ON DELETE CASCADE;
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

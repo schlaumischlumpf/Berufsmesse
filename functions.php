@@ -339,6 +339,8 @@ function getPermissionDependencies() {
         'aussteller_bearbeiten'           => ['aussteller_sehen'],
         'aussteller_loeschen'             => ['aussteller_sehen'],
         'aussteller_dokumente_verwalten'  => ['aussteller_sehen'],
+        // Branchen (in Aussteller-Tab)
+        'branchen_verwalten'              => ['branchen_sehen'],
         // Räume
         'raeume_erstellen'                => ['raeume_sehen'],
         'raeume_bearbeiten'               => ['raeume_sehen'],
@@ -439,6 +441,8 @@ function getAvailablePermissions() {
             'aussteller_bearbeiten'          => 'Bestehende Aussteller bearbeiten (erfordert: aussteller_sehen)',
             'aussteller_loeschen'            => 'Aussteller löschen (erfordert: aussteller_sehen)',
             'aussteller_dokumente_verwalten' => 'Dokumente zu Ausstellern hochladen/löschen (erfordert: aussteller_sehen)',
+            'branchen_sehen'                 => 'Branchen-Liste im Admin-Bereich einsehen',
+            'branchen_verwalten'             => 'Branchen anlegen, bearbeiten und löschen (erfordert: branchen_sehen)',
         ],
         'Raum-Verwaltung' => [
             'raeume_sehen'      => 'Raumliste und Raumplan einsehen',
@@ -553,9 +557,123 @@ function getPermissionGroupPermissions($groupId) {
 }
 
 function applyPermissionGroup($userId, $groupId) {
+    $db = getDB();
+
+    // Gruppen-Zuordnung speichern
+    $stmt = $db->prepare("INSERT IGNORE INTO user_permission_groups (user_id, group_id) VALUES (?, ?)");
+    $stmt->execute([$userId, $groupId]);
+
+    // Alle Berechtigungen der Gruppe anwenden
     $permissions = getPermissionGroupPermissions($groupId);
     foreach ($permissions as $permission) {
         grantPermission($userId, $permission);
     }
+}
+
+// Lade zugeordnete Gruppen eines Benutzers
+function getUserPermissionGroups($userId) {
+    $db = getDB();
+    $stmt = $db->prepare("SELECT group_id FROM user_permission_groups WHERE user_id = ?");
+    $stmt->execute([$userId]);
+    return $stmt->fetchAll(PDO::FETCH_COLUMN);
+}
+
+// ==========================================
+// Exhibitor-Orga-Team Functions
+// ==========================================
+
+/**
+ * Checks if a user is assigned to an exhibitor's orga team
+ */
+function isExhibitorOrgaMember($userId, $exhibitorId) {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM exhibitor_orga_team WHERE user_id = ? AND exhibitor_id = ?");
+        $stmt->execute([$userId, $exhibitorId]);
+        return $stmt->fetchColumn() > 0;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+/**
+ * Gets all exhibitor IDs assigned to an orga team member
+ */
+function getOrgaExhibitors($userId) {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("SELECT exhibitor_id FROM exhibitor_orga_team WHERE user_id = ?");
+        $stmt->execute([$userId]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
+ * Gets all orga team members for a specific exhibitor
+ */
+function getExhibitorOrgaMembers($exhibitorId) {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("
+            SELECT u.id, u.username, u.firstname, u.lastname, u.email, eot.assigned_at
+            FROM exhibitor_orga_team eot
+            JOIN users u ON eot.user_id = u.id
+            WHERE eot.exhibitor_id = ?
+            ORDER BY u.lastname, u.firstname
+        ");
+        $stmt->execute([$exhibitorId]);
+        return $stmt->fetchAll();
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
+ * Assigns a user to an exhibitor's orga team
+ */
+function assignExhibitorOrgaMember($userId, $exhibitorId) {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga_team (user_id, exhibitor_id) VALUES (?, ?)");
+        $stmt->execute([$userId, $exhibitorId]);
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+/**
+ * Removes a user from an exhibitor's orga team
+ */
+function removeExhibitorOrgaMember($userId, $exhibitorId) {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("DELETE FROM exhibitor_orga_team WHERE user_id = ? AND exhibitor_id = ?");
+        $stmt->execute([$userId, $exhibitorId]);
+        return true;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+/**
+ * Checks if user can access QR codes for an exhibitor
+ * Admins and regular orga can access all, exhibitor-orga can only access their assigned ones
+ */
+function canAccessExhibitorQR($userId, $exhibitorId) {
+    // Admins can access everything
+    if (isAdmin()) {
+        return true;
+    }
+
+    // Regular orga (with qr_codes_verwalten permission) can access everything
+    if (hasPermission('qr_codes_verwalten')) {
+        return true;
+    }
+
+    // Exhibitor-specific orga can only access their assigned exhibitors
+    return isExhibitorOrgaMember($userId, $exhibitorId);
 }
 ?>
