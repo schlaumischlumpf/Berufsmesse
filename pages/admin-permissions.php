@@ -104,16 +104,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
     }
 }
 
-// Alle Benutzer laden (außer Schüler)
+// Alle Benutzer laden - DEBUG VERSION
+// Erstmal ALLE Benutzer holen, ohne WHERE
 $stmt = $db->query("
-    SELECT u.*, COUNT(DISTINCT p.permission) as permission_count
+    SELECT u.*,
+           (SELECT COUNT(*) FROM user_permissions WHERE user_id = u.id) as permission_count
     FROM users u
-    LEFT JOIN user_permissions p ON u.id = p.user_id
-    WHERE u.role IN ('admin', 'teacher', 'orga')
-    GROUP BY u.id
+    ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
+");
+$allUsersDebug = $stmt->fetchAll();
+
+// Jetzt mit Filter
+$stmt = $db->query("
+    SELECT u.*,
+           (SELECT COUNT(*) FROM user_permissions WHERE user_id = u.id) as permission_count
+    FROM users u
+    WHERE LOWER(u.role) IN ('admin', 'teacher', 'orga')
     ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
 ");
 $users = $stmt->fetchAll();
+
+// Debug-Ausgabe (nur für Test)
+if (empty($users)) {
+    error_log("DEBUG: No users found with role filter. Total users: " . count($allUsersDebug));
+    error_log("DEBUG: All roles: " . json_encode(array_column($allUsersDebug, 'role')));
+    // Fallback: Zeige alle Benutzer
+    $users = $allUsersDebug;
+}
 
 // Verfügbare Berechtigungen (gruppiert)
 $availablePermissions = getAvailablePermissions();
@@ -241,7 +258,11 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                 <tbody class="divide-y divide-gray-200">
                     <?php foreach ($users as $user):
                         $userPermissions = getUserPermissions($user['id']);
-                        $userGroups = getUserPermissionGroups($user['id']);
+                        try {
+                            $userGroups = getUserPermissionGroups($user['id']);
+                        } catch (Exception $e) {
+                            $userGroups = [];
+                        }
                     ?>
                     <tr class="permission-user-row hover:bg-gray-50 transition"
                         data-name="<?php echo strtolower($user['firstname'] . ' ' . $user['lastname']); ?>"
