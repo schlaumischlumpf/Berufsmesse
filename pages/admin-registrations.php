@@ -35,15 +35,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
         if ($regCount >= $maxRegistrations) {
             $message = ['type' => 'error', 'text' => 'Schüler hat bereits die maximale Anzahl an Anmeldungen erreicht (' . $maxRegistrations . ').'];
         } else {
-            $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority) VALUES (?, ?, NULL, 'admin', ?)");
-            $stmt->execute([$studentId, $exhibitorId, $priority]);
-            // Für Audit-Log Namen lesen
-            $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM users u, exhibitors e WHERE u.id = ? AND e.id = ?");
-            $stmtN->execute([$studentId, $exhibitorId]);
-            $logR = $stmtN->fetch();
-            $logDesc = $logR ? "Schüler '{$logR['firstname']} {$logR['lastname']}' (Klasse {$logR['class']}) bei '{$logR['ename']}' eingeschrieben" : "Schüler #$studentId bei Aussteller #$exhibitorId";
-            logAuditAction('einschreibung_admin', $logDesc);
-            $message = ['type' => 'success', 'text' => 'Schüler erfolgreich eingeschrieben.'];
+            // Prüfen ob diese Priorität bereits verwendet wird
+            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ?");
+            $stmt->execute([$studentId]);
+            $usedPriorities = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (in_array($priority, $usedPriorities)) {
+                $availablePriorities = array_diff([1, 2, 3], $usedPriorities);
+                $priorityLabels = [1 => 'Hoch', 2 => 'Mittel', 3 => 'Niedrig'];
+                $availableLabels = array_map(function($p) use ($priorityLabels) { return $priorityLabels[$p]; }, $availablePriorities);
+                $message = ['type' => 'error', 'text' => 'Diese Priorität wurde bereits verwendet. Verfügbare Prioritäten: ' . implode(', ', $availableLabels)];
+            } else {
+                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority) VALUES (?, ?, NULL, 'admin', ?)");
+                $stmt->execute([$studentId, $exhibitorId, $priority]);
+                // Für Audit-Log Namen lesen
+                $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM users u, exhibitors e WHERE u.id = ? AND e.id = ?");
+                $stmtN->execute([$studentId, $exhibitorId]);
+                $logR = $stmtN->fetch();
+                $logDesc = $logR ? "Schüler '{$logR['firstname']} {$logR['lastname']}' (Klasse {$logR['class']}) bei '{$logR['ename']}' eingeschrieben" : "Schüler #$studentId bei Aussteller #$exhibitorId";
+                logAuditAction('einschreibung_admin', $logDesc);
+                $message = ['type' => 'success', 'text' => 'Schüler erfolgreich eingeschrieben.'];
+            }
         }
     }
 }

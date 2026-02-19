@@ -8,10 +8,12 @@ define('DB_NAME', getenv('DB_NAME') ?: 'berufsmesse');
 // Zeitzone
 date_default_timezone_set('Europe/Berlin');
 
-// Session Konfiguration
-ini_set('session.cookie_httponly', 1);
-ini_set('session.use_only_cookies', 1);
-ini_set('session.cookie_secure', 0); // Auf 1 setzen bei HTTPS
+// Session Konfiguration - nur vor session_start() setzen
+if (session_status() === PHP_SESSION_NONE) {
+    ini_set('session.cookie_httponly', 1);
+    ini_set('session.use_only_cookies', 1);
+    ini_set('session.cookie_secure', 0); // Auf 1 setzen bei HTTPS
+}
 
 // Upload-Verzeichnis
 define('UPLOAD_DIR', __DIR__ . '/uploads/');

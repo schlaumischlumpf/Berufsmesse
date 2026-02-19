@@ -22,10 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                 ];
                 
                 // Erste Zeile überspringen (Header)
-                fgetcsv($handle);
-                
+                fgetcsv($handle, 0, ';');
+
                 $rowNumber = 2;
-                while (($row = fgetcsv($handle)) !== false) {
+                while (($row = fgetcsv($handle, 0, ';')) !== false) {
                     // Spalten: firstname, lastname, username, email, role, class, password
                     if (count($row) < 6) {
                         $importResult['errors'][] = "Zeile $rowNumber: Zu wenige Spalten";
@@ -338,6 +338,16 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
     </div>
 
+    <!-- Search Bar -->
+    <div class="bg-white rounded-xl border border-gray-100 p-4">
+        <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            <input type="text" id="userSearchInput" placeholder="Benutzer suchen (Name, Username, E-Mail, Klasse)..."
+                   class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 transition-all"
+                   onkeyup="filterUsers()">
+        </div>
+    </div>
+
     <!-- Users Table -->
     <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div class="overflow-x-auto">
@@ -354,7 +364,12 @@ $stats['teachers'] = $stmt->fetch()['count'];
                 </thead>
                 <tbody class="divide-y divide-gray-200">
                     <?php foreach ($users as $user): ?>
-                    <tr class="hover:bg-gray-50 transition">
+                    <tr class="user-row hover:bg-gray-50 transition"
+                        data-name="<?php echo strtolower($user['firstname'] . ' ' . $user['lastname']); ?>"
+                        data-username="<?php echo strtolower($user['username']); ?>"
+                        data-email="<?php echo strtolower($user['email'] ?? ''); ?>"
+                        data-role="<?php echo strtolower($user['role']); ?>"
+                        data-class="<?php echo strtolower($user['class'] ?? ''); ?>">
                         <td class="px-6 py-4">
                             <div class="flex items-center">
                                 <div class="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center mr-3">
@@ -802,4 +817,30 @@ document.addEventListener('keydown', function(e) {
         closeImportCsvModal();
     }
 });
+
+// Live Search für Benutzer
+function filterUsers() {
+    const searchTerm = document.getElementById('userSearchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('.user-row');
+
+    rows.forEach(row => {
+        const name = row.getAttribute('data-name');
+        const username = row.getAttribute('data-username');
+        const email = row.getAttribute('data-email');
+        const role = row.getAttribute('data-role');
+        const userClass = row.getAttribute('data-class');
+
+        const matchesSearch = name.includes(searchTerm) ||
+                             username.includes(searchTerm) ||
+                             email.includes(searchTerm) ||
+                             role.includes(searchTerm) ||
+                             userClass.includes(searchTerm);
+
+        if (matchesSearch) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
 </script>

@@ -27,28 +27,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
     } else {
         $exhibitorId = intval($_POST['exhibitor_id']);
         $priority = isset($_POST['priority']) ? max(1, min(3, intval($_POST['priority']))) : 2;
-        
+
         // Prüfen ob User bereits für diesen Aussteller registriert ist
         $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
         $stmt->execute([$_SESSION['user_id'], $exhibitorId]);
         $alreadyRegistered = $stmt->fetch()['count'] > 0;
-        
+
         if ($alreadyRegistered) {
             $message = ['type' => 'error', 'text' => 'Du bist bereits für diesen Aussteller angemeldet.'];
         } else {
-            try {
-                // Registrierung OHNE Slot-Zuteilung - Slot wird später automatisch zugewiesen
-                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority) VALUES (?, ?, NULL, 'manual', ?)");
-                $stmt->execute([$_SESSION['user_id'], $exhibitorId, $priority]);
-                
-                $message = ['type' => 'success', 'text' => 'Erfolgreich angemeldet! Der Zeitslot wird später automatisch zugeteilt.'];
-                
-                // Counter aktualisieren
-                $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ?");
-                $stmt->execute([$_SESSION['user_id']]);
-                $userRegCount = $stmt->fetch()['count'];
-            } catch (PDOException $e) {
-                $message = ['type' => 'error', 'text' => 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.'];
+            // Prüfen ob diese Priorität bereits verwendet wird
+            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ?");
+            $stmt->execute([$_SESSION['user_id']]);
+            $usedPriorities = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (in_array($priority, $usedPriorities)) {
+                $availablePriorities = array_diff([1, 2, 3], $usedPriorities);
+                $priorityLabels = [1 => 'Hoch', 2 => 'Mittel', 3 => 'Niedrig'];
+                $availableLabels = array_map(function($p) use ($priorityLabels) { return $priorityLabels[$p]; }, $availablePriorities);
+                $message = ['type' => 'error', 'text' => 'Diese Priorität wurde bereits verwendet. Verfügbare Prioritäten: ' . implode(', ', $availableLabels)];
+            } else {
+                try {
+                    // Registrierung OHNE Slot-Zuteilung - Slot wird später automatisch zugewiesen
+                    $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority) VALUES (?, ?, NULL, 'manual', ?)");
+                    $stmt->execute([$_SESSION['user_id'], $exhibitorId, $priority]);
+
+                    $message = ['type' => 'success', 'text' => 'Erfolgreich angemeldet! Der Zeitslot wird später automatisch zugeteilt.'];
+
+                    // Counter aktualisieren
+                    $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ?");
+                    $stmt->execute([$_SESSION['user_id']]);
+                    $userRegCount = $stmt->fetch()['count'];
+                } catch (PDOException $e) {
+                    $message = ['type' => 'error', 'text' => 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.'];
+                }
             }
         }
     }

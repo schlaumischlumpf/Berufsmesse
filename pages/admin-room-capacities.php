@@ -67,18 +67,16 @@ foreach ($stmt->fetchAll() as $cap) {
     <?php endif; ?>
 
     <!-- Header -->
-    <div class="bg-white rounded-xl p-6 border-l-4 border-indigo-600">
+    <!-- Header -->
+    <div class="flex items-center justify-between">
         <div>
-            <h2 class="text-2xl font-bold text-gray-800 mb-2">
-                <i class="fas fa-table text-indigo-600 mr-3"></i>
-                Raumkapazitäten pro Zeitslot
-            </h2>
-            <p class="text-gray-600">Definiere die individuelle Kapazitäten für jeden Raum und Zeitslot</p>
+            <h2 class="text-xl font-semibold text-gray-800">Raumkapazitäten</h2>
+            <p class="text-sm text-gray-500 mt-1">Definiere individuelle Kapazitäten für jeden Raum und Zeitslot</p>
         </div>
     </div>
 
     <!-- Info Box -->
-    <div class="bg-blue-50 border-l-4 border-blue-500 p-6 rounded-lg">
+    <div class="bg-blue-50 border border-blue-100 p-5 rounded-lg">
         <div class="flex items-start">
             <i class="fas fa-info-circle text-blue-500 text-xl mr-3 mt-1"></i>
             <div>

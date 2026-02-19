@@ -35,70 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
     $message = ['type' => 'success', 'text' => 'QR-Code URL erfolgreich gespeichert'];
 }
 
-// Handle Industry Actions
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isAdmin() || hasPermission('einstellungen_bearbeiten'))) {
-    if (isset($_POST['add_industry'])) {
-        $indName = trim($_POST['industry_name'] ?? '');
-        $indOrder = intval($_POST['industry_sort_order'] ?? 0);
-        if ($indName === '') {
-            $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf nicht leer sein'];
-        } elseif (mb_strlen($indName) > 100) {
-            $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf maximal 100 Zeichen lang sein'];
-        } else {
-            try {
-                $stmt = $db->prepare("INSERT INTO industries (name, sort_order) VALUES (?, ?)");
-                $stmt->execute([$indName, $indOrder]);
-                logAuditAction('branche_erstellt', "Branche '$indName' erstellt");
-                $industryMessage = ['type' => 'success', 'text' => "Branche '$indName' erfolgreich angelegt"];
-            } catch (PDOException $e) {
-                if ($e->getCode() == 23000) {
-                    $industryMessage = ['type' => 'error', 'text' => "Branche '$indName' existiert bereits"];
-                } else {
-                    $industryMessage = ['type' => 'error', 'text' => 'Fehler beim Anlegen der Branche'];
-                }
-            }
-        }
-    } elseif (isset($_POST['edit_industry'])) {
-        $indId = intval($_POST['industry_id']);
-        $indName = trim($_POST['industry_name'] ?? '');
-        $indOrder = intval($_POST['industry_sort_order'] ?? 0);
-        if ($indName === '') {
-            $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf nicht leer sein'];
-        } elseif (mb_strlen($indName) > 100) {
-            $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf maximal 100 Zeichen lang sein'];
-        } else {
-            try {
-                $stmt = $db->prepare("UPDATE industries SET name = ?, sort_order = ? WHERE id = ?");
-                $stmt->execute([$indName, $indOrder, $indId]);
-                logAuditAction('branche_bearbeitet', "Branche ID $indId zu '$indName' umbenannt");
-                $industryMessage = ['type' => 'success', 'text' => "Branche erfolgreich aktualisiert"];
-            } catch (PDOException $e) {
-                if ($e->getCode() == 23000) {
-                    $industryMessage = ['type' => 'error', 'text' => "Eine Branche mit diesem Namen existiert bereits"];
-                } else {
-                    $industryMessage = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren der Branche'];
-                }
-            }
-        }
-    } elseif (isset($_POST['delete_industry'])) {
-        $indId = intval($_POST['industry_id']);
-        // Check if any exhibitor uses this industry
-        $stmt = $db->prepare("SELECT COUNT(*) FROM exhibitors WHERE category = (SELECT name FROM industries WHERE id = ?)");
-        $stmt->execute([$indId]);
-        $usageCount = $stmt->fetchColumn();
-        if ($usageCount > 0) {
-            $industryMessage = ['type' => 'error', 'text' => "Diese Branche kann nicht gelöscht werden, da noch $usageCount Aussteller dieser Branche zugeordnet sind"];
-        } else {
-            $stmt = $db->prepare("SELECT name FROM industries WHERE id = ?");
-            $stmt->execute([$indId]);
-            $indRow = $stmt->fetch();
-            $stmt = $db->prepare("DELETE FROM industries WHERE id = ?");
-            $stmt->execute([$indId]);
-            logAuditAction('branche_geloescht', "Branche '{$indRow['name']}' (ID: $indId) gelöscht");
-            $industryMessage = ['type' => 'success', 'text' => "Branche erfolgreich gelöscht"];
-        }
-    }
-}
+// Branchen-Verwaltung wurde nach admin-exhibitors.php verschoben (Issue #XX)
 
 // Aktuelle Einstellungen laden
 $currentSettings = [
@@ -110,8 +47,7 @@ $currentSettings = [
     'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL)
 ];
 
-// Branchen laden
-$allIndustries = getIndustries();
+// Branchen-Verwaltung wurde nach admin-exhibitors.php verschoben
 ?>
 
 <!-- Einstellungen – Tab-basiertes Mobile-First Layout -->
@@ -141,10 +77,6 @@ $allIndustries = getIndustries();
             <button onclick="switchSettingsTab('qrcodes')" data-tab="qrcodes"
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-qrcode"></i> <span>QR-Codes</span>
-            </button>
-            <button onclick="switchSettingsTab('branchen')" data-tab="branchen"
-                    class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
-                <i class="fas fa-industry"></i> <span>Branchen</span>
             </button>
             <button onclick="switchSettingsTab('system')" data-tab="system"
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
@@ -310,106 +242,7 @@ $allIndustries = getIndustries();
         </div>
 
         <!-- ============================================================ -->
-        <!-- TAB 3: Branchen -->
-        <!-- ============================================================ -->
-        <div id="tab-branchen" class="settings-tab-content hidden p-4 sm:p-6">
-            <div class="space-y-4">
-                
-                <?php if (isset($industryMessage)): ?>
-                <div class="<?php echo $industryMessage['type'] === 'success' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'; ?> border p-3 rounded-lg flex items-center gap-2 text-sm">
-                    <i class="fas <?php echo $industryMessage['type'] === 'success' ? 'fa-check-circle text-emerald-500' : 'fa-exclamation-circle text-red-500'; ?>"></i>
-                    <span class="<?php echo $industryMessage['type'] === 'success' ? 'text-emerald-700' : 'text-red-700'; ?>"><?php echo htmlspecialchars($industryMessage['text']); ?></span>
-                </div>
-                <?php endif; ?>
-
-                <!-- Neue Branche -->
-                <div class="flex items-center justify-between">
-                    <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                        <i class="fas fa-industry text-emerald-500"></i> Branchen verwalten
-                    </h4>
-                    <button onclick="document.getElementById('addIndustryForm').classList.toggle('hidden')"
-                            class="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs hover:bg-emerald-600 transition font-medium">
-                        <i class="fas fa-plus mr-1"></i>Neue Branche
-                    </button>
-                </div>
-
-                <!-- Formular: Neue Branche -->
-                <div id="addIndustryForm" class="hidden bg-gray-50 rounded-lg p-4 border border-gray-200">
-                    <form method="POST" class="space-y-3">
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div class="sm:col-span-2">
-                                <label class="block text-xs font-medium text-gray-600 mb-1">Name</label>
-                                <input type="text" name="industry_name" placeholder="Branchenname" maxlength="100" required
-                                       class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
-                            </div>
-                            <div>
-                                <label class="block text-xs font-medium text-gray-600 mb-1">Reihenfolge</label>
-                                <input type="number" name="industry_sort_order" placeholder="0" min="0" value="0"
-                                       class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
-                            </div>
-                        </div>
-                        <button type="submit" name="add_industry"
-                                class="w-full sm:w-auto px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition text-sm font-medium">
-                            <i class="fas fa-plus mr-1"></i>Anlegen
-                        </button>
-                    </form>
-                </div>
-
-                <!-- Branchen-Liste -->
-                <?php if (empty($allIndustries)): ?>
-                <p class="text-center text-gray-400 py-8 text-sm italic">Keine Branchen vorhanden.</p>
-                <?php else: ?>
-                <div class="space-y-2">
-                    <?php foreach ($allIndustries as $ind): ?>
-                    <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition" id="industry-row-<?php echo $ind['id']; ?>">
-                        <!-- Anzeige-Modus -->
-                        <div class="flex items-center gap-3 flex-1 min-w-0" id="ind-display-<?php echo $ind['id']; ?>">
-                            <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 text-xs font-bold flex-shrink-0">
-                                <?php echo $ind['sort_order']; ?>
-                            </span>
-                            <span class="text-sm font-medium text-gray-800 truncate"><?php echo htmlspecialchars($ind['name']); ?></span>
-                        </div>
-                        <div class="flex items-center gap-1 flex-shrink-0" id="ind-actions-<?php echo $ind['id']; ?>">
-                            <button onclick="editIndustry(<?php echo $ind['id']; ?>)"
-                                    class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Bearbeiten">
-                                <i class="fas fa-edit text-sm"></i>
-                            </button>
-                            <form method="POST" class="inline" onsubmit="return confirm('Branche wirklich löschen?')">
-                                <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
-                                <button type="submit" name="delete_industry"
-                                        class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Löschen">
-                                    <i class="fas fa-trash text-sm"></i>
-                                </button>
-                            </form>
-                        </div>
-                        
-                        <!-- Bearbeiten-Modus (hidden) -->
-                        <form id="ind-edit-form-<?php echo $ind['id']; ?>" method="POST" class="hidden w-full">
-                            <div class="flex flex-col sm:flex-row gap-2 w-full">
-                                <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
-                                <input type="text" name="industry_name" value="<?php echo htmlspecialchars($ind['name']); ?>" maxlength="100" required
-                                       class="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
-                                <input type="number" name="industry_sort_order" value="<?php echo $ind['sort_order']; ?>" min="0"
-                                       class="w-20 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
-                                <div class="flex gap-1">
-                                    <button type="submit" name="edit_industry" class="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition">
-                                        <i class="fas fa-check"></i>
-                                    </button>
-                                    <button type="button" onclick="cancelEditIndustry(<?php echo $ind['id']; ?>)" class="p-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
-                                        <i class="fas fa-times"></i>
-                                    </button>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-                <?php endif; ?>
-            </div>
-        </div>
-
-        <!-- ============================================================ -->
-        <!-- TAB 4: System -->
+        <!-- TAB 3: System (Branchen wurde nach admin-exhibitors.php verschoben) -->
         <!-- ============================================================ -->
         <div id="tab-system" class="settings-tab-content hidden p-4 sm:p-6">
             <div class="space-y-4">
@@ -502,10 +335,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (hash && document.getElementById('tab-' + hash)) {
         switchSettingsTab(hash);
     }
-    <?php if (isset($industryMessage)): ?>
-    // Bei Branchen-Aktionen automatisch zum Branchen-Tab
-    switchSettingsTab('branchen');
-    <?php endif; ?>
+    // Branchen-Auto-Switch entfernt (Branchen jetzt in admin-exhibitors.php)
 });
 
 // Live QR-Vorschau
@@ -522,14 +352,5 @@ function updateQrPreview() {
     }, 500);
 }
 
-function editIndustry(id) {
-    document.getElementById('ind-display-' + id).classList.add('hidden');
-    document.getElementById('ind-actions-' + id).classList.add('hidden');
-    document.getElementById('ind-edit-form-' + id).classList.remove('hidden');
-}
-function cancelEditIndustry(id) {
-    document.getElementById('ind-display-' + id).classList.remove('hidden');
-    document.getElementById('ind-actions-' + id).classList.remove('hidden');
-    document.getElementById('ind-edit-form-' + id).classList.add('hidden');
-}
+// editIndustry und cancelEditIndustry wurden nach admin-exhibitors.php verschoben
 </script>

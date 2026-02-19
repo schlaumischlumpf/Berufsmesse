@@ -670,10 +670,22 @@ $regEnd = getSetting('registration_end');
                 font-size: 0.9375rem;
                 margin-bottom: 0.125rem;
             }
-            
+
             .nav-link i {
                 width: 1.75rem;
                 font-size: 1.0625rem;
+                margin-right: 0.5rem; /* Reduzierter Abstand auf Mobile */
+            }
+
+            /* Sidebar Navigation: Text bleibt auf Mobile sichtbar */
+            .nav-link span {
+                display: inline !important; /* Überschreibt die allgemeine Button-Regel */
+            }
+
+            /* User Info Bereich: Help Button kompakter */
+            .sidebar .border-t button {
+                font-size: 0.8125rem;
+                padding: 0.5rem 0.75rem;
             }
             
             /* Kompakteres Padding auf Mobile */
@@ -714,19 +726,34 @@ $regEnd = getSetting('registration_end');
             }
 
             /* Issue #24: Mobile - Buttons mit Text+Icon nur Icon anzeigen */
-            .btn-mobile-icon span.btn-text {
-                display: none;
+            /* Allgemeine Regel: Alle Buttons mit Icons zeigen nur Icon auf Mobile */
+            button:has(i) span,
+            a.btn:has(i) span,
+            .btn:has(i) span,
+            a:has(i) span {
+                display: none !important;
             }
-            
+
+            /* Fallback für Browser ohne :has() Support */
+            .btn-mobile-icon span.btn-text,
+            .btn-mobile-icon span {
+                display: none !important;
+            }
+
             /* Issue #24: Mobile - Tagesplan Buttons kompakter */
             .schedule-actions .btn,
             .schedule-actions a {
                 padding: 0.375rem 0.5rem;
                 font-size: 0.75rem;
             }
-            .schedule-actions .btn span,
-            .schedule-actions a span {
-                display: none;
+
+            /* Kompakteres Padding für Buttons mit nur Icons */
+            button:has(i):not(:has(span)),
+            .btn:has(i):not(:has(span)),
+            a:has(i):not(:has(span)) {
+                padding: 0.5rem;
+                min-width: 44px;
+                justify-content: center;
             }
             
             /* Tabellen auf Mobile: horizontal scrollbar */
@@ -753,6 +780,153 @@ $regEnd = getSetting('registration_end');
             a.btn, button.btn {
                 min-height: 44px;
             }
+
+            /* Admin-Bereich: Tabellen auf Mobile */
+            .overflow-x-auto table {
+                font-size: 0.875rem;
+            }
+
+            .overflow-x-auto table th,
+            .overflow-x-auto table td {
+                padding: 0.75rem 0.5rem;
+                white-space: nowrap;
+            }
+
+            /* Admin-Bereich: Stat Cards auf Mobile stapeln */
+            .grid.grid-cols-1.md\\:grid-cols-3 {
+                gap: 0.75rem;
+            }
+
+            /* Admin-Bereich: Modals auf Mobile */
+            .fixed.inset-0 > div {
+                margin: 0.5rem;
+                max-height: 95vh;
+            }
+
+            /* Admin-Bereich: Filter/Action Buttons scrollbar */
+            .flex.gap-2 {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .flex.gap-2 > button,
+            .flex.gap-2 > a {
+                white-space: nowrap;
+                flex-shrink: 0;
+            }
+
+            /* Admin-Bereich: Kompaktere Headers */
+            h2.text-xl {
+                font-size: 1.125rem;
+            }
+
+            h3.text-lg {
+                font-size: 1rem;
+            }
+
+            /* Admin-Bereich: Reduziertes Padding */
+            .bg-white.rounded-xl.p-6 {
+                padding: 1rem;
+            }
+
+            .bg-white.rounded-xl.p-5 {
+                padding: 0.875rem;
+            }
+
+            /* Admin-Bereich: Bessere Touch-Targets für Checkboxen */
+            input[type="checkbox"] {
+                width: 1.25rem;
+                height: 1.25rem;
+            }
+
+            /* Admin-Bereich: Select-Felder größer */
+            select {
+                min-height: 44px;
+                font-size: 16px !important;
+            }
+
+            /* Admin-Bereich: Tab Navigation scrollbar */
+            .flex.border-b {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+            }
+
+            .flex.border-b::-webkit-scrollbar {
+                display: none;
+            }
+
+            .flex.border-b button,
+            .flex.border-b a {
+                flex-shrink: 0;
+            }
+
+            /* Admin-Bereich: Statistics Grid kompakter */
+            .grid.gap-4 {
+                gap: 0.75rem;
+            }
+
+            /* Admin-Bereich: Action Buttons kompakter */
+            .flex.justify-end.gap-3 button,
+            .flex.justify-end.gap-3 a {
+                padding: 0.5rem 0.75rem;
+                font-size: 0.875rem;
+            }
+
+            /* Admin-Bereich: Bessere Badge-Größen */
+            .px-3.py-1 {
+                padding: 0.375rem 0.625rem;
+                font-size: 0.75rem;
+            }
+
+            /* Admin-Bereich: Responsive Flex Direction */
+            .flex.items-center.justify-between {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+
+            .flex.items-center.justify-between > .flex.gap-2 {
+                width: 100%;
+                justify-content: flex-start;
+            }
+
+            /* Anti-Umbruch: Namen und Text in Tabellen */
+            table td p {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                max-width: 200px;
+            }
+
+            /* Anti-Umbruch: Badges und Spans */
+            .badge,
+            span.px-3.py-1,
+            span.px-2.py-1 {
+                white-space: nowrap;
+            }
+
+            /* Anti-Umbruch: Button Text */
+            button span,
+            a span {
+                white-space: nowrap;
+            }
+        }
+
+        /* Anti-Umbruch: Allgemein (Desktop & Mobile) */
+        .font-semibold.text-gray-800,
+        .text-sm.text-gray-500 {
+            overflow-wrap: break-word;
+            word-break: keep-all;
+        }
+
+        /* Anti-Umbruch: Tabellenzellen mit Text */
+        td > div > div > p.font-semibold,
+        td > div > div > p.text-sm {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         /* Issue #24: Exhibitor Modal - Schließen-Button mehr Abstand */
@@ -892,13 +1066,6 @@ $regEnd = getSetting('registration_end');
                     <span>Druckzentrale</span>
                 </a>
                 <?php endif; ?>
-                
-                <?php if (isAdmin() || hasPermission('dashboard_sehen')): ?>
-                <a href="<?php echo $currentPage === 'admin-dashboard' ? 'javascript:void(0)' : '?page=admin-dashboard'; ?>" data-page="admin-dashboard" class="nav-link <?php echo $currentPage === 'admin-dashboard' ? 'active' : ''; ?>">
-                    <i class="fas fa-tachometer-alt"></i>
-                    <span>Übersicht</span>
-                </a>
-                <?php endif; ?>
 
                 <!-- GRUPPE: Inhalte (Aussteller & Räume) -->
                 <div class="nav-group-title">Inhalte</div>
@@ -926,7 +1093,14 @@ $regEnd = getSetting('registration_end');
 
                 <!-- GRUPPE: Personen & System -->
                 <div class="nav-group-title">System</div>
-                
+
+                <?php if (isAdmin() || hasPermission('dashboard_sehen')): ?>
+                <a href="<?php echo $currentPage === 'admin-dashboard' ? 'javascript:void(0)' : '?page=admin-dashboard'; ?>" data-page="admin-dashboard" class="nav-link <?php echo $currentPage === 'admin-dashboard' ? 'active' : ''; ?>">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Übersicht</span>
+                </a>
+                <?php endif; ?>
+
                 <?php if (isAdmin() || hasPermission('benutzer_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-users' ? 'javascript:void(0)' : '?page=admin-users'; ?>" data-page="admin-users" class="nav-link <?php echo $currentPage === 'admin-users' ? 'active' : ''; ?>">
                     <i class="fas fa-users"></i>

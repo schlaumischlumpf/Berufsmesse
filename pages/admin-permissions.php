@@ -4,14 +4,22 @@
 // Datenbankverbindung holen
 $db = getDB();
 
-// Handle Permission Changes
+// Handle Permission Changes (mit Gruppen-Support)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) {
     if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userId = intval($_POST['user_id']);
     $permissions = $_POST['permissions'] ?? [];
-    
+    $groupIds = $_POST['group_ids'] ?? [];
+
     if (isAdmin()) {
-        // Admins können alle Berechtigungen verwalten
+        // 1. Gruppen-Zuordnungen aktualisieren
+        $db->prepare("DELETE FROM user_permission_groups WHERE user_id = ?")->execute([$userId]);
+        foreach ($groupIds as $groupId) {
+            $stmt = $db->prepare("INSERT INTO user_permission_groups (user_id, group_id) VALUES (?, ?)");
+            $stmt->execute([$userId, intval($groupId)]);
+        }
+
+        // 2. Individuelle Berechtigungen aktualisieren
         $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$userId]);
         foreach ($permissions as $permission) {
             grantPermission($userId, $permission);
@@ -30,9 +38,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
             }
         }
     }
-    
-    logAuditAction('Berechtigungen geändert', "Berechtigungen für Benutzer #$userId aktualisiert: " . implode(', ', $permissions));
-    
+
+    logAuditAction('Berechtigungen geändert', "Berechtigungen für Benutzer #$userId aktualisiert: " . implode(', ', $permissions) . " | Gruppen: " . implode(', ', $groupIds));
+
     $message = ['type' => 'success', 'text' => 'Berechtigungen erfolgreich aktualisiert'];
     $reopenUserId = $userId; // Flag to reopen modal
 }
@@ -208,6 +216,16 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
         </div>
     </div>
 
+    <!-- Search Bar -->
+    <div class="bg-white rounded-xl border border-gray-100 p-4">
+        <div class="relative">
+            <i class="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400"></i>
+            <input type="text" id="permissionSearchInput" placeholder="Benutzer suchen (Name, Username, Rolle, Berechtigungen)..."
+                   class="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-400 focus:border-purple-400 transition-all"
+                   onkeyup="filterPermissionUsers()">
+        </div>
+    </div>
+
     <!-- Users List -->
     <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div class="overflow-x-auto">
@@ -221,10 +239,15 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                     </tr>
                 </thead>
                 <tbody class="divide-y divide-gray-200">
-                    <?php foreach ($users as $user): 
+                    <?php foreach ($users as $user):
                         $userPermissions = getUserPermissions($user['id']);
+                        $userGroups = getUserPermissionGroups($user['id']);
                     ?>
-                    <tr class="hover:bg-gray-50 transition">
+                    <tr class="permission-user-row hover:bg-gray-50 transition"
+                        data-name="<?php echo strtolower($user['firstname'] . ' ' . $user['lastname']); ?>"
+                        data-username="<?php echo strtolower($user['username']); ?>"
+                        data-role="<?php echo strtolower($user['role']); ?>"
+                        data-permissions="<?php echo strtolower(implode(' ', $userPermissions)); ?>">
                         <td class="px-6 py-4">
                             <div class="flex items-center">
                                 <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
@@ -280,11 +303,12 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                                         </button>
                                     </form>
                                     <?php endif; ?>
-                                    <button type="button" 
+                                    <button type="button"
                                             class="permission-btn px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm hover:shadow-md"
                                             data-user-id="<?php echo htmlspecialchars($user['id']); ?>"
                                             data-user-name="<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?>"
-                                            data-permissions='<?php echo htmlspecialchars(json_encode($userPermissions), ENT_QUOTES, 'UTF-8'); ?>'>
+                                            data-permissions='<?php echo htmlspecialchars(json_encode($userPermissions), ENT_QUOTES, 'UTF-8'); ?>'
+                                            data-group-ids='<?php echo htmlspecialchars(json_encode($userGroups), ENT_QUOTES, 'UTF-8'); ?>'>
                                         <i class="fas fa-shield-alt mr-2"></i>Berechtigungen
                                     </button>
                                 </div>
@@ -395,14 +419,48 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
             <p class="text-sm text-purple-100 mt-1" id="modalUserName"></p>
         </div>
         
-        <form method="POST" class="p-6 space-y-4">
+        <form method="POST" class="p-6 space-y-6">
             <input type="hidden" name="user_id" id="modal_user_id">
-            
+
+            <!-- Berechtigungsgruppen Sektion -->
+            <div class="border-2 border-indigo-200 rounded-lg p-4 bg-indigo-50/50">
+                <label class="block text-sm font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                    <i class="fas fa-layer-group"></i>
+                    Berechtigungsgruppen
+                </label>
+                <div class="text-xs text-indigo-700 mb-3">
+                    Wähle Gruppen aus, um automatisch alle zugehörigen Berechtigungen zu erhalten.
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <?php
+                    $allPermGroups = getPermissionGroups();
+                    foreach ($allPermGroups as $group):
+                        $groupPerms = getPermissionGroupPermissions($group['id']);
+                    ?>
+                    <label class="flex items-start p-3 bg-white rounded-lg border border-indigo-200 hover:bg-indigo-50 cursor-pointer transition group-checkbox-label">
+                        <input type="checkbox"
+                               name="group_ids[]"
+                               value="<?php echo $group['id']; ?>"
+                               class="group-checkbox mt-1 mr-3 rounded text-indigo-600 w-4 h-4"
+                               data-group-id="<?php echo $group['id']; ?>"
+                               data-permissions='<?php echo htmlspecialchars(json_encode($groupPerms), ENT_QUOTES); ?>'>
+                        <div class="flex-1 min-w-0">
+                            <div class="font-semibold text-sm text-gray-800"><?php echo htmlspecialchars($group['name']); ?></div>
+                            <div class="text-xs text-gray-600 mt-0.5"><?php echo htmlspecialchars($group['description']); ?></div>
+                            <div class="text-xs text-indigo-600 mt-1"><?php echo count($groupPerms); ?> Berechtigungen</div>
+                        </div>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <!-- Individuelle Berechtigungen Sektion -->
             <div class="space-y-4">
                 <label class="block text-sm font-semibold text-gray-700 mb-3">
-                    Wähle die Berechtigungen aus:
+                    Individuelle Berechtigungen:
                 </label>
-                
+
                 <?php foreach ($availablePermissions as $groupName => $groupPerms): ?>
                 <div class="border border-gray-200 rounded-lg overflow-hidden">
                     <div class="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">
@@ -465,26 +523,67 @@ function getCheckbox(key) {
 
 function checkDependencies(key, checked) {
     if (checked) {
-        // Beim Aktivieren: alle Abhängigkeiten aktivieren
+        // Beim Aktivieren: alle transitiven Abhängigkeiten aktivieren (rekursiv)
         const deps = permDeps[key] || [];
         deps.forEach(dep => {
             const cb = getCheckbox(dep);
             if (cb && !cb.checked && !cb.disabled) {
                 cb.checked = true;
+                // Rekursiv für transitive Abhängigkeiten
                 checkDependencies(dep, true);
             }
         });
     } else {
-        // Beim Deaktivieren: alle höheren Berechtigungen deaktivieren
+        // Beim Deaktivieren: prüfen, ob andere Berechtigungen davon abhängen
         const dependents = permDependents[key] || [];
-        dependents.forEach(dep => {
+        const activeBlockers = dependents.filter(dep => {
             const cb = getCheckbox(dep);
-            if (cb && cb.checked && !cb.disabled) {
-                cb.checked = false;
-                checkDependencies(dep, false);
-            }
+            return cb && cb.checked && !cb.disabled;
         });
+
+        if (activeBlockers.length > 0) {
+            // Verhindere das Deaktivieren
+            const cb = getCheckbox(key);
+            if (cb) {
+                cb.checked = true; // Checkbox wieder aktivieren
+            }
+
+            // Zeige visuelles Feedback bei den blockierenden Berechtigungen
+            activeBlockers.forEach(blocker => {
+                const blockerCb = getCheckbox(blocker);
+                if (blockerCb) {
+                    highlightCheckbox(blockerCb);
+                }
+            });
+        } else {
+            // Kein Blocker - normale Deaktivierung
+            dependents.forEach(dep => {
+                const cb = getCheckbox(dep);
+                if (cb && cb.checked && !cb.disabled) {
+                    cb.checked = false;
+                    checkDependencies(dep, false);
+                }
+            });
+        }
     }
+}
+
+// Visuelles Highlight für blockierende Checkboxen
+function highlightCheckbox(checkbox) {
+    const row = checkbox.closest('.flex.items-start.p-3');
+    if (!row) return;
+
+    // Kurzes rotes Flash-Highlight
+    row.style.transition = 'background-color 0.3s ease';
+    row.style.backgroundColor = '#fee2e2'; // red-100
+
+    // Nach 1 Sekunde zurücksetzen
+    setTimeout(() => {
+        row.style.backgroundColor = '';
+        setTimeout(() => {
+            row.style.transition = '';
+        }, 300);
+    }, 1000);
 }
 
 // Event Listener für alle Berechtigungsknöpfe
@@ -497,16 +596,20 @@ document.addEventListener('DOMContentLoaded', function() {
             const userId = this.getAttribute('data-user-id');
             const userName = this.getAttribute('data-user-name');
             const permissionsJson = this.getAttribute('data-permissions');
-            
+            const groupIdsJson = this.getAttribute('data-group-ids');
+
             let currentPermissions = [];
+            let currentGroupIds = [];
             try {
                 currentPermissions = JSON.parse(permissionsJson);
+                currentGroupIds = JSON.parse(groupIdsJson);
             } catch(e) {
                 console.error('Fehler beim Parsen der Berechtigungen:', e);
                 currentPermissions = [];
+                currentGroupIds = [];
             }
-            
-            openPermissionModal(userId, userName, currentPermissions);
+
+            openPermissionModal(userId, userName, currentPermissions, currentGroupIds);
         });
     });
 
@@ -516,28 +619,86 @@ document.addEventListener('DOMContentLoaded', function() {
             checkDependencies(this.getAttribute('data-key'), this.checked);
         });
     });
+
+    // Gruppen-Checkbox-Logik
+    document.querySelectorAll('.group-checkbox').forEach(groupCb => {
+        groupCb.addEventListener('change', function() {
+            const groupId = this.getAttribute('data-group-id');
+            const permissionsJson = this.getAttribute('data-permissions');
+            const isChecked = this.checked;
+
+            let groupPermissions = [];
+            try {
+                groupPermissions = JSON.parse(permissionsJson);
+            } catch(e) {
+                console.error('Fehler beim Parsen der Gruppen-Permissions:', e);
+                return;
+            }
+
+            // Wenn Gruppe aktiviert wird: alle Berechtigungen aktivieren
+            if (isChecked) {
+                groupPermissions.forEach(permKey => {
+                    const permCb = getCheckbox(permKey);
+                    if (permCb && !permCb.disabled) {
+                        permCb.checked = true;
+                        checkDependencies(permKey, true);
+                    }
+                });
+            } else {
+                // Wenn Gruppe deaktiviert wird: nur Permissions entfernen, die nicht von anderen Gruppen kommen
+                const allActiveGroupPermissions = new Set();
+
+                // Sammle alle Permissions von ANDEREN aktiven Gruppen
+                document.querySelectorAll('.group-checkbox:checked').forEach(otherGroupCb => {
+                    if (otherGroupCb !== this) {
+                        try {
+                            const otherPerms = JSON.parse(otherGroupCb.getAttribute('data-permissions'));
+                            otherPerms.forEach(p => allActiveGroupPermissions.add(p));
+                        } catch(e) {}
+                    }
+                });
+
+                // Entferne nur Permissions, die NICHT von anderen Gruppen abgedeckt sind
+                groupPermissions.forEach(permKey => {
+                    if (!allActiveGroupPermissions.has(permKey)) {
+                        const permCb = getCheckbox(permKey);
+                        if (permCb && !permCb.disabled) {
+                            permCb.checked = false;
+                            checkDependencies(permKey, false);
+                        }
+                    }
+                });
+            }
+        });
+    });
 });
 
-function openPermissionModal(userId, userName, currentPermissions) {
+function openPermissionModal(userId, userName, currentPermissions, currentGroupIds) {
     try {
         // User ID setzen
         const userIdField = document.getElementById('modal_user_id');
         if (userIdField) {
             userIdField.value = userId;
         }
-        
+
         // Benutzername setzen
         const userNameField = document.getElementById('modalUserName');
         if (userNameField) {
             userNameField.textContent = userName;
         }
-        
-        // Alle Checkboxen zurücksetzen und dann die aktuellen Berechtigungen setzen
+
+        // Gruppen-Checkboxen zurücksetzen und dann die aktuellen Gruppen setzen
+        const groupCheckboxes = document.querySelectorAll('input[name="group_ids[]"]');
+        groupCheckboxes.forEach(function(checkbox) {
+            checkbox.checked = currentGroupIds.includes(parseInt(checkbox.value));
+        });
+
+        // Alle Permission-Checkboxen zurücksetzen und dann die aktuellen Berechtigungen setzen
         const checkboxes = document.querySelectorAll('input[name="permissions[]"]');
         checkboxes.forEach(function(checkbox) {
             checkbox.checked = currentPermissions.includes(checkbox.value);
         });
-        
+
         // Modal anzeigen
         const modal = document.getElementById('permissionModal');
         if (modal) {
@@ -674,4 +835,28 @@ document.addEventListener('keydown', function(e) {
         }
     }
 });
+
+// Live Search für Berechtigungen
+function filterPermissionUsers() {
+    const searchTerm = document.getElementById('permissionSearchInput').value.toLowerCase();
+    const rows = document.querySelectorAll('.permission-user-row');
+
+    rows.forEach(row => {
+        const name = row.getAttribute('data-name');
+        const username = row.getAttribute('data-username');
+        const role = row.getAttribute('data-role');
+        const permissions = row.getAttribute('data-permissions');
+
+        const matchesSearch = name.includes(searchTerm) ||
+                             username.includes(searchTerm) ||
+                             role.includes(searchTerm) ||
+                             permissions.includes(searchTerm);
+
+        if (matchesSearch) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
 </script>
