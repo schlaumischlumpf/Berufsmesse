@@ -1,9 +1,26 @@
 -- Migration Script für Berufsmesse System
 -- Erstellt: 2026-02-19
--- Fügt exhibitor_orga_team Funktionalität hinzu
+-- Fügt exhibitor_orga_team und user_permission_groups Funktionalität hinzu
 
 -- ============================================================================
--- 1. Exhibitor Orga Team Tabelle erstellen
+-- 1. User Permission Groups Tabelle erstellen
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `user_permission_groups` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `user_id` int(11) NOT NULL,
+  `group_id` int(11) NOT NULL,
+  `assigned_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user_group` (`user_id`,`group_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_group_id` (`group_id`),
+  CONSTRAINT `user_permission_groups_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
+  CONSTRAINT `user_permission_groups_ibfk_2` FOREIGN KEY (`group_id`) REFERENCES `permission_groups` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Zuordnung von Berechtigungsgruppen zu Benutzern';
+
+-- ============================================================================
+-- 2. Exhibitor Orga Team Tabelle erstellen
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS `exhibitor_orga_team` (
