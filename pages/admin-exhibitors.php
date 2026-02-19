@@ -287,8 +287,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $username = $stmt->fetch()['username'];
             logAuditAction('orga_member_zugewiesen', "Benutzer '$username' als Orga-Mitglied für Aussteller '$exhibitorName' zugewiesen");
             $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich hinzugefügt'];
+            $activeTab = 'orga-team'; // Keep orga-team tab active
         } else {
             $orgaMessage = ['type' => 'error', 'text' => 'Fehler beim Hinzufügen oder Mitglied bereits zugewiesen'];
+            $activeTab = 'orga-team'; // Keep orga-team tab active
         }
     } elseif (isset($_POST['remove_orga_member'])) {
         if (!isAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
@@ -304,8 +306,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $username = $stmt->fetch()['username'];
             logAuditAction('orga_member_entfernt', "Benutzer '$username' als Orga-Mitglied für Aussteller '$exhibitorName' entfernt");
             $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich entfernt'];
+            $activeTab = 'orga-team'; // Keep orga-team tab active
         } else {
             $orgaMessage = ['type' => 'error', 'text' => 'Fehler beim Entfernen'];
+            $activeTab = 'orga-team'; // Keep orga-team tab active
         }
     }
 }
@@ -1187,6 +1191,13 @@ function switchExhibitorsTab(tabName) {
         activeBtn.classList.remove('border-transparent', 'text-gray-500');
     }
 }
+
+// Beim Laden der Seite den richtigen Tab aktivieren
+<?php if (isset($activeTab)): ?>
+document.addEventListener('DOMContentLoaded', function() {
+    switchExhibitorsTab('<?php echo $activeTab; ?>');
+});
+<?php endif; ?>
 
 // ============================================================
 // Branchen-Verwaltung (von admin-settings.php übernommen)
