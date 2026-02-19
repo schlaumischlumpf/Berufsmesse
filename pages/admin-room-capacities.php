@@ -1,6 +1,11 @@
 <?php
 // Admin Room Capacity Management (Issue #4)
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('kapazitaeten_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Alle Räume laden
 $stmt = $db->query("SELECT * FROM rooms ORDER BY room_number");
 $rooms = $stmt->fetchAll();

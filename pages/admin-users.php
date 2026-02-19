@@ -1,6 +1,11 @@
 <?php
 // Admin Nutzerverwaltung
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('benutzer_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Datenbankverbindung holen
 $db = getDB();
 

@@ -1,6 +1,11 @@
 <?php
 // Admin Dashboard mit Statistiken
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('dashboard_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Auto-Assign Ergebnis anzeigen
 $autoAssignMessage = null;
 if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'done') {

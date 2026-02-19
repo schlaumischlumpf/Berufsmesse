@@ -5,6 +5,11 @@
  * Nur für Admins einsehbar, nicht editierbar
  */
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('audit_logs_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 $db = getDB();
 
 // Filter-Parameter

@@ -1,6 +1,11 @@
 ﻿<?php
 // Admin Aussteller Verwaltung
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('aussteller_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Handle Form Submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (isset($_POST['add_exhibitor'])) {

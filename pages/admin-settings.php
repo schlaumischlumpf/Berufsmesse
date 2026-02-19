@@ -1,6 +1,11 @@
 <?php
 // Admin Einstellungen
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('einstellungen_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Handle Settings Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {

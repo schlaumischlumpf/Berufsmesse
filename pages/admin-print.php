@@ -5,6 +5,11 @@
  * Mit Pastel-Design und PDF-optimiertem Layout
  */
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('berichte_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Verschiedene Druckoptionen
 $printType = $_GET['type'] ?? 'all';
 $filterClass = $_GET['class'] ?? '';

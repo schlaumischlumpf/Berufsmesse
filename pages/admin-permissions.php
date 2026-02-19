@@ -1,6 +1,11 @@
 <?php
 // Admin Berechtigungsverwaltung (Issue #10, #26)
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('berechtigungen_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Datenbankverbindung holen
 $db = getDB();
 
@@ -87,6 +92,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
     }
 }
 
+// Handle Edit Permission Group
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_group'])) {
+    if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
+    $groupId = intval($_POST['edit_group_id']);
+    $groupName = trim($_POST['edit_group_name'] ?? '');
+    $groupDescription = trim($_POST['edit_group_description'] ?? '');
+    $groupPermissions = $_POST['edit_group_permissions'] ?? [];
+
+    if (!empty($groupName) && !empty($groupPermissions)) {
+        try {
+            $db->beginTransaction();
+
+            // Update group name and description
+            $stmt = $db->prepare("UPDATE permission_groups SET name = ?, description = ? WHERE id = ?");
+            $stmt->execute([$groupName, $groupDescription, $groupId]);
+
+            // Delete old permissions
+            $db->prepare("DELETE FROM permission_group_items WHERE group_id = ?")->execute([$groupId]);
+
+            // Insert new permissions
+            $insertStmt = $db->prepare("INSERT INTO permission_group_items (group_id, permission) VALUES (?, ?)");
+            foreach ($groupPermissions as $perm) {
+                $insertStmt->execute([$groupId, $perm]);
+            }
+
+            $db->commit();
+            logAuditAction('Berechtigungsgruppe bearbeitet', "Gruppe '$groupName' mit " . count($groupPermissions) . " Berechtigungen aktualisiert");
+            $message = ['type' => 'success', 'text' => "Berechtigungsgruppe '$groupName' erfolgreich aktualisiert"];
+        } catch (PDOException $e) {
+            $db->rollBack();
+            $message = ['type' => 'error', 'text' => 'Fehler: Gruppenname existiert bereits oder ungültige Daten'];
+        }
+    } else {
+        $message = ['type' => 'error', 'text' => 'Name und mindestens eine Berechtigung erforderlich'];
+    }
+}
+
 // Handle Delete Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
     if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
@@ -95,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
         $stmt = $db->prepare("SELECT name FROM permission_groups WHERE id = ?");
         $stmt->execute([$groupId]);
         $group = $stmt->fetch();
-        
+
         $db->prepare("DELETE FROM permission_groups WHERE id = ?")->execute([$groupId]);
         logAuditAction('Berechtigungsgruppe gelöscht', "Gruppe '" . ($group['name'] ?? $groupId) . "' gelöscht");
         $message = ['type' => 'success', 'text' => 'Berechtigungsgruppe gelöscht'];
@@ -361,12 +403,18 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                             <p class="text-xs text-gray-500 mt-1"><?php echo htmlspecialchars($group['description']); ?></p>
                             <?php endif; ?>
                         </div>
-                        <form method="POST" class="inline" onsubmit="return confirm('Gruppe wirklich löschen?')">
-                            <input type="hidden" name="group_id" value="<?php echo $group['id']; ?>">
-                            <button type="submit" name="delete_group" value="1" class="text-red-400 hover:text-red-600 transition text-sm">
-                                <i class="fas fa-trash"></i>
+                        <div class="flex gap-2">
+                            <button onclick="openEditGroupModal(<?php echo $group['id']; ?>, <?php echo htmlspecialchars(json_encode($group['name'])); ?>, <?php echo htmlspecialchars(json_encode($group['description'] ?? '')); ?>, <?php echo htmlspecialchars(json_encode($groupPerms)); ?>)"
+                                    class="text-blue-400 hover:text-blue-600 transition text-sm">
+                                <i class="fas fa-edit"></i>
                             </button>
-                        </form>
+                            <form method="POST" class="inline" onsubmit="return confirm('Gruppe wirklich löschen?')">
+                                <input type="hidden" name="group_id" value="<?php echo $group['id']; ?>">
+                                <button type="submit" name="delete_group" value="1" class="text-red-400 hover:text-red-600 transition text-sm">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
                     </div>
                     <div class="flex flex-wrap gap-1 mb-3">
                         <?php foreach ($groupPerms as $perm): ?>
@@ -824,6 +872,64 @@ setTimeout(function() {
     </div>
 </div>
 
+<!-- Edit Group Modal -->
+<div id="editGroupModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Berechtigungsgruppe bearbeiten</h3>
+            <p class="text-sm text-blue-100 mt-1">Aktualisiere die Berechtigungen dieser Gruppe</p>
+        </div>
+
+        <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="edit_group_id" id="edit_group_id">
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Gruppenname</label>
+                <input type="text" name="edit_group_name" id="edit_group_name" required
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                       placeholder="z.B. Orga-Team">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-1">Beschreibung</label>
+                <input type="text" name="edit_group_description" id="edit_group_description"
+                       class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                       placeholder="Kurze Beschreibung der Gruppe">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Berechtigungen wählen</label>
+                <div class="max-h-96 overflow-y-auto border border-gray-200 rounded-lg p-3 space-y-2">
+                    <?php foreach ($availablePermissions as $groupName => $groupPerms): ?>
+                    <div class="mb-3">
+                        <div class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2"><?php echo htmlspecialchars($groupName); ?></div>
+                        <?php foreach ($groupPerms as $key => $description): ?>
+                        <label class="flex items-start p-2 hover:bg-gray-50 rounded cursor-pointer">
+                            <input type="checkbox" name="edit_group_permissions[]" value="<?php echo $key; ?>" class="edit-group-perm-checkbox mt-1">
+                            <div class="ml-3">
+                                <div class="text-sm font-medium text-gray-800"><?php echo $key; ?></div>
+                                <div class="text-xs text-gray-500"><?php echo $description; ?></div>
+                            </div>
+                        </label>
+                        <?php endforeach; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeEditGroupModal()"
+                        class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Abbrechen
+                </button>
+                <button type="submit" name="edit_group" value="1" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    <i class="fas fa-save mr-2"></i>Speichern
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 // Close create group modal on ESC or outside click
 document.getElementById('createGroupModal')?.addEventListener('click', function(e) {
@@ -832,6 +938,14 @@ document.getElementById('createGroupModal')?.addEventListener('click', function(
         this.classList.remove('flex');
     }
 });
+
+// Close edit group modal on ESC or outside click
+document.getElementById('editGroupModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        closeEditGroupModal();
+    }
+});
+
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         const cgModal = document.getElementById('createGroupModal');
@@ -839,8 +953,37 @@ document.addEventListener('keydown', function(e) {
             cgModal.classList.add('hidden');
             cgModal.classList.remove('flex');
         }
+        const egModal = document.getElementById('editGroupModal');
+        if (egModal && !egModal.classList.contains('hidden')) {
+            closeEditGroupModal();
+        }
     }
 });
+
+// Open edit group modal
+function openEditGroupModal(groupId, groupName, groupDescription, groupPermissions) {
+    document.getElementById('edit_group_id').value = groupId;
+    document.getElementById('edit_group_name').value = groupName;
+    document.getElementById('edit_group_description').value = groupDescription;
+
+    // Uncheck all checkboxes first
+    document.querySelectorAll('.edit-group-perm-checkbox').forEach(cb => cb.checked = false);
+
+    // Check permissions that belong to this group
+    groupPermissions.forEach(perm => {
+        const checkbox = document.querySelector('.edit-group-perm-checkbox[value="' + perm + '"]');
+        if (checkbox) checkbox.checked = true;
+    });
+
+    document.getElementById('editGroupModal').classList.remove('hidden');
+    document.getElementById('editGroupModal').classList.add('flex');
+}
+
+// Close edit group modal
+function closeEditGroupModal() {
+    document.getElementById('editGroupModal').classList.add('hidden');
+    document.getElementById('editGroupModal').classList.remove('flex');
+}
 
 // Live Search für Berechtigungen
 function filterPermissionUsers() {

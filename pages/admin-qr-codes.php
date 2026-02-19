@@ -9,6 +9,11 @@ if (!isset($db)) {
     die('Datenbank nicht verfügbar');
 }
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('qr_codes_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Aussteller mit Räumen laden - gefiltert nach Orga-Zuordnung
 try {
     // Admins und Benutzer mit qr_codes_verwalten sehen alle Aussteller

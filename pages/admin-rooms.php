@@ -1,6 +1,11 @@
 <?php
 // Raum-Zuteilungssystem für Admins
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('raeume_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Alle Räume abrufen  
 $stmt = $db->query("SELECT * FROM rooms ORDER BY room_number");
 $rooms = $stmt->fetchAll();

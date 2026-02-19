@@ -4,6 +4,11 @@
  * Admins können Schüler einschreiben und Einschreibungen zurücknehmen
  */
 
+// Berechtigungsprüfung
+if (!isAdmin() && !hasPermission('anmeldungen_sehen')) {
+    die('Keine Berechtigung zum Anzeigen dieser Seite');
+}
+
 // Alle Schüler laden
 $stmt = $db->query("SELECT id, username, firstname, lastname, class FROM users WHERE role = 'student' ORDER BY lastname, firstname");
 $students = $stmt->fetchAll();
