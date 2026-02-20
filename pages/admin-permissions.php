@@ -16,38 +16,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
     $permissions = $_POST['permissions'] ?? [];
     $groupIds = $_POST['group_ids'] ?? [];
 
-    if (isAdmin()) {
-        // 1. Gruppen-Zuordnungen aktualisieren
-        $db->prepare("DELETE FROM user_permission_groups WHERE user_id = ?")->execute([$userId]);
-        foreach ($groupIds as $groupId) {
-            $stmt = $db->prepare("INSERT INTO user_permission_groups (user_id, group_id) VALUES (?, ?)");
-            $stmt->execute([$userId, intval($groupId)]);
-        }
-
-        // 2. Individuelle Berechtigungen aktualisieren
-        $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$userId]);
-        foreach ($permissions as $permission) {
-            grantPermission($userId, $permission);
-        }
+    // SICHERHEIT: Eigene Berechtigungen nicht ändern
+    if ($userId === intval($_SESSION['user_id'])) {
+        $message = ['type' => 'error', 'text' => 'Du kannst deine eigenen Berechtigungen nicht ändern'];
     } else {
-        // Nicht-Admins können nur eigene Berechtigungen vergeben/entziehen
-        $ownPermissions = getUserPermissions($_SESSION['user_id']);
-        // Nur eigene Berechtigungen beim Zielbenutzer entfernen
-        foreach ($ownPermissions as $perm) {
-            $db->prepare("DELETE FROM user_permissions WHERE user_id = ? AND permission = ?")->execute([$userId, $perm]);
-        }
-        // Nur eigene Berechtigungen neu setzen
-        foreach ($permissions as $permission) {
-            if (in_array($permission, $ownPermissions)) {
+        if (isAdmin()) {
+            // 1. Gruppen-Zuordnungen aktualisieren
+            $db->prepare("DELETE FROM user_permission_groups WHERE user_id = ?")->execute([$userId]);
+            foreach ($groupIds as $groupId) {
+                $stmt = $db->prepare("INSERT INTO user_permission_groups (user_id, group_id) VALUES (?, ?)");
+                $stmt->execute([$userId, intval($groupId)]);
+            }
+
+            // 2. Individuelle Berechtigungen aktualisieren
+            $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$userId]);
+            foreach ($permissions as $permission) {
                 grantPermission($userId, $permission);
             }
+        } else {
+            // Nicht-Admins können nur eigene Berechtigungen vergeben/entziehen
+            $ownPermissions = getUserPermissions($_SESSION['user_id']);
+            // Nur eigene Berechtigungen beim Zielbenutzer entfernen
+            foreach ($ownPermissions as $perm) {
+                $db->prepare("DELETE FROM user_permissions WHERE user_id = ? AND permission = ?")->execute([$userId, $perm]);
+            }
+            // Nur eigene Berechtigungen neu setzen
+            foreach ($permissions as $permission) {
+                if (in_array($permission, $ownPermissions)) {
+                    grantPermission($userId, $permission);
+                }
+            }
         }
+
+        logAuditAction('Berechtigungen geändert', "Berechtigungen für Benutzer #$userId aktualisiert: " . implode(', ', $permissions) . " | Gruppen: " . implode(', ', $groupIds));
+
+        $message = ['type' => 'success', 'text' => 'Berechtigungen erfolgreich aktualisiert'];
+        $reopenUserId = $userId; // Flag to reopen modal
     }
-
-    logAuditAction('Berechtigungen geändert', "Berechtigungen für Benutzer #$userId aktualisiert: " . implode(', ', $permissions) . " | Gruppen: " . implode(', ', $groupIds));
-
-    $message = ['type' => 'success', 'text' => 'Berechtigungen erfolgreich aktualisiert'];
-    $reopenUserId = $userId; // Flag to reopen modal
 }
 
 // Handle Apply Permission Group
@@ -55,13 +60,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
     if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userId = intval($_POST['user_id']);
     $groupId = intval($_POST['group_id']);
-    
-    // Gruppe anwenden
-    applyPermissionGroup($userId, $groupId);
-    
-    logAuditAction('Berechtigungsgruppe angewendet', "Gruppe #$groupId auf Benutzer #$userId angewendet");
-    
-    $message = ['type' => 'success', 'text' => 'Berechtigungsgruppe erfolgreich angewendet'];
+
+    // SICHERHEIT: Eigene Berechtigungen nicht ändern
+    if ($userId === intval($_SESSION['user_id'])) {
+        $message = ['type' => 'error', 'text' => 'Du kannst deine eigenen Berechtigungen nicht ändern'];
+    } else {
+        // Gruppe anwenden
+        applyPermissionGroup($userId, $groupId);
+
+        logAuditAction('Berechtigungsgruppe angewendet', "Gruppe #$groupId auf Benutzer #$userId angewendet");
+
+        $message = ['type' => 'success', 'text' => 'Berechtigungsgruppe erfolgreich angewendet'];
+    }
 }
 
 // Handle Create Permission Group
@@ -349,7 +359,11 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                             <?php endif; ?>
                         </td>
                         <td class="px-6 py-4 text-right">
-                            <?php if ($user['role'] !== 'admin'): ?>
+                            <?php if ($user['id'] === $_SESSION['user_id']): ?>
+                                <span class="inline-flex items-center text-gray-400 text-sm italic">
+                                    <i class="fas fa-lock mr-1"></i>Eigener Account
+                                </span>
+                            <?php elseif ($user['role'] !== 'admin'): ?>
                                 <div class="flex items-center justify-end gap-2">
                                     <button type="button"
                                             class="permission-btn px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm hover:shadow-md"
@@ -359,7 +373,6 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                                             data-group-ids='<?php echo htmlspecialchars(json_encode($userGroups), ENT_QUOTES, 'UTF-8'); ?>'>
                                         <i class="fas fa-shield-alt mr-2"></i>Berechtigungen
                                     </button>
-                                </div>
                                 </div>
                             <?php else: ?>
                                 <span class="text-gray-400 text-sm italic">-</span>

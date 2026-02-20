@@ -43,9 +43,20 @@ $categories = !empty($industryList)
 
     <!-- Karten-Grid -->
     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5" id="exhibitorGrid">
-        <?php foreach ($exhibitors as $index => $exhibitor): 
-            // Branche
-            $branche = $exhibitor['category'] ?? 'Allgemein';
+        <?php foreach ($exhibitors as $index => $exhibitor):
+            // Branche - Unterstützt jetzt mehrere Kategorien
+            $categoriesArray = [];
+            if (!empty($exhibitor['category'])) {
+                try {
+                    $categoriesArray = json_decode($exhibitor['category'], true) ?? [];
+                } catch (Exception $e) {
+                    // Fallback für alte String-Werte
+                    $categoriesArray = [$exhibitor['category']];
+                }
+            }
+            if (!is_array($categoriesArray)) $categoriesArray = [$categoriesArray];
+            $branche = !empty($categoriesArray) ? $categoriesArray[0] : 'Allgemein';
+            $categoriesJson = json_encode($categoriesArray);
             
             // Angebot aus offer_types JSON laden (Fallback: aus Beschreibung parsen)
             $angebot = [];
@@ -72,7 +83,7 @@ $categories = !empty($industryList)
         ?>
         <div class="exhibitor-card bg-white rounded-xl border border-gray-100 p-5 hover:border-gray-200"
              data-name="<?php echo strtolower(htmlspecialchars($exhibitor['name'])); ?>"
-             data-category="<?php echo htmlspecialchars(html_entity_decode($exhibitor['category'] ?? '', ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?>">
+             data-categories="<?php echo htmlspecialchars($categoriesJson); ?>">
             
             <!-- Card Header mit Logo und Name -->
             <div class="flex items-start space-x-4 mb-4">
@@ -219,10 +230,19 @@ function filterExhibitors() {
 
     cards.forEach(card => {
         const name = card.getAttribute('data-name');
-        const cardCategory = card.getAttribute('data-category');
+
+        // Parse categories from JSON
+        const categoriesAttr = card.getAttribute('data-categories') || '[]';
+        const cats = (() => {
+            try {
+                return JSON.parse(categoriesAttr);
+            } catch(e) {
+                return [];
+            }
+        })();
 
         const matchesSearch = name.includes(searchTerm);
-        const matchesCategory = !currentFilter || cardCategory === currentFilter;
+        const matchesCategory = !currentFilter || cats.includes(currentFilter);
 
         if (matchesSearch && matchesCategory) {
             card.style.display = 'block';

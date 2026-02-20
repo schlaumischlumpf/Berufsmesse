@@ -63,7 +63,7 @@ CREATE TABLE IF NOT EXISTS `exhibitors` (
   `name` varchar(255) NOT NULL,
   `description` text DEFAULT NULL,
   `short_description` varchar(500) DEFAULT NULL,
-  `category` varchar(100) DEFAULT NULL,
+  `category` text DEFAULT NULL,
   `logo` varchar(255) DEFAULT NULL,
   `contact_person` varchar(255) DEFAULT NULL,
   `email` varchar(255) DEFAULT NULL,

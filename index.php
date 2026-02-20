@@ -333,6 +333,91 @@ $userRegistrations = $stmt->fetchAll();
 $regStatus = getRegistrationStatus();
 $regStart = getSetting('registration_start');
 $regEnd = getSetting('registration_end');
+
+// ============================================================
+// Audit Log TXT-Export (VOR HTML-Output, damit header() wirkt)
+// ============================================================
+if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['export'] === 'txt') {
+    if (isAdmin() || hasPermission('audit_logs_sehen')) {
+        // Filter-Parameter
+        $expFilterUser = $_GET['filter_user'] ?? '';
+        $expFilterAction = $_GET['filter_action'] ?? '';
+        $expFilterDate = $_GET['filter_date'] ?? '';
+
+        // Query aufbauen
+        $expWhere = [];
+        $expParams = [];
+        if ($expFilterUser) {
+            $expWhere[] = "(al.username LIKE ? OR al.user_id = ?)";
+            $expParams[] = "%$expFilterUser%";
+            $expParams[] = intval($expFilterUser);
+        }
+        if ($expFilterAction) {
+            $expWhere[] = "al.action LIKE ?";
+            $expParams[] = "%$expFilterAction%";
+        }
+        if ($expFilterDate) {
+            $expWhere[] = "DATE(al.created_at) = ?";
+            $expParams[] = $expFilterDate;
+        }
+        $expWhereClause = !empty($expWhere) ? 'WHERE ' . implode(' AND ', $expWhere) : '';
+
+        $stmt = $db->prepare("SELECT al.* FROM audit_logs al $expWhereClause ORDER BY al.created_at DESC");
+        $stmt->execute($expParams);
+        $exportLogs = $stmt->fetchAll();
+
+        header('Content-Type: text/plain; charset=utf-8');
+        header('Content-Disposition: attachment; filename="audit-logs-' . date('Y-m-d_His') . '.txt"');
+        header('Cache-Control: no-cache, must-revalidate');
+
+        // UTF-8 BOM
+        echo "\xEF\xBB\xBF";
+        echo "================================================================================\n";
+        echo "                    BERUFSMESSE - AUDIT LOG EXPORT\n";
+        echo "================================================================================\n\n";
+
+        echo "  Exportiert am:   " . date('d.m.Y H:i:s') . "\n";
+        if ($expFilterUser)   echo "  Filter Benutzer: " . $expFilterUser . "\n";
+        if ($expFilterAction) echo "  Filter Aktion:   " . $expFilterAction . "\n";
+        if ($expFilterDate)   echo "  Filter Datum:    " . date('d.m.Y', strtotime($expFilterDate)) . "\n";
+        echo "  Anzahl Eintraege:" . count($exportLogs) . "\n";
+        echo "\n================================================================================\n\n";
+
+        if (empty($exportLogs)) {
+            echo "  Keine Eintraege gefunden.\n";
+        } else {
+            $currentDate = '';
+            foreach ($exportLogs as $log) {
+                $logDate = date('d.m.Y', strtotime($log['created_at']));
+
+                if ($logDate !== $currentDate) {
+                    if ($currentDate !== '') echo "\n";
+                    echo "--- " . $logDate . " " . str_repeat('-', 65) . "\n\n";
+                    $currentDate = $logDate;
+                }
+
+                $time = date('H:i:s', strtotime($log['created_at']));
+                $user = $log['username'] . ' (ID: ' . ($log['user_id'] ?? '-') . ')';
+                $action = $log['action'];
+                $ip = $log['ip_address'] ?? '-';
+                $details = $log['details'] ?? '';
+
+                echo "  " . $time . "  " . str_pad($user, 28) . "  " . str_pad($action, 32) . "\n";
+                echo "             IP: " . $ip;
+                if ($details) {
+                    echo "    Details: " . $details;
+                }
+                echo "\n\n";
+            }
+        }
+
+        echo "================================================================================\n";
+        echo "  Ende des Exports - Generiert mit Berufsmesse Admin-System\n";
+        echo "================================================================================\n";
+        exit;
+    }
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="de">

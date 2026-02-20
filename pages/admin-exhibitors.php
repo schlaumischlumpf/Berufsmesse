@@ -14,7 +14,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = strip_tags(trim($_POST['name']));
         $shortDesc = sanitize($_POST['short_description']);
         $description = sanitize($_POST['description']);
-        $category = html_entity_decode(strip_tags(trim($_POST['category'] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Kategorien als JSON-Array speichern
+        $categoriesArray = isset($_POST['categories']) ? (array)$_POST['categories'] : [];
+        $category = !empty($categoriesArray) ? json_encode($categoriesArray) : null;
         $contactPerson = sanitize($_POST['contact_person'] ?? '');
         $email = sanitize($_POST['email'] ?? '');
         $phone = sanitize($_POST['phone'] ?? '');
@@ -57,7 +59,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = strip_tags(trim($_POST['name']));
         $shortDesc = sanitize($_POST['short_description']);
         $description = sanitize($_POST['description']);
-        $category = html_entity_decode(strip_tags(trim($_POST['category'] ?? '')), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        // Kategorien als JSON-Array speichern
+        $categoriesArray = isset($_POST['categories']) ? (array)$_POST['categories'] : [];
+        $category = !empty($categoriesArray) ? json_encode($categoriesArray) : null;
         $contactPerson = sanitize($_POST['contact_person'] ?? '');
         $email = sanitize($_POST['email'] ?? '');
         $phone = sanitize($_POST['phone'] ?? '');
@@ -493,11 +497,25 @@ $orgaUsers = $stmt->fetchAll();
                     <div>
                         <p class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Kurzbeschreibung</p>
                         <p class="text-sm text-gray-700"><?php echo htmlspecialchars($exhibitor['short_description'] ?? '-'); ?></p>
-                        <?php if ($exhibitor['category']): ?>
-                        <span class="inline-flex items-center px-2.5 py-0.5 mt-2 rounded text-xs font-medium bg-emerald-50 text-emerald-700">
-                            <i class="fas fa-tag mr-1"></i><?php echo htmlspecialchars($exhibitor['category']); ?>
+                        <?php
+                        if ($exhibitor['category']):
+                            $categories = [];
+                            try {
+                                $categories = json_decode($exhibitor['category'], true) ?? [];
+                            } catch (Exception $e) {
+                                // Fallback für alte String-Werte
+                                $categories = [$exhibitor['category']];
+                            }
+                            if (!is_array($categories)) $categories = [$categories];
+                            foreach ($categories as $cat):
+                        ?>
+                        <span class="inline-flex items-center px-2.5 py-0.5 mt-2 mr-1 rounded text-xs font-medium bg-emerald-50 text-emerald-700">
+                            <i class="fas fa-tag mr-1"></i><?php echo htmlspecialchars($cat); ?>
                         </span>
-                        <?php endif; ?>
+                        <?php
+                            endforeach;
+                        endif;
+                        ?>
                     </div>
                     <div>
                         <p class="text-xs font-medium text-gray-400 uppercase tracking-wider mb-1">Kontakt</p>
@@ -778,7 +796,7 @@ $orgaUsers = $stmt->fetchAll();
             </button>
         </div>
         
-        <form method="POST" class="p-6 space-y-4" id="exhibitorForm" enctype="multipart/form-data">
+        <form method="POST" class="p-6 space-y-4" id="exhibitorForm" enctype="multipart/form-data" onsubmit="return validateExhibitorForm()">
             <input type="hidden" name="exhibitor_id" id="exhibitor_id">
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -811,21 +829,22 @@ $orgaUsers = $stmt->fetchAll();
                 </div>
                 
                 <div class="md:col-span-2">
-                    <label class="block text-sm font-medium text-gray-700 mb-2">
-                        <i class="fas fa-tag mr-1 text-gray-400"></i>Kategorie *
+                    <label class="block text-sm font-medium text-gray-700 mb-3">
+                        <i class="fas fa-tag mr-1 text-gray-400"></i>Kategorien * <span class="text-xs font-normal text-gray-500">(min. 1 auswählen)</span>
                     </label>
-                    <select name="category" id="category" required
-                            class="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
-                        <option value="">-- Bitte waehlen --</option>
-                        <?php foreach ($industryNames as $ind): 
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <?php foreach ($industryNames as $ind):
                             $cleanInd = html_entity_decode($ind, ENT_QUOTES | ENT_HTML5, 'UTF-8');
                         ?>
-                        <option value="<?php echo htmlspecialchars($cleanInd, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars($cleanInd); ?></option>
+                        <label class="flex items-center p-3 bg-emerald-50 rounded-lg cursor-pointer hover:bg-emerald-100 transition">
+                            <input type="checkbox" name="categories[]" value="<?php echo htmlspecialchars($cleanInd, ENT_QUOTES, 'UTF-8'); ?>" class="mr-2 rounded text-emerald-500 category-checkbox">
+                            <span class="text-sm text-gray-700"><?php echo htmlspecialchars($cleanInd); ?></span>
+                        </label>
                         <?php endforeach; ?>
                         <?php if (empty($industryNames)): ?>
-                        <option disabled>-- Keine Branchen vorhanden (migrations.sql ausführen) --</option>
+                        <p class="text-sm text-gray-500 col-span-full">Keine Branchen vorhanden (migrations.sql ausführen)</p>
                         <?php endif; ?>
-                    </select>
+                    </div>
                 </div>
                 
                 <div class="md:col-span-2">
@@ -1065,7 +1084,23 @@ function openEditModal(exhibitor) {
     document.getElementById('name').value = exhibitor.name;
     document.getElementById('short_description').value = exhibitor.short_description || '';
     document.getElementById('description').value = exhibitor.description || '';
-    document.getElementById('category').value = exhibitor.category || '';
+
+    // Kategorien setzen
+    document.querySelectorAll('.category-checkbox').forEach(cb => { cb.checked = false; });
+    if (exhibitor.category) {
+        try {
+            const cats = JSON.parse(exhibitor.category);
+            document.querySelectorAll('.category-checkbox').forEach(cb => {
+                cb.checked = cats.includes(cb.value);
+            });
+        } catch(e) {
+            // Fallback: alter String-Wert (Rückwärtskompatibilität)
+            document.querySelectorAll('.category-checkbox').forEach(cb => {
+                cb.checked = cb.value === exhibitor.category;
+            });
+        }
+    }
+
     document.getElementById('contact_person').value = exhibitor.contact_person || '';
     document.getElementById('email').value = exhibitor.email || '';
     document.getElementById('phone').value = exhibitor.phone || '';
@@ -1217,5 +1252,15 @@ function cancelEditIndustry(id) {
     document.getElementById('ind-display-' + id).classList.remove('hidden');
     document.getElementById('ind-actions-' + id).classList.remove('hidden');
     document.getElementById('ind-edit-form-' + id).classList.add('hidden');
+}
+
+// Formular-Validierung für Kategorien
+function validateExhibitorForm() {
+    const checkedCategories = document.querySelectorAll('.category-checkbox:checked');
+    if (checkedCategories.length === 0) {
+        alert('Bitte wählen Sie mindestens eine Kategorie aus.');
+        return false;
+    }
+    return true;
 }
 </script>

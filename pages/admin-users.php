@@ -208,6 +208,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = ['type' => 'error', 'text' => 'Fehler beim Zurücksetzen des Passworts'];
             }
         }
+    } elseif (isset($_POST['edit_user'])) {
+        if (!isAdmin() && !hasPermission('benutzer_bearbeiten')) die('Keine Berechtigung');
+        $userId = intval($_POST['user_id']);
+
+        // SICHERHEIT: Eigenen Account nicht bearbeiten
+        if ($userId === intval($_SESSION['user_id'])) {
+            $message = ['type' => 'error', 'text' => 'Du kannst deinen eigenen Account nicht bearbeiten'];
+        } else {
+            // Prüfen ob der Zielbenutzer ein Admin ist
+            $stmt = $db->prepare("SELECT role, username FROM users WHERE id = ?");
+            $stmt->execute([$userId]);
+            $targetUser = $stmt->fetch();
+
+            if (!$targetUser) {
+                $message = ['type' => 'error', 'text' => 'Benutzer nicht gefunden'];
+            } elseif ($targetUser['role'] === 'admin' && !isAdmin()) {
+                $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts bearbeiten'];
+            } else {
+                $newFirstname = sanitize(trim($_POST['edit_firstname']));
+                $newLastname = sanitize(trim($_POST['edit_lastname']));
+                $newUsername = sanitize(trim($_POST['edit_username']));
+                $newRole = sanitize(trim($_POST['edit_role']));
+                $newClass = sanitize(trim($_POST['edit_class'] ?? ''));
+
+                // Validierung
+                $allowedRoles = ['student', 'teacher', 'orga'];
+                if (isAdmin()) $allowedRoles[] = 'admin';
+                if (!in_array($newRole, $allowedRoles, true)) {
+                    $newRole = 'student';
+                }
+
+                // Nur Admins dürfen zur Admin-Rolle befördern
+                if ($newRole === 'admin' && !isAdmin()) {
+                    $message = ['type' => 'error', 'text' => 'Nur Administratoren können die Admin-Rolle vergeben'];
+                } else {
+                    // Prüfen ob neuer Benutzername schon vergeben ist (wenn geändert)
+                    if ($newUsername !== $targetUser['username']) {
+                        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND id != ?");
+                        $stmt->execute([$newUsername, $userId]);
+                        if ($stmt->fetch()) {
+                            $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
+                        }
+                    }
+
+                    if (!isset($message)) {
+                        $stmt = $db->prepare("UPDATE users SET firstname = ?, lastname = ?, username = ?, role = ?, class = ? WHERE id = ?");
+                        if ($stmt->execute([$newFirstname, $newLastname, $newUsername, $newRole, $newClass, $userId])) {
+                            $changes = [];
+                            if ($targetUser['role'] !== $newRole) $changes[] = "Rolle: {$targetUser['role']} → $newRole";
+                            if ($targetUser['username'] !== $newUsername) $changes[] = "Username: {$targetUser['username']} → $newUsername";
+                            $changeStr = !empty($changes) ? ' (' . implode(', ', $changes) . ')' : '';
+                            logAuditAction('benutzer_bearbeitet', "Benutzer '$newUsername' (ID: $userId) bearbeitet" . $changeStr);
+                            $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich aktualisiert'];
+                        } else {
+                            $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren'];
+                        }
+                    }
+                }
+            }
+        }
     } elseif (isset($_POST['delete_user'])) {
         if (!isAdmin() && !hasPermission('benutzer_loeschen')) die('Keine Berechtigung');
         // Benutzer löschen
@@ -390,19 +450,19 @@ $stats['teachers'] = $stmt->fetch()['count'];
                         </td>
                         <td class="px-6 py-4">
                             <?php if ($user['role'] === 'admin'): ?>
-                                <span class="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
+                                <span class="inline-flex items-center whitespace-nowrap px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-user-shield mr-1"></i>Admin
                                 </span>
                             <?php elseif ($user['role'] === 'teacher'): ?>
-                                <span class="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
+                                <span class="inline-flex items-center whitespace-nowrap px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-chalkboard-teacher mr-1"></i>Lehrer
                                 </span>
                             <?php elseif ($user['role'] === 'orga'): ?>
-                                <span class="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-semibold">
+                                <span class="inline-flex items-center whitespace-nowrap px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-users-cog mr-1"></i>Orga
                                 </span>
                             <?php else: ?>
-                                <span class="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
+                                <span class="inline-flex items-center whitespace-nowrap px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-user-graduate mr-1"></i>Schüler
                                 </span>
                             <?php endif; ?>
@@ -423,6 +483,19 @@ $stats['teachers'] = $stmt->fetch()['count'];
                                 $canEdit = ($user['role'] !== 'admin') || isAdmin();
                                 ?>
                                 <?php if ($canEdit): ?>
+                                    <?php if ($user['id'] !== $_SESSION['user_id'] && (isAdmin() || hasPermission('benutzer_bearbeiten'))): ?>
+                                    <button onclick="openEditUserModal(<?php echo htmlspecialchars(json_encode([
+                                        'id' => $user['id'],
+                                        'firstname' => $user['firstname'],
+                                        'lastname' => $user['lastname'],
+                                        'username' => $user['username'],
+                                        'role' => $user['role'],
+                                        'class' => $user['class'] ?? '',
+                                    ]), ENT_QUOTES); ?>)"
+                                            class="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition text-sm font-medium">
+                                        <i class="fas fa-edit mr-1"></i>Bearbeiten
+                                    </button>
+                                    <?php endif; ?>
                                     <button onclick="openResetPasswordModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
                                             class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
                                         <i class="fas fa-key mr-1"></i>Passwort
@@ -675,6 +748,79 @@ $stats['teachers'] = $stmt->fetch()['count'];
     </div>
 </div>
 
+<!-- Edit User Modal -->
+<div id="editUserModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4">
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Benutzer bearbeiten</h3>
+        </div>
+
+        <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="user_id" id="editUserId">
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Vorname *</label>
+                    <input type="text" name="edit_firstname" id="editFirstname" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Nachname *</label>
+                    <input type="text" name="edit_lastname" id="editLastname" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Benutzername *</label>
+                <input type="text" name="edit_username" id="editUsername" required
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Rolle *</label>
+                <select name="edit_role" id="editRole" required
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                        onchange="toggleEditClassField()">
+                    <option value="student">Schüler</option>
+                    <option value="teacher">Lehrer</option>
+                    <option value="orga">Orga</option>
+                    <?php if (isAdmin()): ?>
+                    <option value="admin">Administrator</option>
+                    <?php endif; ?>
+                </select>
+                <?php if (!isAdmin()): ?>
+                <p class="text-xs text-gray-500 mt-1">
+                    <i class="fas fa-info-circle mr-1"></i>Nur Administratoren können die Admin-Rolle vergeben
+                </p>
+                <?php endif; ?>
+            </div>
+
+            <div id="editClassField">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Klasse</label>
+                <input type="text" name="edit_class" id="editClass"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <p class="text-sm text-amber-800">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    Änderungen an der Rolle wirken sich sofort auf die Zugriffsrechte des Benutzers aus.
+                </p>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeEditUserModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Abbrechen
+                </button>
+                <button type="submit" name="edit_user" class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    <i class="fas fa-save mr-2"></i>Speichern
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 // Handle file drag and drop for CSV upload
 const csvFile = document.getElementById('csvFile');
@@ -813,6 +959,28 @@ function toggleClassField() {
     }
 }
 
+function openEditUserModal(user) {
+    document.getElementById('editUserId').value = user.id;
+    document.getElementById('editFirstname').value = user.firstname;
+    document.getElementById('editLastname').value = user.lastname;
+    document.getElementById('editUsername').value = user.username;
+    document.getElementById('editRole').value = user.role;
+    document.getElementById('editClass').value = user.class || '';
+    toggleEditClassField();
+    document.getElementById('editUserModal').classList.remove('hidden');
+    document.getElementById('editUserModal').classList.add('flex');
+}
+
+function closeEditUserModal() {
+    document.getElementById('editUserModal').classList.add('hidden');
+    document.getElementById('editUserModal').classList.remove('flex');
+}
+
+function toggleEditClassField() {
+    const role = document.getElementById('editRole').value;
+    document.getElementById('editClassField').style.display = role === 'student' ? 'block' : 'none';
+}
+
 // Close modals on ESC key
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
@@ -820,6 +988,7 @@ document.addEventListener('keydown', function(e) {
         closeResetPasswordModal();
         closeDeleteUserModal();
         closeImportCsvModal();
+        closeEditUserModal();
     }
 });
 

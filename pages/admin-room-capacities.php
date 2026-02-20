@@ -52,16 +52,16 @@ foreach ($stmt->fetchAll() as $cap) {
 
 <div class="space-y-6">
     <?php if (isset($message)): ?>
-    <div class="animate-pulse">
+    <div class="mb-4">
         <?php if ($message['type'] === 'success'): ?>
-            <div class="bg-green-50 border-l-4 border-green-500 p-4 rounded-lg">
+            <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-lg">
                 <div class="flex items-center">
-                    <i class="fas fa-check-circle text-green-500 mr-3"></i>
-                    <p class="text-green-700"><?php echo $message['text']; ?></p>
+                    <i class="fas fa-check-circle text-emerald-500 mr-3"></i>
+                    <p class="text-emerald-700"><?php echo $message['text']; ?></p>
                 </div>
             </div>
         <?php else: ?>
-            <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
+            <div class="bg-red-50 border border-red-200 p-4 rounded-lg">
                 <div class="flex items-center">
                     <i class="fas fa-exclamation-circle text-red-500 mr-3"></i>
                     <p class="text-red-700"><?php echo $message['text']; ?></p>
@@ -72,7 +72,6 @@ foreach ($stmt->fetchAll() as $cap) {
     <?php endif; ?>
 
     <!-- Header -->
-    <!-- Header -->
     <div class="flex items-center justify-between">
         <div>
             <h2 class="text-xl font-semibold text-gray-800">Raumkapazitäten</h2>
@@ -81,96 +80,86 @@ foreach ($stmt->fetchAll() as $cap) {
     </div>
 
     <!-- Info Box -->
-    <div class="bg-blue-50 border border-blue-100 p-5 rounded-lg">
-        <div class="flex items-start">
-            <i class="fas fa-info-circle text-blue-500 text-xl mr-3 mt-1"></i>
-            <div>
-                <h3 class="font-bold text-blue-900 mb-2">Hinweise zur Nutzung</h3>
-                <ul class="text-sm text-blue-800 space-y-1">
-                    <li><i class="fas fa-check mr-2"></i>Die Standardkapazität entspricht der vollen Raumkapazität für jeden Slot</li>
-                    <li><i class="fas fa-check mr-2"></i>Du kannst für jeden Slot individuelle Werte festlegen</li>
-                    <li><i class="fas fa-check mr-2"></i>Leere Felder verwenden die Standardkapazität</li>
-                    <li><i class="fas fa-check mr-2"></i>Diese Einstellungen beeinflussen die automatische Zuteilung</li>
-                </ul>
-            </div>
-        </div>
+    <div class="bg-blue-50 border border-blue-100 p-4 rounded-lg">
+        <p class="text-sm text-blue-700">
+            <i class="fas fa-info-circle mr-2"></i>
+            Die Standardkapazität entspricht der vollen Raumkapazität. Du kannst für jeden Slot individuelle Werte festlegen. Leere Felder verwenden den Standardwert.
+        </p>
     </div>
 
     <!-- Capacity Form -->
-    <form method="POST" class="bg-white rounded-xl shadow-md overflow-hidden">
-        <div class="p-6">
-            <div class="overflow-x-auto">
-                <table class="w-full border-collapse">
-                    <thead>
-                        <tr class="bg-gray-100">
-                            <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase border-b-2 border-gray-300 sticky left-0 bg-gray-100 z-10">
-                                Raum
+    <form method="POST" class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="w-full">
+                <thead class="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                        <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider sticky left-0 bg-gray-50 z-10">
+                            Raum
+                        </th>
+                        <th class="px-4 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                            Standard<br>Kapazität
+                        </th>
+                        <?php foreach ($timeslots as $slot): ?>
+                            <th class="px-4 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                                <?php echo htmlspecialchars($slot['slot_name']); ?><br>
+                                <span class="text-xs font-normal text-gray-400"><?php echo date('H:i', strtotime($slot['start_time'])); ?>-<?php echo date('H:i', strtotime($slot['end_time'])); ?></span>
                             </th>
-                            <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase border-b-2 border-gray-300">
-                                Standard<br>Kapazität
-                            </th>
-                            <?php foreach ($timeslots as $slot): ?>
-                                <th class="px-4 py-3 text-center text-xs font-semibold text-gray-600 uppercase border-b-2 border-gray-300">
-                                    <?php echo htmlspecialchars($slot['slot_name']); ?><br>
-                                    <span class="text-xs font-normal"><?php echo date('H:i', strtotime($slot['start_time'])); ?>-<?php echo date('H:i', strtotime($slot['end_time'])); ?></span>
-                                </th>
-                            <?php endforeach; ?>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php foreach ($rooms as $room): 
-                            // Standardkapazität: 25 oder Raumkapazität (falls kleiner)
-                            $roomCap = intval($room['capacity']);
-                            $defaultCapacity = min(25, $roomCap);
-                        ?>
-                        <tr class="border-b border-gray-200 hover:bg-gray-50">
-                            <td class="px-4 py-3 font-semibold text-gray-800 sticky left-0 bg-white hover:bg-gray-50 border-r border-gray-200">
-                                <div class="flex items-center">
-                                    <i class="fas fa-door-open text-indigo-600 mr-2"></i>
-                                    <div>
-                                        <div><?php echo htmlspecialchars($room['room_number']); ?></div>
-                                    </div>
-                                </div>
-                            </td>
-                            <td class="px-4 py-3 text-center">
-                                <span class="inline-block px-3 py-1 bg-gray-100 text-gray-800 rounded-full font-semibold">
-                                    <?php echo $defaultCapacity; ?>
-                                </span>
-                            </td>
-                            <?php foreach ($timeslots as $slot): 
-                                $currentValue = $capacities[$room['id']][$slot['id']] ?? '';
-                            ?>
-                                <td class="px-4 py-3 text-center">
-                                    <input type="number" 
-                                           name="capacity[<?php echo $room['id']; ?>][<?php echo $slot['id']; ?>]" 
-                                           value="<?php echo $currentValue; ?>"
-                                           placeholder="<?php echo $defaultCapacity; ?>"
-                                           min="0" 
-                                           class="w-20 px-3 py-2 border border-gray-300 rounded-lg text-center focus:ring-2 focus:ring-indigo-500 focus:border-transparent">
-                                </td>
-                            <?php endforeach; ?>
-                        </tr>
                         <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-gray-200">
+                    <?php foreach ($rooms as $room):
+                        // Standardkapazität: 25 oder Raumkapazität (falls kleiner)
+                        $roomCap = intval($room['capacity']);
+                        $defaultCapacity = min(25, $roomCap);
+                    ?>
+                    <tr class="hover:bg-gray-50 transition">
+                        <td class="px-6 py-4 sticky left-0 bg-white hover:bg-gray-50">
+                            <div class="flex items-center">
+                                <div class="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center mr-3">
+                                    <i class="fas fa-door-open text-emerald-500 text-sm"></i>
+                                </div>
+                                <span class="font-semibold text-gray-800"><?php echo htmlspecialchars($room['room_number']); ?></span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-4 text-center">
+                            <span class="inline-flex items-center px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm font-semibold">
+                                <?php echo $defaultCapacity; ?>
+                            </span>
+                        </td>
+                        <?php foreach ($timeslots as $slot):
+                            $currentValue = $capacities[$room['id']][$slot['id']] ?? '';
+                        ?>
+                            <td class="px-4 py-4 text-center">
+                                <input type="number"
+                                       name="capacity[<?php echo $room['id']; ?>][<?php echo $slot['id']; ?>]"
+                                       value="<?php echo $currentValue; ?>"
+                                       placeholder="<?php echo $defaultCapacity; ?>"
+                                       min="0"
+                                       class="w-20 px-3 py-2 border border-gray-200 rounded-lg text-center text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition">
+                            </td>
+                        <?php endforeach; ?>
+                    </tr>
+                    <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
 
         <!-- Actions -->
-        <div class="bg-gray-50 px-6 py-4 border-t border-gray-200 flex justify-between items-center">
-            <div class="text-sm text-gray-600">
-                <i class="fas fa-info-circle mr-2"></i>
+        <div class="px-6 py-4 border-t border-gray-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+            <p class="text-sm text-gray-500">
+                <i class="fas fa-info-circle mr-1 text-gray-400"></i>
                 Änderungen werden sofort auf die automatische Zuteilung angewendet
-            </div>
+            </p>
             <div class="flex gap-3">
-                <button type="button" 
+                <button type="button"
                         onclick="resetToDefaults()"
-                        class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold">
-                    <i class="fas fa-undo mr-2"></i>Auf Standard zurücksetzen
+                        class="px-5 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-medium text-sm">
+                    <i class="fas fa-undo mr-2"></i>Zurücksetzen
                 </button>
-                <button type="submit" 
+                <button type="submit"
                         name="save_capacities"
-                        class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold shadow-lg">
+                        class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                     <i class="fas fa-save mr-2"></i>Speichern
                 </button>
             </div>
@@ -178,34 +167,40 @@ foreach ($stmt->fetchAll() as $cap) {
     </form>
 
     <!-- Statistics -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div class="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-6 text-white">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-blue-100 text-sm mb-1">Räume gesamt</p>
-                    <p class="text-3xl font-bold"><?php echo count($rooms); ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Räume gesamt</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($rooms); ?></p>
                 </div>
-                <i class="fas fa-door-open text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
+                    <i class="fas fa-door-open text-blue-500"></i>
+                </div>
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-green-500 to-green-600 rounded-xl p-6 text-white">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-green-100 text-sm mb-1">Zeitslots</p>
-                    <p class="text-3xl font-bold"><?php echo count($timeslots); ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Zeitslots</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($timeslots); ?></p>
                 </div>
-                <i class="fas fa-clock text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-emerald-50 flex items-center justify-center">
+                    <i class="fas fa-clock text-emerald-500"></i>
+                </div>
             </div>
         </div>
 
-        <div class="bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl p-6 text-white">
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
-                    <p class="text-purple-100 text-sm mb-1">Konfigurationen</p>
-                    <p class="text-3xl font-bold"><?php echo count($capacities); ?></p>
+                    <p class="text-gray-500 text-sm mb-1">Konfigurationen</p>
+                    <p class="text-2xl font-semibold text-gray-800"><?php echo count($capacities); ?></p>
                 </div>
-                <i class="fas fa-cog text-3xl opacity-80"></i>
+                <div class="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center">
+                    <i class="fas fa-cog text-purple-500"></i>
+                </div>
             </div>
         </div>
     </div>

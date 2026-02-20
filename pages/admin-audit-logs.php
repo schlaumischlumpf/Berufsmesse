@@ -111,6 +111,10 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                 <a href="?page=admin-audit-logs" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm font-medium">
                     <i class="fas fa-times mr-1"></i>Zurücksetzen
                 </a>
+                <a href="?page=admin-audit-logs&filter_user=<?php echo urlencode($filterUser); ?>&filter_action=<?php echo urlencode($filterAction); ?>&filter_date=<?php echo urlencode($filterDate); ?>&export=txt"
+                   class="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition text-sm font-medium">
+                    <i class="fas fa-download mr-1"></i>TXT Export
+                </a>
             </div>
         </form>
     </div>
