@@ -45,48 +45,62 @@ try {
     $timeslotId = $qrToken['timeslot_id'];
     $slotNumber = $qrToken['slot_number'];
 
-    // Für Slots 1, 3, 5 (feste Zuteilung): Prüfen ob registriert
-    // Für Slots 2, 4 (freie Wahl): Keine Registrierung erforderlich
-    if (in_array($slotNumber, [1, 3, 5])) {
-        $stmt = $db->prepare("
-            SELECT id FROM registrations
-            WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?
-        ");
-        $stmt->execute([$userId, $exhibitorId, $timeslotId]);
-        $registration = $stmt->fetch();
+    $isFreeSlot = in_array($slotNumber, [2, 4]);
 
-        if (!$registration) {
-            echo json_encode([
-                'success' => false,
-                'message' => 'Du bist nicht für ' . $qrToken['exhibitor_name'] . ' in ' . $qrToken['slot_name'] . ' registriert.'
-            ]);
+    // Prüfen ob registriert
+    $stmt = $db->prepare("SELECT id FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?");
+    $stmt->execute([$userId, $exhibitorId, $timeslotId]);
+    $registration = $stmt->fetch();
+
+    if (!$registration && !$isFreeSlot) {
+        // Feste Slots: Muss registriert sein
+        echo json_encode([
+            'success' => false,
+            'message' => 'Du bist nicht für ' . $qrToken['exhibitor_name'] . ' in ' . $qrToken['slot_name'] . ' registriert.'
+        ]);
+        exit;
+    }
+
+    if (!$registration && $isFreeSlot) {
+        // Freie Wahl: Automatisch einschreiben falls Kapazität
+        $stmt2 = $db->prepare("SELECT room_id FROM exhibitors WHERE id = ?");
+        $stmt2->execute([$exhibitorId]);
+        $exData = $stmt2->fetch();
+        $roomId = $exData ? $exData['room_id'] : null;
+
+        $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
+        $stmt2->execute([$exhibitorId, $timeslotId]);
+        $currentCount = $stmt2->fetchColumn();
+
+        $slotCapacity = $roomId ? getRoomSlotCapacity($roomId, $timeslotId) : 0;
+
+        if ($slotCapacity > 0 && $currentCount >= $slotCapacity) {
+            echo json_encode(['success' => false, 'message' => 'Slot Limit erreicht']);
             exit;
         }
+
+        // Registrierung anlegen
+        $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'qr_checkin')");
+        $stmt2->execute([$userId, $exhibitorId, $timeslotId]);
     }
-    
+
     // Prüfen ob bereits eingecheckt
-    $stmt = $db->prepare("
-        SELECT id FROM attendance 
-        WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?
-    ");
+    $stmt = $db->prepare("SELECT id FROM attendance WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?");
     $stmt->execute([$userId, $exhibitorId, $timeslotId]);
-    
+
     if ($stmt->fetch()) {
         echo json_encode([
-            'success' => true, 
+            'success' => true,
             'message' => 'Du bist bereits als anwesend markiert bei ' . $qrToken['exhibitor_name'] . '.',
             'already_checked_in' => true
         ]);
         exit;
     }
-    
+
     // Anwesenheit eintragen
-    $stmt = $db->prepare("
-        INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token) 
-        VALUES (?, ?, ?, ?)
-    ");
+    $stmt = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token) VALUES (?, ?, ?, ?)");
     $stmt->execute([$userId, $exhibitorId, $timeslotId, $token]);
-    
+
     echo json_encode([
         'success' => true,
         'message' => 'Anwesenheit erfolgreich bestätigt für ' . $qrToken['exhibitor_name'] . ' (' . $qrToken['slot_name'] . ')',

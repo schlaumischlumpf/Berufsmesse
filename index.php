@@ -3,6 +3,9 @@ session_start();
 require_once 'config.php';
 require_once 'functions.php';
 
+// Seitenpasswort prüfen
+checkSitePassword();
+
 requireLogin();
 
 $db = getDB();
@@ -117,16 +120,19 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
         // ============================================================
         
         // Alle Schüler mit weniger als 3 zugewiesenen Slots (timeslot_id NOT NULL)
+        // Sortierung: Schüler die sich eingeschrieben hatten zuerst, dann nach zugewiesenen Slots absteigend
+        // Schüler ohne jegliche Einschreibung kommen zuletzt
         $stmt = $db->query("
             SELECT u.id,
-                   COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number IN (1,3,5) THEN 1 ELSE 0 END), 0) as assigned_count
+                   COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number IN (1,3,5) THEN 1 ELSE 0 END), 0) as assigned_count,
+                   COUNT(r.id) as total_registrations
             FROM users u
             LEFT JOIN registrations r ON u.id = r.user_id
             LEFT JOIN timeslots t ON r.timeslot_id = t.id
             WHERE u.role = 'student'
             GROUP BY u.id
             HAVING assigned_count < " . MANAGED_SLOTS_COUNT . "
-            ORDER BY assigned_count DESC
+            ORDER BY (total_registrations = 0) ASC, assigned_count DESC
         ");
         $studentsNeedingSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
@@ -333,6 +339,8 @@ $userRegistrations = $stmt->fetchAll();
 $regStatus = getRegistrationStatus();
 $regStart = getSetting('registration_start');
 $regEnd = getSetting('registration_end');
+$eventDate = getSetting('event_date');
+$eventYear = $eventDate ? date('Y', strtotime($eventDate)) : date('Y');
 
 // ============================================================
 // Audit Log TXT-Export (VOR HTML-Output, damit header() wirkt)
@@ -804,10 +812,9 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 grid-template-columns: 1fr;
             }
             
-            /* Mobile Hamburger Menü: Safe Area beachten */
-            #mobileMenuBtn {
-                top: max(1rem, env(safe-area-inset-top, 1rem));
-                left: max(1rem, env(safe-area-inset-left, 1rem));
+            /* Mobile Header: Safe Area beachten */
+            #mobileHeader {
+                padding-top: max(0.75rem, env(safe-area-inset-top, 0.75rem));
             }
 
             /* Issue #24: Mobile - Buttons mit Text+Icon nur Icon anzeigen */
@@ -1050,28 +1057,25 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     </style>
 </head>
 <body class="bg-gray-50">
-    <!-- Mobile Menu Button -->
-    <button id="mobileMenuBtn" class="md:hidden fixed top-4 left-4 z-50 bg-white/90 backdrop-blur-sm text-gray-600 p-3 rounded-xl shadow-lg border border-gray-100 transition-all duration-300 hover:bg-white hover:shadow-xl" style="min-width:44px; min-height:44px;">
-        <i class="fas fa-bars text-lg"></i>
-    </button>
-    
     <!-- Mobile Overlay -->
     <div id="mobileOverlay" class="md:hidden fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300 opacity-0"></div>
 
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar sidebar-transition fixed left-0 top-0 h-full bg-white/95 backdrop-blur-lg border-r border-gray-100 w-64 z-40 flex flex-col shadow-xl">
-        <div class="p-6 flex items-center justify-between border-b border-gray-100">
+        <div class="p-6 flex items-center gap-3 border-b border-gray-100">
             <!-- Logo with Gradient -->
-            <div class="flex items-center space-x-3">
-                <div class="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg" style="background: linear-gradient(135deg, var(--color-pastel-mint) 0%, var(--color-pastel-lavender) 100%);">
-                    <i class="fas fa-graduation-cap text-white text-lg"></i>
-                </div>
-                <div>
-                    <h1 class="text-lg font-bold text-gray-800 leading-tight">Berufsmesse</h1>
-                    <p class="text-xs text-gray-400">2026</p>
-                </div>
+            <div class="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg flex-shrink-0" style="background: linear-gradient(135deg, var(--color-pastel-mint) 0%, var(--color-pastel-lavender) 100%);">
+                <i class="fas fa-graduation-cap text-white text-lg"></i>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold text-gray-800 leading-tight">Berufsmesse</h1>
+                <p class="text-xs text-gray-400"><?php echo $eventYear; ?></p>
             </div>
         </div>
+        <!-- Mobile Close Button (outside sidebar, right edge) - hidden by default -->
+        <button id="sidebarCloseBtn" class="md:hidden hidden absolute top-4 p-2 bg-white/90 text-gray-500 hover:text-gray-700 hover:bg-white rounded-full shadow-lg transition-all z-50" style="left: calc(100% + 12px); min-width:40px; min-height:40px;">
+            <i class="fas fa-times text-base"></i>
+        </button>
 
         <!-- Navigation -->
         <div class="flex-1 overflow-y-auto sidebar-scroll px-4 py-4">
@@ -1248,6 +1252,12 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     <main class="md:ml-64 min-h-screen">
         <!-- Content Area with Animation -->
         <div class="page-content p-4 sm:p-6 lg:p-8">
+            <!-- Mobile Burger (floats left of page title) -->
+            <div id="mobileHeader" class="md:hidden float-left mr-3 relative z-20">
+                <button id="mobileMenuBtn" class="bg-gray-50 text-gray-600 p-2.5 rounded-xl border border-gray-200 transition-all duration-200 hover:bg-gray-100" style="min-width:44px; min-height:44px;">
+                    <i class="fas fa-bars text-lg"></i>
+                </button>
+            </div>
             <?php
             // Seiten-Content laden
             $pageLoaded = false;
@@ -1380,59 +1390,56 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     <script src="<?php echo BASE_URL; ?>assets/js/easter-eggs.js"></script>
     
     <script>
-        // Mobile Menu Toggle with Animation
+        // Mobile Menu Toggle
         const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+        const mobileHeader = document.getElementById('mobileHeader');
+        const sidebarCloseBtn = document.getElementById('sidebarCloseBtn');
         const sidebar = document.getElementById('sidebar');
         const mobileOverlay = document.getElementById('mobileOverlay');
-        
+
         function openMobileSidebar() {
             sidebar.classList.add('open');
-            mobileMenuBtn.style.transform = 'rotate(90deg)';
-            mobileMenuBtn.style.opacity = '0.5';
+            if (mobileHeader) mobileHeader.style.display = 'none';
+            if (sidebarCloseBtn) sidebarCloseBtn.classList.remove('hidden');
             if (mobileOverlay) {
                 mobileOverlay.classList.remove('hidden');
                 setTimeout(() => mobileOverlay.classList.add('opacity-100'), 10);
                 mobileOverlay.classList.remove('opacity-0');
             }
         }
-        
+
         function closeMobileSidebar() {
             sidebar.classList.remove('open');
-            mobileMenuBtn.style.transform = 'rotate(0)';
-            mobileMenuBtn.style.opacity = '1';
+            if (mobileHeader) mobileHeader.style.display = '';
+            if (sidebarCloseBtn) sidebarCloseBtn.classList.add('hidden');
             if (mobileOverlay) {
                 mobileOverlay.classList.remove('opacity-100');
                 mobileOverlay.classList.add('opacity-0');
                 setTimeout(() => mobileOverlay.classList.add('hidden'), 300);
             }
         }
-        
-        mobileMenuBtn.addEventListener('click', () => {
-            if (sidebar.classList.contains('open')) {
-                closeMobileSidebar();
-            } else {
+
+        if (mobileMenuBtn) {
+            mobileMenuBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
                 openMobileSidebar();
-            }
-        });
-        
+            });
+        }
+
+        if (sidebarCloseBtn) {
+            sidebarCloseBtn.addEventListener('click', closeMobileSidebar);
+        }
+
         if (mobileOverlay) {
             mobileOverlay.addEventListener('click', closeMobileSidebar);
         }
 
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
-            if (window.innerWidth < 768) {
-                if (!sidebar.contains(e.target) && !mobileMenuBtn.contains(e.target) && !(mobileOverlay && mobileOverlay.contains(e.target))) {
+            if (window.innerWidth < 768 && sidebar.classList.contains('open')) {
+                if (!sidebar.contains(e.target) && !(mobileOverlay && mobileOverlay.contains(e.target))) {
                     closeMobileSidebar();
                 }
-            }
-        });
-        
-        // Reset button when window is resized to desktop
-        window.addEventListener('resize', () => {
-            if (window.innerWidth >= 768) {
-                mobileMenuBtn.style.transform = 'rotate(0)';
-                mobileMenuBtn.style.opacity = '1';
             }
         });
         

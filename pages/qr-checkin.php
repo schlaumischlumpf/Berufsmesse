@@ -27,32 +27,75 @@ if (!empty($token)) {
         $userId = $_SESSION['user_id'];
         $exhibitorId = $qrToken['exhibitor_id'];
         $timeslotId = $qrToken['timeslot_id'];
-        
+        $slotNumber = $qrToken['slot_number'];
+        $isFreeSlot = in_array($slotNumber, [2, 4]);
+
         // Prüfen ob der Schüler für diesen Aussteller/Slot registriert ist
         $stmt = $db->prepare("
-            SELECT id FROM registrations 
+            SELECT id FROM registrations
             WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?
         ");
         $stmt->execute([$userId, $exhibitorId, $timeslotId]);
         $registration = $stmt->fetch();
-        
-        if (!$registration) {
+
+        if (!$registration && !$isFreeSlot) {
+            // Feste Slots (1,3,5): Muss registriert sein
             $checkinResult = [
-                'type' => 'warning', 
+                'type' => 'warning',
                 'message' => 'Du bist nicht für diesen Aussteller in diesem Zeitslot zugeteilt.',
                 'exhibitor' => $qrToken
             ];
+        } elseif (!$registration && $isFreeSlot) {
+            // Freie Wahl (2,4): Automatisch einschreiben falls Kapazität
+            $roomId = null;
+            $stmt2 = $db->prepare("SELECT room_id FROM exhibitors WHERE id = ?");
+            $stmt2->execute([$exhibitorId]);
+            $exData = $stmt2->fetch();
+            if ($exData) $roomId = $exData['room_id'];
+
+            // Aktuelle Belegung prüfen
+            $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
+            $stmt2->execute([$exhibitorId, $timeslotId]);
+            $currentCount = $stmt2->fetchColumn();
+
+            $slotCapacity = $roomId ? getRoomSlotCapacity($roomId, $timeslotId) : 0;
+
+            if ($slotCapacity > 0 && $currentCount >= $slotCapacity) {
+                $checkinResult = [
+                    'type' => 'error',
+                    'message' => 'Slot Limit erreicht - es sind leider keine Plätze mehr frei.',
+                    'exhibitor' => $qrToken
+                ];
+            } else {
+                // Registrierung + Anwesenheit eintragen
+                try {
+                    $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'qr_checkin')");
+                    $stmt2->execute([$userId, $exhibitorId, $timeslotId]);
+
+                    $stmt2 = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token) VALUES (?, ?, ?, ?)");
+                    $stmt2->execute([$userId, $exhibitorId, $timeslotId, $token]);
+
+                    $checkinResult = [
+                        'type' => 'success',
+                        'message' => 'Eingeschrieben und Anwesenheit bestätigt!',
+                        'exhibitor' => $qrToken
+                    ];
+                } catch (Exception $e) {
+                    $checkinResult = ['type' => 'error', 'message' => 'Fehler beim Check-in: ' . $e->getMessage()];
+                }
+            }
         } else {
+            // Bereits registriert - normal checkin
             // Prüfen ob bereits eingecheckt
             $stmt = $db->prepare("
-                SELECT id FROM attendance 
+                SELECT id FROM attendance
                 WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?
             ");
             $stmt->execute([$userId, $exhibitorId, $timeslotId]);
-            
+
             if ($stmt->fetch()) {
                 $checkinResult = [
-                    'type' => 'info', 
+                    'type' => 'info',
                     'message' => 'Du bist bereits als anwesend markiert.',
                     'exhibitor' => $qrToken
                 ];
@@ -60,13 +103,13 @@ if (!empty($token)) {
                 // Anwesenheit eintragen
                 try {
                     $stmt = $db->prepare("
-                        INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token) 
+                        INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token)
                         VALUES (?, ?, ?, ?)
                     ");
                     $stmt->execute([$userId, $exhibitorId, $timeslotId, $token]);
-                    
+
                     $checkinResult = [
-                        'type' => 'success', 
+                        'type' => 'success',
                         'message' => 'Anwesenheit erfolgreich bestätigt!',
                         'exhibitor' => $qrToken
                     ];

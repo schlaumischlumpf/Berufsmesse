@@ -81,7 +81,7 @@ class PersonalPDF extends FPDF {
         // Titel
         $this->SetFont('Arial', 'B', 16);
         $this->SetXY(15, 13);
-        $this->Cell(100, 8, 'Berufsmesse ' . date('Y'), 0, 1);
+        $this->Cell(100, 8, 'Berufsmesse ' . date('Y', strtotime($this->eventDate)), 0, 1);
 
         $this->SetFont('Arial', '', 10);
         $this->SetXY(15, 21);
@@ -105,7 +105,7 @@ class PersonalPDF extends FPDF {
         $this->SetY(-15);
         $this->SetFont('Arial', 'I', 8);
         $this->SetTextColor(150, 150, 150);
-        $this->Cell(95, 10, 'Berufsmesse ' . date('Y') . ' - ' . conv($this->userName), 0, 0, 'L');
+        $this->Cell(95, 10, 'Berufsmesse ' . date('Y', strtotime($this->eventDate)) . ' - ' . conv($this->userName), 0, 0, 'L');
         $this->Cell(95, 10, 'Bei Fragen wende dich an deine Lehrkraft.', 0, 0, 'R');
         $this->SetTextColor(0, 0, 0);
     }

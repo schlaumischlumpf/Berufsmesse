@@ -96,7 +96,7 @@ class ClassPDF extends FPDF {
         // Titel links
         $this->SetFont('Arial', 'B', 14);
         $this->SetXY(10, 10);
-        $this->Cell($pageW - 100, 7, conv("Berufsmesse " . date('Y') . "  \u{2013}  " . $this->docTitle), 0, 0);
+        $this->Cell($pageW - 100, 7, conv("Berufsmesse " . date('Y', strtotime($this->eventDate)) . "  \u{2013}  " . $this->docTitle), 0, 0);
 
         // Datum rechts
         $this->SetFont('Arial', '', 9);
@@ -121,7 +121,7 @@ class ClassPDF extends FPDF {
         $pageW = $this->GetPageWidth();
         $this->Line(10, $this->GetY(), $pageW - 10, $this->GetY());
         $this->Ln(1);
-        $this->Cell(0, 5, conv('Berufsmesse ' . date('Y') . ' – ' . $this->docTitle . ' – Seite ') . $this->PageNo() . '/{nb}', 0, 0, 'C');
+        $this->Cell(0, 5, conv('Berufsmesse ' . date('Y', strtotime($this->eventDate)) . ' – ' . $this->docTitle . ' – Seite ') . $this->PageNo() . '/{nb}', 0, 0, 'C');
         $this->SetTextColor(0, 0, 0);
     }
 

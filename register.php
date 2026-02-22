@@ -3,8 +3,14 @@ session_start();
 require_once 'config.php';
 require_once 'functions.php';
 
-// Diese Seite sollte nur temporär für Tests verwendet werden
-// Für Produktion: Diese Seite löschen oder mit Passwort schützen
+// Seitenpasswort prüfen
+checkSitePassword();
+
+// Prüfen ob Registrierungsseite aktiviert ist
+if (getSetting('registration_page_enabled', '0') !== '1') {
+    header('Location: login.php');
+    exit();
+}
 
 $message = '';
 $messageType = '';

@@ -29,6 +29,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
     $message = ['type' => 'success', 'text' => 'Einstellungen erfolgreich gespeichert'];
 }
 
+// Handle Security Settings Update (nur Admins)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_security'])) {
+    if (!isAdmin()) {
+        die('Keine Berechtigung - nur Administratoren');
+    }
+    $regEnabled = isset($_POST['registration_page_enabled']) ? '1' : '0';
+    $sitePassEnabled = isset($_POST['site_password_enabled']) ? '1' : '0';
+    $sitePass = $_POST['site_password'] ?? '';
+
+    updateSetting('registration_page_enabled', $regEnabled);
+    updateSetting('site_password_enabled', $sitePassEnabled);
+
+    // Passwort nur aktualisieren wenn ein neues eingegeben wurde
+    if (!empty($sitePass)) {
+        updateSetting('site_password', password_hash($sitePass, PASSWORD_DEFAULT));
+    }
+
+    // Wenn Seitenpasswort deaktiviert wird, Hash loeschen
+    if ($sitePassEnabled === '0') {
+        updateSetting('site_password', '');
+    }
+
+    logAuditAction('sicherheit_geaendert', "Registrierung: $regEnabled, Seitenpasswort: $sitePassEnabled");
+    $message = ['type' => 'success', 'text' => 'Sicherheitseinstellungen gespeichert'];
+}
+
 // Handle QR Code URL Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
@@ -49,7 +75,10 @@ $currentSettings = [
     'event_date' => getSetting('event_date'),
     'max_registrations_per_student' => getSetting('max_registrations_per_student', 3),
     'auto_close_registration' => getSetting('auto_close_registration', '1'),
-    'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL)
+    'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL),
+    'registration_page_enabled' => getSetting('registration_page_enabled', '0'),
+    'site_password_enabled' => getSetting('site_password_enabled', '0'),
+    'site_password_set' => !empty(getSetting('site_password', ''))
 ];
 
 // Branchen-Verwaltung wurde nach admin-exhibitors.php verschoben
@@ -83,6 +112,12 @@ $currentSettings = [
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-qrcode"></i> <span>QR-Codes</span>
             </button>
+            <?php if (isAdmin()): ?>
+            <button onclick="switchSettingsTab('sicherheit')" data-tab="sicherheit"
+                    class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-shield-alt"></i> <span>Sicherheit</span>
+            </button>
+            <?php endif; ?>
             <button onclick="switchSettingsTab('system')" data-tab="system"
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-info-circle"></i> <span>System</span>
@@ -247,6 +282,72 @@ $currentSettings = [
         </div>
 
         <!-- ============================================================ -->
+        <!-- TAB: Sicherheit (nur fuer Admins) -->
+        <!-- ============================================================ -->
+        <?php if (isAdmin()): ?>
+        <div id="tab-sicherheit" class="settings-tab-content hidden p-4 sm:p-6">
+            <form method="POST" class="space-y-6">
+
+                <!-- Registrierungsseite -->
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-user-plus text-purple-500"></i> Registrierungsseite
+                    </h4>
+                    <label class="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition">
+                        <input type="checkbox" name="registration_page_enabled" value="1"
+                               <?php echo $currentSettings['registration_page_enabled'] === '1' ? 'checked' : ''; ?>
+                               class="w-5 h-5 text-emerald-500 rounded border-gray-300 focus:ring-emerald-400 mt-0.5 flex-shrink-0">
+                        <div>
+                            <span class="text-sm font-medium text-gray-700 block">Registrierungsseite aktivieren</span>
+                            <span class="text-xs text-gray-500">Wenn deaktiviert, wird register.php automatisch auf die Login-Seite umgeleitet. Benutzer koennen sich dann nicht selbst registrieren.</span>
+                        </div>
+                    </label>
+                </div>
+
+                <!-- Seitenpasswort -->
+                <div>
+                    <h4 class="text-sm font-semibold text-gray-800 mb-3 flex items-center gap-2">
+                        <i class="fas fa-key text-amber-500"></i> Seitenpasswort (Zugangscode)
+                    </h4>
+                    <p class="text-xs text-gray-500 mb-3">Schuetzt die gesamte Webseite mit einem Zugangscode. Besucher muessen diesen Code eingeben, bevor sie die Login-Seite sehen.</p>
+
+                    <label class="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition mb-3">
+                        <input type="checkbox" name="site_password_enabled" value="1" id="sitePasswordToggle"
+                               <?php echo $currentSettings['site_password_enabled'] === '1' ? 'checked' : ''; ?>
+                               onchange="toggleSitePasswordField()"
+                               class="w-5 h-5 text-emerald-500 rounded border-gray-300 focus:ring-emerald-400 mt-0.5 flex-shrink-0">
+                        <div>
+                            <span class="text-sm font-medium text-gray-700 block">Seitenpasswort aktivieren</span>
+                            <span class="text-xs text-gray-500">Alle Seiten werden mit einem Zugangscode geschuetzt.</span>
+                        </div>
+                    </label>
+
+                    <div id="sitePasswordField" class="<?php echo $currentSettings['site_password_enabled'] !== '1' ? 'hidden' : ''; ?>">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Neuen Zugangscode setzen</label>
+                        <input type="password" name="site_password"
+                               placeholder="<?php echo $currentSettings['site_password_set'] ? 'Aktueller Code gesetzt - leer lassen um beizubehalten' : 'Neuen Zugangscode eingeben'; ?>"
+                               autocomplete="new-password"
+                               class="w-full sm:w-80 px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 text-sm">
+                        <?php if ($currentSettings['site_password_set']): ?>
+                        <p class="text-xs text-emerald-600 mt-1"><i class="fas fa-check-circle mr-1"></i>Zugangscode ist gesetzt. Leer lassen, um den aktuellen Code beizubehalten.</p>
+                        <?php else: ?>
+                        <p class="text-xs text-gray-400 mt-1">Der Zugangscode wird verschluesselt gespeichert.</p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Speichern -->
+                <div class="pt-2">
+                    <button type="submit" name="save_security"
+                            class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
+                        <i class="fas fa-save mr-2"></i>Sicherheitseinstellungen speichern
+                    </button>
+                </div>
+            </form>
+        </div>
+        <?php endif; ?>
+
+        <!-- ============================================================ -->
         <!-- TAB 3: System (Branchen wurde nach admin-exhibitors.php verschoben) -->
         <!-- ============================================================ -->
         <div id="tab-system" class="settings-tab-content hidden p-4 sm:p-6">
@@ -355,6 +456,17 @@ function updateQrPreview() {
             document.getElementById('qrPreviewUrl').textContent = url + '?page=qr-checkin&token=BEISPIEL';
         }
     }, 500);
+}
+
+// Seitenpasswort-Feld ein-/ausblenden
+function toggleSitePasswordField() {
+    const toggle = document.getElementById('sitePasswordToggle');
+    const field = document.getElementById('sitePasswordField');
+    if (toggle.checked) {
+        field.classList.remove('hidden');
+    } else {
+        field.classList.add('hidden');
+    }
 }
 
 // editIndustry und cancelEditIndustry wurden nach admin-exhibitors.php verschoben

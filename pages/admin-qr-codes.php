@@ -116,13 +116,16 @@ try {
     error_log('QR-Codes Page - Attendance Stats Error: ' . $e->getMessage());
 }
 
-// Gesamte Anwesenheit laden (Issue #27)
+// Registrierungen + Anwesenheit laden (zeigt alle Angemeldeten mit Scan-Status)
 try {
     $stmt = $db->query("
-        SELECT a.exhibitor_id, a.timeslot_id, a.checked_in_at, u.firstname, u.lastname, u.class, u.id as user_id
-        FROM attendance a
-        JOIN users u ON a.user_id = u.id
-        ORDER BY a.exhibitor_id, a.timeslot_id, u.lastname, u.firstname
+        SELECT r.exhibitor_id, r.timeslot_id, u.firstname, u.lastname, u.class, u.id as user_id,
+               a.checked_in_at
+        FROM registrations r
+        JOIN users u ON r.user_id = u.id
+        LEFT JOIN attendance a ON a.user_id = r.user_id AND a.exhibitor_id = r.exhibitor_id AND a.timeslot_id = r.timeslot_id
+        WHERE r.timeslot_id IS NOT NULL
+        ORDER BY r.exhibitor_id, r.timeslot_id, u.lastname, u.firstname
     ");
     $attendanceDetails = [];
     foreach ($stmt->fetchAll() as $row) {
@@ -314,10 +317,11 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
             <div class="border border-gray-200 rounded-lg p-4 <?php echo $token ? 'bg-gray-50' : 'bg-yellow-50 border-yellow-200'; ?>">
                 <div class="flex items-center justify-between mb-3">
                     <span class="text-sm font-medium text-gray-700"><?php echo htmlspecialchars($timeslot['slot_name']); ?></span>
+                    <?php $isFreeSlot = in_array($timeslot['slot_number'], [2, 4]); ?>
                     <button type="button" onclick='showAttendanceList(<?php echo json_encode($exhibitor["name"]); ?>, <?php echo json_encode($timeslot["slot_name"]); ?>, <?php echo json_encode($attendanceDetails[$key] ?? []); ?>)'
                             class="text-xs px-2 py-1 rounded-full cursor-pointer hover:opacity-80 transition <?php echo $presentCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'; ?>"
                             title="Klicken für Anwesenheitsliste">
-                        <i class="fas fa-users mr-1"></i><?php echo $presentCount; ?>/<?php echo $regCount; ?> anwesend
+                        <i class="fas fa-users mr-1"></i><?php if ($isFreeSlot): ?><?php echo $presentCount; ?> anwesend<?php else: ?><?php echo $presentCount; ?>/<?php echo $regCount; ?> anwesend<?php endif; ?>
                     </button>
                 </div>
                 
@@ -451,30 +455,36 @@ document.addEventListener('keydown', function(e) {
     }
 });
 
-// Anwesenheitsliste anzeigen (Issue #27)
+// Anwesenheitsliste anzeigen (zeigt alle Angemeldeten mit Scan-Status)
 function showAttendanceList(exhibitorName, slotName, attendees) {
     const modal = document.getElementById('attendanceModal');
     document.getElementById('attendanceTitle').textContent = exhibitorName + ' – ' + slotName;
-    
+
     const tbody = document.getElementById('attendanceTableBody');
     tbody.innerHTML = '';
-    
+
     if (attendees.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-6 text-center text-gray-500"><i class="fas fa-user-slash text-2xl mb-2"></i><br>Noch keine Anwesenden</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="px-4 py-6 text-center text-gray-500"><i class="fas fa-user-slash text-2xl mb-2"></i><br>Keine Anmeldungen</td></tr>';
     } else {
+        const scannedCount = attendees.filter(a => a.checked_in_at).length;
         attendees.forEach(function(a, idx) {
-            const checkinTime = a.checked_in_at ? new Date(a.checked_in_at).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit'}) : '-';
+            const scanned = !!a.checked_in_at;
+            const checkinTime = scanned ? new Date(a.checked_in_at).toLocaleTimeString('de-DE', {hour: '2-digit', minute: '2-digit', second: '2-digit'}) : '';
             const row = document.createElement('tr');
-            row.className = 'hover:bg-gray-50';
+            row.className = scanned ? 'hover:bg-gray-50 bg-emerald-50/30' : 'hover:bg-gray-50';
             row.innerHTML = '<td class="px-4 py-2 text-sm text-gray-600">' + (idx + 1) + '</td>' +
                 '<td class="px-4 py-2 text-sm font-medium text-gray-800">' + escapeHtml(a.firstname) + ' ' + escapeHtml(a.lastname) + '</td>' +
                 '<td class="px-4 py-2 text-sm text-gray-600">' + escapeHtml(a.class || '-') + '</td>' +
-                '<td class="px-4 py-2 text-sm text-gray-500">' + checkinTime + '</td>';
+                '<td class="px-4 py-2 text-sm">' +
+                    (scanned
+                        ? '<span class="inline-flex items-center gap-1 text-emerald-600"><i class="fas fa-check-circle"></i> ' + checkinTime + '</span>'
+                        : '<span class="inline-flex items-center gap-1 text-red-400"><i class="fas fa-times-circle"></i> Fehlt</span>') +
+                '</td>';
             tbody.appendChild(row);
         });
+        document.getElementById('attendanceCount').textContent = scannedCount + '/' + attendees.length + ' gescannt';
     }
-    
-    document.getElementById('attendanceCount').textContent = attendees.length + ' Anwesende';
+
     modal.classList.remove('hidden');
 }
 
@@ -521,7 +531,7 @@ document.getElementById('attendanceModal')?.addEventListener('click', function(e
                         <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Nr.</th>
                         <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Name</th>
                         <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Klasse</th>
-                        <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Check-in</th>
+                        <th class="px-4 py-2 text-left text-xs font-semibold text-gray-600 uppercase">Status</th>
                     </tr>
                 </thead>
                 <tbody id="attendanceTableBody" class="divide-y divide-gray-100">

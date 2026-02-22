@@ -140,7 +140,7 @@ CREATE TABLE IF NOT EXISTS `registrations` (
   `user_id` int(11) NOT NULL,
   `exhibitor_id` int(11) NOT NULL,
   `timeslot_id` int(11) DEFAULT NULL,
-  `registration_type` enum('manual','automatic') DEFAULT 'manual',
+  `registration_type` enum('manual','automatic','qr_checkin') DEFAULT 'manual',
   `priority` int(11) DEFAULT NULL COMMENT 'Priorität der Anmeldung (1 = höchste Priorität)',
   `registered_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),

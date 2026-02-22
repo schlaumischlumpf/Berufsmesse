@@ -143,17 +143,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $slotNumber = $reg['slot_number'];
 
             // Finde einen anderen Aussteller mit Kapazität im gleichen Slot
+            // Schüler darf dort nicht bereits registriert sein (unique_user_exhibitor)
             $stmt = $db->prepare("
                 SELECT e.id, e.name, e.room_id,
                        COUNT(DISTINCT r2.user_id) as current_count
                 FROM exhibitors e
                 LEFT JOIN registrations r2 ON e.id = r2.exhibitor_id AND r2.timeslot_id = ?
                 WHERE e.active = 1 AND e.id != ? AND e.room_id IS NOT NULL
+                  AND e.id NOT IN (SELECT exhibitor_id FROM registrations WHERE user_id = ?)
                 GROUP BY e.id, e.name, e.room_id
                 ORDER BY current_count ASC, RAND()
                 LIMIT 1
             ");
-            $stmt->execute([$timeslotId, $id]);
+            $stmt->execute([$timeslotId, $id, $studentId]);
             $newExhibitor = $stmt->fetch();
 
             if ($newExhibitor) {
@@ -161,9 +163,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $slotCapacity = getRoomSlotCapacity($newExhibitor['room_id'], $timeslotId);
                 if ($slotCapacity > 0 && $newExhibitor['current_count'] < $slotCapacity) {
                     // Umverteilung durchführen
-                    $stmt = $db->prepare("UPDATE registrations SET exhibitor_id = ? WHERE id = ?");
-                    if ($stmt->execute([$newExhibitor['id'], $reg['id']])) {
-                        $redistributedCount++;
+                    try {
+                        $stmt = $db->prepare("UPDATE registrations SET exhibitor_id = ? WHERE id = ?");
+                        if ($stmt->execute([$newExhibitor['id'], $reg['id']])) {
+                            $redistributedCount++;
+                        }
+                    } catch (PDOException $e) {
+                        // Constraint-Verletzung - Registrierung wird durch CASCADE gelöscht
                     }
                 } else {
                     // Keine Kapazität - Registrierung löschen (wird durch CASCADE gelöscht)

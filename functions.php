@@ -662,6 +662,29 @@ function removeExhibitorOrgaMember($userId, $exhibitorId) {
  * Checks if user can access QR codes for an exhibitor
  * Admins and regular orga can access all, exhibitor-orga can only access their assigned ones
  */
+// Seitenpasswort-Schutz prüfen
+function checkSitePassword() {
+    // Prüfen ob Seitenpasswort aktiviert ist
+    if (getSetting('site_password_enabled', '0') !== '1') {
+        return;
+    }
+
+    $sitePassword = getSetting('site_password', '');
+    if (empty($sitePassword)) {
+        return;
+    }
+
+    // Bereits authentifiziert?
+    if (isset($_SESSION['site_authenticated']) && $_SESSION['site_authenticated'] === true) {
+        return;
+    }
+
+    // Redirect zur Passwort-Eingabeseite
+    $returnUrl = $_SERVER['REQUEST_URI'] ?? '';
+    header('Location: ' . BASE_URL . 'site-auth.php?redirect=' . urlencode($returnUrl));
+    exit();
+}
+
 function canAccessExhibitorQR($userId, $exhibitorId) {
     // Admins can access everything
     if (isAdmin()) {

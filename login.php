@@ -3,6 +3,9 @@ session_start();
 require_once 'config.php';
 require_once 'functions.php';
 
+// Seitenpasswort prüfen
+checkSitePassword();
+
 // Wenn bereits eingeloggt, weiterleiten
 if (isLoggedIn()) {
     $redirect = $_GET['redirect'] ?? '';

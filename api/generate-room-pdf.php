@@ -91,7 +91,7 @@ class RoomPDF extends FPDF {
         // Titel
         $this->SetFont('Arial', 'B', 16);
         $this->SetXY(15, 13);
-        $this->Cell(100, 8, 'Berufsmesse ' . date('Y'), 0, 1);
+        $this->Cell(100, 8, 'Berufsmesse ' . date('Y', strtotime($this->eventDate)), 0, 1);
 
         $this->SetFont('Arial', '', 10);
         $this->SetXY(15, 21);
@@ -115,7 +115,7 @@ class RoomPDF extends FPDF {
         $this->SetY(-15);
         $this->SetFont('Arial', 'I', 8);
         $this->SetTextColor(150, 150, 150);
-        $this->Cell(0, 10, 'Berufsmesse ' . date('Y') . ' - ' . $this->docTitle . ' - Seite ' . $this->PageNo() . '/{nb}', 0, 0, 'C');
+        $this->Cell(0, 10, 'Berufsmesse ' . date('Y', strtotime($this->eventDate)) . ' - ' . $this->docTitle . ' - Seite ' . $this->PageNo() . '/{nb}', 0, 0, 'C');
         $this->SetTextColor(0, 0, 0);
     }
 

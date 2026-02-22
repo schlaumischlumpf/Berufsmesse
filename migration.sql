@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS `exhibitor_orga_team` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Orga-Team Zuordnung zu einzelnen Ausstellern';
 
 -- ============================================================================
+-- 3. registration_type ENUM um 'qr_checkin' erweitern
+-- ============================================================================
+
+ALTER TABLE `registrations` MODIFY COLUMN `registration_type` enum('manual','automatic','qr_checkin') DEFAULT 'manual';
+
+-- ============================================================================
 -- Migration erfolgreich abgeschlossen
 -- ============================================================================
 -- Die folgenden neuen Funktionen sind nun verfügbar:
