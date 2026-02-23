@@ -373,6 +373,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                                             data-group-ids='<?php echo htmlspecialchars(json_encode($userGroups), ENT_QUOTES, 'UTF-8'); ?>'>
                                         <i class="fas fa-shield-alt mr-2"></i>Berechtigungen
                                     </button>
+                                    <?php endif; ?>
                                 </div>
                             <?php else: ?>
                                 <span class="text-gray-400 text-sm italic">-</span>
@@ -393,10 +394,12 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                     <i class="fas fa-layer-group mr-3"></i>
                     Berechtigungsgruppen
                 </h3>
+                <?php if (isAdmin() || hasPermission('berechtigungsgruppen_verwalten')): ?>
                 <button onclick="document.getElementById('createGroupModal').classList.remove('hidden');document.getElementById('createGroupModal').classList.add('flex')" 
                         class="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition text-sm font-medium">
                     <i class="fas fa-plus mr-1"></i>Neue Gruppe
                 </button>
+                <?php endif; ?>
             </div>
         </div>
 

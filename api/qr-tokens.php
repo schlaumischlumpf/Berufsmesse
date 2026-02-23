@@ -3,7 +3,6 @@
  * QR-Code Token generieren/abrufen (Issue #15)
  * Generiert für jeden Aussteller pro Slot einen temporären QR-Token
  */
-session_start();
 require_once '../config.php';
 require_once '../functions.php';
 

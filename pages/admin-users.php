@@ -184,6 +184,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+    } elseif (isset($_POST['edit_user'])) {
+        if (!isAdmin() && !hasPermission('benutzer_bearbeiten')) die('Keine Berechtigung');
+        $userId    = intval($_POST['user_id']);
+        $firstname = sanitize($_POST['firstname']);
+        $lastname  = sanitize($_POST['lastname']);
+        $email     = sanitize($_POST['email']);
+        $newRole   = sanitize($_POST['role']);
+        $class     = sanitize($_POST['class'] ?? '');
+
+        if ($newRole === 'admin' && !isAdmin()) {
+            $message = ['type' => 'error', 'text' => 'Nur Administratoren können die Admin-Rolle vergeben'];
+        } else {
+            // Aktuelle Rolle laden
+            $stmt = $db->prepare("SELECT role, firstname, lastname FROM users WHERE id = ?");
+            $stmt->execute([$userId]);
+            $currentUser = $stmt->fetch();
+            $oldRole = $currentUser ? $currentUser['role'] : null;
+
+            if ($oldRole === 'admin' && !isAdmin()) {
+                $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts bearbeiten'];
+            } else {
+                $stmt = $db->prepare("UPDATE users SET firstname = ?, lastname = ?, email = ?, role = ?, class = ? WHERE id = ?");
+                if ($stmt->execute([$firstname, $lastname, $email, $newRole, $class, $userId])) {
+                    // Wenn Rolle zu Schüler geändert: alle Berechtigungen entziehen
+                    if ($newRole === 'student' && $oldRole !== 'student') {
+                        $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$userId]);
+                        logAuditAction('benutzer_rolle_geaendert', "Benutzer #{$userId} ({$currentUser['firstname']} {$currentUser['lastname']}): Rolle $oldRole → $newRole. Alle Berechtigungen entzogen.");
+                        $message = ['type' => 'success', 'text' => 'Benutzer aktualisiert. Da die Rolle auf Schüler geändert wurde, wurden alle Berechtigungen entzogen.'];
+                    } else {
+                        logAuditAction('benutzer_bearbeitet', "Benutzer #{$userId}: Rolle $oldRole → $newRole, Name: $firstname $lastname");
+                        $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich aktualisiert'];
+                    }
+                } else {
+                    $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren des Benutzers'];
+                }
+            }
+        }
     } elseif (isset($_POST['reset_password'])) {
         if (!isAdmin() && !hasPermission('benutzer_passwort_zuruecksetzen')) die('Keine Berechtigung');
         // Passwort zurücksetzen
@@ -353,14 +390,18 @@ $stats['teachers'] = $stmt->fetch()['count'];
             <p class="text-sm text-gray-500 mt-1">Benutzer erstellen, bearbeiten und löschen</p>
         </div>
         <div class="flex gap-2">
+            <?php if (isAdmin() || hasPermission('benutzer_importieren')): ?>
             <button onclick="openImportCsvModal()" class="px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center gap-2">
                 <i class="fas fa-file-upload"></i>
                 CSV Import
             </button>
+            <?php endif; ?>
+            <?php if (isAdmin() || hasPermission('benutzer_erstellen')): ?>
             <button onclick="openCreateUserModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
                 <i class="fas fa-user-plus"></i>
                 Neuer Benutzer
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -500,7 +541,8 @@ $stats['teachers'] = $stmt->fetch()['count'];
                                             class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
                                         <i class="fas fa-key mr-1"></i>Passwort
                                     </button>
-                                    <?php if ($user['id'] !== $_SESSION['user_id']): ?>
+                                    <?php endif; ?>
+                                    <?php if ($user['id'] !== $_SESSION['user_id'] && (isAdmin() || hasPermission('benutzer_loeschen'))): ?>
                                     <button onclick="confirmDeleteUser(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
                                             class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm font-medium">
                                         <i class="fas fa-trash mr-1"></i>Löschen

@@ -329,6 +329,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// === Branchen-Verwaltung Handlers ===
+$industryMessage = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_industry'])) {
+    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    $name = trim($_POST['industry_name'] ?? '');
+    $sortOrder = intval($_POST['industry_sort_order'] ?? 0);
+    if (empty($name)) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf nicht leer sein'];
+    } elseif (mb_strlen($name) > 100) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf maximal 100 Zeichen lang sein'];
+    } else {
+        try {
+            $stmt = $db->prepare("INSERT INTO industries (name, sort_order) VALUES (?, ?)");
+            $stmt->execute([$name, $sortOrder]);
+            logAuditAction('branche_erstellt', "Branche '$name' angelegt");
+            $industryMessage = ['type' => 'success', 'text' => "Branche '$name' angelegt"];
+        } catch (PDOException $e) {
+            $industryMessage = ['type' => 'error', 'text' => 'Branchenname bereits vorhanden'];
+        }
+    }
+    $activeTab = 'branchen';
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_industry'])) {
+    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    $id = intval($_POST['industry_id']);
+    $name = trim($_POST['industry_name'] ?? '');
+    $sortOrder = intval($_POST['industry_sort_order'] ?? 0);
+    if (empty($name)) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf nicht leer sein'];
+    } elseif (mb_strlen($name) > 100) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf maximal 100 Zeichen lang sein'];
+    } else {
+        $stmt = $db->prepare("UPDATE industries SET name = ?, sort_order = ? WHERE id = ?");
+        $stmt->execute([$name, $sortOrder, $id]);
+        logAuditAction('branche_bearbeitet', "Branche #$id auf '$name' geändert");
+        $industryMessage = ['type' => 'success', 'text' => 'Branche aktualisiert'];
+    }
+    $activeTab = 'branchen';
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_industry'])) {
+    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    $id = intval($_POST['industry_id']);
+    $stmt = $db->prepare("SELECT COUNT(*) FROM exhibitors WHERE category = (SELECT name FROM industries WHERE id = ?)");
+    $stmt->execute([$id]);
+    if ($stmt->fetchColumn() > 0) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branche kann nicht gelöscht werden, da sie noch von Ausstellern verwendet wird'];
+    } else {
+        $nameStmt = $db->prepare("SELECT name FROM industries WHERE id = ?");
+        $nameStmt->execute([$id]);
+        $delName = $nameStmt->fetchColumn();
+        $db->prepare("DELETE FROM industries WHERE id = ?")->execute([$id]);
+        logAuditAction('branche_geloescht', "Branche '$delName' gelöscht");
+        $industryMessage = ['type' => 'success', 'text' => 'Branche gelöscht'];
+    }
+    $activeTab = 'branchen';
+}
+
+// === Orga-Team Handlers ===
+$orgaMessage = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
+    if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
+    $exhibitorId = intval($_POST['exhibitor_id']);
+    $userId = intval($_POST['user_id']);
+    if ($exhibitorId && $userId) {
+        try {
+            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga (exhibitor_id, user_id) VALUES (?, ?)");
+            $stmt->execute([$exhibitorId, $userId]);
+            logAuditAction('orga_zugewiesen', "Orga-Mitglied #$userId Aussteller #$exhibitorId zugewiesen");
+            $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich zugewiesen'];
+        } catch (PDOException $e) {
+            $orgaMessage = ['type' => 'error', 'text' => 'Zuweisung fehlgeschlagen: ' . $e->getMessage()];
+        }
+    }
+    $activeTab = 'orga-team';
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_orga'])) {
+    if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
+    $orgaId = intval($_POST['orga_id']);
+    $db->prepare("DELETE FROM exhibitor_orga WHERE id = ?")->execute([$orgaId]);
+    logAuditAction('orga_entfernt', "Orga-Zuweisung #$orgaId entfernt");
+    $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied entfernt'];
+    $activeTab = 'orga-team';
+}
+
 // Logo-Upload Funktion
 function handleLogoUpload($file) {
     $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -355,8 +439,39 @@ function handleLogoUpload($file) {
 
 // Branchen aus DB laden
 $industries = getIndustries();
+$allIndustries = $industries;
 $industryNames = array_column($industries, 'name');
 $allIndustries = $industries; // Für Branchen-Tab
+
+// Orga-Mitglieder laden (Benutzer mit Rolle 'orga')
+$orgaUsers = [];
+if (isAdmin() || hasPermission('orga_team_sehen')) {
+    $stmtOrga = $db->query("SELECT id, firstname, lastname, username FROM users WHERE role = 'orga' ORDER BY lastname, firstname");
+    $orgaUsers = $stmtOrga->fetchAll();
+}
+
+// Orga-Zuweisungen laden
+$orgaAssignments = [];
+if (isAdmin() || hasPermission('orga_team_sehen')) {
+    try {
+        $stmtOA = $db->query("
+            SELECT eo.id, eo.exhibitor_id, eo.user_id, eo.assigned_at,
+                   u.firstname, u.lastname, u.username
+            FROM exhibitor_orga eo
+            JOIN users u ON eo.user_id = u.id
+            ORDER BY eo.exhibitor_id, u.lastname
+        ");
+        foreach ($stmtOA->fetchAll() as $row) {
+            $orgaAssignments[$row['exhibitor_id']][] = $row;
+        }
+    } catch (PDOException $e) {
+        // Table might not exist yet in old installations
+        $orgaAssignments = [];
+    }
+}
+
+// Aktiver Tab bestimmen
+$activeTab = $activeTab ?? ($_GET['tab'] ?? 'aussteller');
 
 // Alle Aussteller laden mit Raum-Kapazitaet
 $stmt = $db->query("
@@ -378,7 +493,42 @@ $stmt = $db->query("
 $orgaUsers = $stmt->fetchAll();
 ?>
 
-<div class="space-y-6">
+<div class="space-y-4">
+    <!-- Seitenüberschrift -->
+    <div>
+        <h2 class="text-xl font-semibold text-gray-800">Verwalte Aussteller und Branchen</h2>
+        <p class="text-sm text-gray-500 mt-1">Aussteller, Branchen und Orga-Team verwalten</p>
+    </div>
+
+    <!-- Tab-Navigation -->
+    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div class="flex border-b border-gray-100 overflow-x-auto" id="exhibitorMainTabs" style="-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+            <?php if (isAdmin() || hasPermission('aussteller_sehen')): ?>
+            <button onclick="switchExhibitorTab('aussteller')" data-tab="aussteller"
+                    class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-building"></i> <span>Aussteller</span>
+            </button>
+            <?php endif; ?>
+            <?php if (isAdmin() || hasPermission('branchen_sehen')): ?>
+            <button onclick="switchExhibitorTab('branchen')" data-tab="branchen"
+                    class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-industry"></i> <span>Branchen</span>
+            </button>
+            <?php endif; ?>
+            <?php if (isAdmin() || hasPermission('orga_team_sehen')): ?>
+            <button onclick="switchExhibitorTab('orga-team')" data-tab="orga-team"
+                    class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-users-cog"></i> <span>Orga-Team</span>
+            </button>
+            <?php endif; ?>
+        </div>
+    </div>
+
+<!-- ============================================================ -->
+<!-- TAB: Aussteller -->
+<!-- ============================================================ -->
+<div id="tab-aussteller" class="exhibitor-main-tab-content space-y-4">
+
     <?php if (isset($message)): ?>
     <div class="mb-4">
         <?php if (($message['type'] ?? $message['success']) === 'success' || ($message['success'] ?? false)): ?>
@@ -479,20 +629,26 @@ $orgaUsers = $stmt->fetchAll();
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
+                        <?php if (isAdmin() || hasPermission('aussteller_bearbeiten')): ?>
                         <button onclick="openEditModal(<?php echo htmlspecialchars(json_encode($exhibitor)); ?>)" 
                                 class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
                             <i class="fas fa-edit mr-1"></i>Bearbeiten
                         </button>
+                        <?php endif; ?>
+                        <?php if (isAdmin() || hasPermission('aussteller_dokumente_verwalten')): ?>
                         <button onclick="openDocumentModal(<?php echo $exhibitor['id']; ?>, '<?php echo htmlspecialchars($exhibitor['name']); ?>')" 
                                 class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
                             <i class="fas fa-file-upload mr-1"></i>Dokumente
                         </button>
+                        <?php endif; ?>
+                        <?php if (isAdmin() || hasPermission('aussteller_loeschen')): ?>
                         <form method="POST" class="inline" onsubmit="return confirm('Wirklich loeschen?')">
                             <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                             <button type="submit" name="delete_exhibitor" class="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </form>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>

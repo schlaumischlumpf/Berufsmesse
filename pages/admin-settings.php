@@ -211,10 +211,12 @@ $currentSettings = [
 
                 <!-- Speichern -->
                 <div class="pt-2">
+                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
                     <button type="submit" name="save_settings"
                             class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>Einstellungen speichern
                     </button>
+                    <?php endif; ?>
                 </div>
             </form>
         </div>
@@ -273,10 +275,68 @@ $currentSettings = [
                         </div>
                     </div>
                     
+                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
                     <button type="submit" name="save_qr_url"
                             class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>URL speichern
                     </button>
+                    <?php endif; ?>
+                </form>
+
+                <hr class="border-gray-200 my-4">
+
+                <!-- Gültigkeitsdauer der QR-Codes -->
+                <form method="POST" class="space-y-4">
+                    <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-clock text-amber-500"></i> Gültigkeitsdauer der QR-Codes
+                    </h4>
+                    <p class="text-xs text-gray-500">
+                        Lege fest, wie lange vor Slotbeginn und wie lange nach Slotende ein QR-Code gültig ist.
+                        Das Datum wird dem in den Einstellungen festgelegten Messetermin entnommen.
+                    </p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                            <label class="block text-xs font-semibold text-blue-800 mb-2">
+                                <i class="fas fa-hourglass-start mr-1"></i>
+                                Minuten <strong>vor</strong> Slotbeginn (Check-in erlaubt ab)
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" name="qr_validity_before"
+                                       value="<?php echo $currentSettings['qr_validity_before']; ?>"
+                                       min="0" max="120" required
+                                       class="w-24 px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 text-center font-bold text-lg bg-white">
+                                <span class="text-xs text-blue-700">Minuten</span>
+                            </div>
+                            <p class="text-xs text-blue-600 mt-1">
+                                Bsp.: <strong>10</strong> → QR-Code bei Slot 09:00 gültig ab <strong>08:50</strong>
+                            </p>
+                        </div>
+
+                        <div class="bg-orange-50 border border-orange-100 rounded-lg p-4">
+                            <label class="block text-xs font-semibold text-orange-800 mb-2">
+                                <i class="fas fa-hourglass-end mr-1"></i>
+                                Minuten <strong>nach</strong> Slotende (Check-in erlaubt bis)
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" name="qr_validity_after"
+                                       value="<?php echo $currentSettings['qr_validity_after']; ?>"
+                                       min="0" max="120" required
+                                       class="w-24 px-3 py-2 border border-orange-200 rounded-lg focus:ring-2 focus:ring-orange-400 text-center font-bold text-lg bg-white">
+                                <span class="text-xs text-orange-700">Minuten</span>
+                            </div>
+                            <p class="text-xs text-orange-600 mt-1">
+                                Bsp.: <strong>15</strong> → QR-Code bei Slot 09:00–09:30 erlaubt bis <strong>09:45</strong>
+                            </p>
+                        </div>
+                    </div>
+
+                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                    <button type="submit" name="save_qr_validity"
+                            class="w-full sm:w-auto px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition font-medium text-sm">
+                        <i class="fas fa-save mr-2"></i>Gültigkeitsdauer speichern
+                    </button>
+                    <?php endif; ?>
                 </form>
             </div>
         </div>
@@ -342,6 +402,7 @@ $currentSettings = [
                             class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>Sicherheitseinstellungen speichern
                     </button>
+                    <?php endif; ?>
                 </div>
             </form>
         </div>

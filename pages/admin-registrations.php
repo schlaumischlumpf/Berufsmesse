@@ -143,6 +143,7 @@ $registrations = $stmt->fetchAll();
     <?php endif; ?>
 
     <!-- Schüler einschreiben -->
+    <?php if (isAdmin() || hasPermission('anmeldungen_erstellen')): ?>
     <div class="bg-white rounded-xl border border-gray-100 p-5">
         <h3 class="font-semibold text-gray-800 text-sm mb-4">
             <i class="fas fa-user-plus text-emerald-500 mr-2"></i>
@@ -173,6 +174,7 @@ $registrations = $stmt->fetchAll();
             </button>
         </form>
     </div>
+    <?php endif; ?>
 
     <!-- Filter -->
     <div class="bg-white rounded-xl border border-gray-100 p-5">
@@ -260,6 +262,7 @@ $registrations = $stmt->fetchAll();
                         </td>
                         <td class="px-4 py-3 text-xs text-gray-400 capitalize"><?php echo htmlspecialchars($reg['registration_type'] ?? 'manual'); ?></td>
                         <td class="px-4 py-3 text-right">
+                            <?php if (isAdmin() || hasPermission('anmeldungen_loeschen')): ?>
                             <form method="POST" class="inline">
                                 <input type="hidden" name="registration_id" value="<?php echo $reg['id']; ?>">
                                 <button type="submit" name="admin_unregister" value="1"
@@ -268,6 +271,7 @@ $registrations = $stmt->fetchAll();
                                     <i class="fas fa-trash-alt mr-1"></i>Entfernen
                                 </button>
                             </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                     <?php endforeach; ?>

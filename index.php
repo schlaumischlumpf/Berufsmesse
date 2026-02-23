@@ -1,5 +1,4 @@
 <?php
-session_start();
 require_once 'config.php';
 require_once 'functions.php';
 
@@ -1130,10 +1129,12 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <?php endif; ?>
                 <?php endif; ?>
 
-                <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen')): ?>
+                <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen', 'attendance_bearbeiten')): ?>
                 
                 <!-- GRUPPE: Tagesbetrieb (am häufigsten genutzt) -->
+                <?php if (isAdmin() || hasAnyPermission('anmeldungen_sehen', 'qr_codes_sehen', 'qr_codes_erstellen', 'attendance_bearbeiten', 'berichte_sehen', 'dashboard_sehen')): ?>
                 <div class="nav-group-title">Tagesbetrieb</div>
+                <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('anmeldungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-registrations' ? 'javascript:void(0)' : '?page=admin-registrations'; ?>" data-page="admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
@@ -1149,6 +1150,13 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 </a>
                 <?php endif; ?>
                 
+                <?php if (isAdmin() || hasPermission('qr_codes_sehen') || hasPermission('qr_codes_erstellen') || hasPermission('attendance_bearbeiten')): ?>
+                <a href="<?php echo $currentPage === 'admin-attendance' ? 'javascript:void(0)' : '?page=admin-attendance'; ?>" data-page="admin-attendance" class="nav-link <?php echo $currentPage === 'admin-attendance' ? 'active' : ''; ?>">
+                    <i class="fas fa-user-check"></i>
+                    <span>Anwesenheit</span>
+                </a>
+                <?php endif; ?>
+                
                 <?php if (isAdmin() || hasPermission('berichte_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
                     <i class="fas fa-print"></i>
@@ -1157,7 +1165,9 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <?php endif; ?>
 
                 <!-- GRUPPE: Inhalte (Aussteller & Räume) -->
+                <?php if (isAdmin() || hasAnyPermission('aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen')): ?>
                 <div class="nav-group-title">Inhalte</div>
+                <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('aussteller_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-exhibitors' ? 'javascript:void(0)' : '?page=admin-exhibitors'; ?>" data-page="admin-exhibitors" class="nav-link <?php echo $currentPage === 'admin-exhibitors' ? 'active' : ''; ?>">
@@ -1181,6 +1191,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <?php endif; ?>
 
                 <!-- GRUPPE: Personen & System -->
+                <?php if (isAdmin() || hasAnyPermission('benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'audit_logs_sehen')): ?>
                 <div class="nav-group-title">System</div>
 
                 <?php if (isAdmin() || hasPermission('dashboard_sehen')): ?>
@@ -1351,6 +1362,12 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 case 'admin-qr-codes':
                     if (isAdmin() || hasPermission('qr_codes_sehen')) {
                         include 'pages/admin-qr-codes.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+                case 'admin-attendance':
+                    if (isAdmin() || hasPermission('qr_codes_sehen') || hasPermission('qr_codes_erstellen')) {
+                        include 'pages/admin-attendance.php';
                         $pageLoaded = true;
                     }
                     break;

@@ -196,6 +196,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
             </h2>
             <p class="text-sm text-gray-500 mt-1">QR-Codes für die Anwesenheitsprüfung generieren und verwalten</p>
         </div>
+        <?php if (isAdmin() || hasPermission('qr_codes_erstellen')): ?>
         <form method="POST">
             <button type="submit" name="generate_all" value="1"
                     class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2"
@@ -204,6 +205,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                 Alle QR-Codes generieren
             </button>
         </form>
+        <?php endif; ?>
     </div>
 
     <?php if (isset($_GET['generated'])): ?>
@@ -490,6 +492,24 @@ function showAttendanceList(exhibitorName, slotName, attendees) {
 
 function closeAttendanceModal() {
     document.getElementById('attendanceModal').classList.add('hidden');
+    // Vollbild zurücksetzen
+    if (attendanceIsFullscreen) toggleAttendanceFullscreen();
+}
+
+let attendanceIsFullscreen = false;
+function toggleAttendanceFullscreen() {
+    const panel = document.getElementById('attendanceModalPanel');
+    const icon  = document.getElementById('attendanceFullscreenIcon');
+    attendanceIsFullscreen = !attendanceIsFullscreen;
+    if (attendanceIsFullscreen) {
+        panel.classList.remove('max-w-lg', 'max-h-[80vh]');
+        panel.classList.add('max-w-5xl', 'max-h-[95vh]');
+        icon.classList.replace('fa-expand', 'fa-compress');
+    } else {
+        panel.classList.remove('max-w-5xl', 'max-h-[95vh]');
+        panel.classList.add('max-w-lg', 'max-h-[80vh]');
+        icon.classList.replace('fa-compress', 'fa-expand');
+    }
 }
 
 function escapeHtml(text) {
@@ -509,7 +529,7 @@ document.getElementById('attendanceModal')?.addEventListener('click', function(e
 
 <!-- Anwesenheits-Modal (Issue #27) -->
 <div id="attendanceModal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col">
+    <div id="attendanceModalPanel" class="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] flex flex-col transition-all duration-300">
         <div class="flex items-center justify-between p-5 border-b border-gray-200">
             <div>
                 <h3 class="text-lg font-semibold text-gray-800">
@@ -517,9 +537,13 @@ document.getElementById('attendanceModal')?.addEventListener('click', function(e
                 </h3>
                 <p id="attendanceTitle" class="text-sm text-gray-500 mt-1"></p>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
                 <span id="attendanceCount" class="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-xs font-semibold"></span>
-                <button onclick="closeAttendanceModal()" class="text-gray-400 hover:text-gray-600">
+                <button onclick="toggleAttendanceFullscreen()" title="Vollbild umschalten"
+                        class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition">
+                    <i id="attendanceFullscreenIcon" class="fas fa-expand text-sm"></i>
+                </button>
+                <button onclick="closeAttendanceModal()" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition">
                     <i class="fas fa-times"></i>
                 </button>
             </div>

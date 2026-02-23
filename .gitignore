@@ -7,7 +7,9 @@
 # Log-Dateien
 .htaccess
 
-
+# Dockerdateien
+compose.yaml
+Dockerfile
 
 # Hochgeladene Dateien
 uploads/*
@@ -23,7 +25,15 @@ uploads/*
 .DS_Store
 Thumbs.db
 
-# register.php
-register.php
+# config.php
+config.php
 
+# Datenbanken entfernen
+*.sql
+
+# Github Actions
+.github
+
+# Claude
+.claude
 
