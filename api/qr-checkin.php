@@ -3,7 +3,6 @@
  * QR-Code Check-In API (Issue #15)
  * Schüler scannen QR-Code und werden als anwesend markiert
  */
-session_start();
 require_once '../config.php';
 require_once '../functions.php';
 
@@ -44,6 +43,40 @@ try {
     $exhibitorId = $qrToken['exhibitor_id'];
     $timeslotId = $qrToken['timeslot_id'];
     $slotNumber = $qrToken['slot_number'];
+
+    // Zeitfenster-Validierung anhand des Messtetermins und der Slot-Zeiten
+    $eventDate = getSetting('event_date');
+    if (!empty($eventDate)) {
+        $validityBefore = intval(getSetting('qr_validity_before', 10)); // Min. vor Slotbeginn
+        $validityAfter  = intval(getSetting('qr_validity_after',  15)); // Min. nach Slotende
+
+        $stmt = $db->prepare("SELECT start_time, end_time FROM timeslots WHERE id = ?");
+        $stmt->execute([$timeslotId]);
+        $slotTimes = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($slotTimes && !empty($slotTimes['start_time']) && !empty($slotTimes['end_time'])) {
+            $nowTs      = time();
+            $validFrom  = strtotime($eventDate . ' ' . $slotTimes['start_time']) - ($validityBefore * 60);
+            $validUntil = strtotime($eventDate . ' ' . $slotTimes['end_time'])   + ($validityAfter  * 60);
+
+            if ($nowTs < $validFrom) {
+                $minutesLeft = ceil(($validFrom - $nowTs) / 60);
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Dieser QR-Code ist noch nicht gültig. Er wird aktiv um ' . date('H:i', $validFrom) . ' Uhr (in ' . $minutesLeft . ' Min.).'
+                ]);
+                exit;
+            }
+
+            if ($nowTs > $validUntil) {
+                echo json_encode([
+                    'success' => false,
+                    'message' => 'Dieser QR-Code ist abgelaufen. Er war gültig bis ' . date('H:i', $validUntil) . ' Uhr.'
+                ]);
+                exit;
+            }
+        }
+    }
 
     // Für Slots 1, 3, 5 (feste Zuteilung): Prüfen ob registriert
     // Für Slots 2, 4 (freie Wahl): Keine Registrierung erforderlich

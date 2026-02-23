@@ -273,13 +273,16 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                                             <option value="<?php echo $group['id']; ?>"><?php echo htmlspecialchars($group['name']); ?></option>
                                             <?php endforeach; ?>
                                         </select>
+                                        <?php if (isAdmin() || hasPermission('berechtigungen_vergeben')): ?>
                                         <button type="submit" name="apply_group" value="1" 
                                                 class="px-2 py-1.5 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition text-xs font-semibold"
                                                 title="Gruppe anwenden">
                                             <i class="fas fa-layer-group"></i>
                                         </button>
+                                        <?php endif; ?>
                                     </form>
                                     <?php endif; ?>
+                                    <?php if (isAdmin() || hasPermission('berechtigungen_vergeben')): ?>
                                     <button type="button" 
                                             class="permission-btn px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition text-sm font-semibold shadow-sm hover:shadow-md"
                                             data-user-id="<?php echo htmlspecialchars($user['id']); ?>"
@@ -287,6 +290,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                                             data-permissions='<?php echo htmlspecialchars(json_encode($userPermissions), ENT_QUOTES, 'UTF-8'); ?>'>
                                         <i class="fas fa-shield-alt mr-2"></i>Berechtigungen
                                     </button>
+                                    <?php endif; ?>
                                 </div>
                                 </div>
                             <?php else: ?>
@@ -308,10 +312,12 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                     <i class="fas fa-layer-group mr-3"></i>
                     Berechtigungsgruppen
                 </h3>
+                <?php if (isAdmin() || hasPermission('berechtigungsgruppen_verwalten')): ?>
                 <button onclick="document.getElementById('createGroupModal').classList.remove('hidden');document.getElementById('createGroupModal').classList.add('flex')" 
                         class="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition text-sm font-medium">
                     <i class="fas fa-plus mr-1"></i>Neue Gruppe
                 </button>
+                <?php endif; ?>
             </div>
         </div>
 
@@ -333,9 +339,11 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                         </div>
                         <form method="POST" class="inline" onsubmit="return confirm('Gruppe wirklich löschen?')">
                             <input type="hidden" name="group_id" value="<?php echo $group['id']; ?>">
+                            <?php if (isAdmin() || hasPermission('berechtigungsgruppen_verwalten')): ?>
                             <button type="submit" name="delete_group" value="1" class="text-red-400 hover:text-red-600 transition text-sm">
                                 <i class="fas fa-trash"></i>
                             </button>
+                            <?php endif; ?>
                         </form>
                     </div>
                     <div class="flex flex-wrap gap-1 mb-3">

@@ -1,5 +1,4 @@
 <?php
-session_start();
 require_once 'config.php';
 require_once 'functions.php';
 
@@ -867,10 +866,12 @@ $regEnd = getSetting('registration_end');
                 <?php endif; ?>
                 <?php endif; ?>
 
-                <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen')): ?>
+                <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen', 'attendance_bearbeiten')): ?>
                 
                 <!-- GRUPPE: Tagesbetrieb (am häufigsten genutzt) -->
+                <?php if (isAdmin() || hasAnyPermission('anmeldungen_sehen', 'qr_codes_sehen', 'qr_codes_erstellen', 'attendance_bearbeiten', 'berichte_sehen', 'dashboard_sehen')): ?>
                 <div class="nav-group-title">Tagesbetrieb</div>
+                <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('anmeldungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-registrations' ? 'javascript:void(0)' : '?page=admin-registrations'; ?>" data-page="admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
@@ -883,6 +884,13 @@ $regEnd = getSetting('registration_end');
                 <a href="<?php echo $currentPage === 'admin-qr-codes' ? 'javascript:void(0)' : '?page=admin-qr-codes'; ?>" data-page="admin-qr-codes" class="nav-link <?php echo $currentPage === 'admin-qr-codes' ? 'active' : ''; ?>">
                     <i class="fas fa-qrcode"></i>
                     <span>QR-Anwesenheit</span>
+                </a>
+                <?php endif; ?>
+                
+                <?php if (isAdmin() || hasPermission('qr_codes_sehen') || hasPermission('qr_codes_erstellen') || hasPermission('attendance_bearbeiten')): ?>
+                <a href="<?php echo $currentPage === 'admin-attendance' ? 'javascript:void(0)' : '?page=admin-attendance'; ?>" data-page="admin-attendance" class="nav-link <?php echo $currentPage === 'admin-attendance' ? 'active' : ''; ?>">
+                    <i class="fas fa-user-check"></i>
+                    <span>Anwesenheit</span>
                 </a>
                 <?php endif; ?>
                 
@@ -901,7 +909,9 @@ $regEnd = getSetting('registration_end');
                 <?php endif; ?>
 
                 <!-- GRUPPE: Inhalte (Aussteller & Räume) -->
+                <?php if (isAdmin() || hasAnyPermission('aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen')): ?>
                 <div class="nav-group-title">Inhalte</div>
+                <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('aussteller_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-exhibitors' ? 'javascript:void(0)' : '?page=admin-exhibitors'; ?>" data-page="admin-exhibitors" class="nav-link <?php echo $currentPage === 'admin-exhibitors' ? 'active' : ''; ?>">
@@ -925,7 +935,9 @@ $regEnd = getSetting('registration_end');
                 <?php endif; ?>
 
                 <!-- GRUPPE: Personen & System -->
+                <?php if (isAdmin() || hasAnyPermission('benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'audit_logs_sehen')): ?>
                 <div class="nav-group-title">System</div>
+                <?php endif; ?>
                 
                 <?php if (isAdmin() || hasPermission('benutzer_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-users' ? 'javascript:void(0)' : '?page=admin-users'; ?>" data-page="admin-users" class="nav-link <?php echo $currentPage === 'admin-users' ? 'active' : ''; ?>">
@@ -1082,6 +1094,12 @@ $regEnd = getSetting('registration_end');
                 case 'admin-qr-codes':
                     if (isAdmin() || hasPermission('qr_codes_sehen')) {
                         include 'pages/admin-qr-codes.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+                case 'admin-attendance':
+                    if (isAdmin() || hasPermission('qr_codes_sehen') || hasPermission('qr_codes_erstellen')) {
+                        include 'pages/admin-attendance.php';
                         $pageLoaded = true;
                     }
                     break;

@@ -179,6 +179,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
+    } elseif (isset($_POST['edit_user'])) {
+        if (!isAdmin() && !hasPermission('benutzer_bearbeiten')) die('Keine Berechtigung');
+        $userId    = intval($_POST['user_id']);
+        $firstname = sanitize($_POST['firstname']);
+        $lastname  = sanitize($_POST['lastname']);
+        $email     = sanitize($_POST['email']);
+        $newRole   = sanitize($_POST['role']);
+        $class     = sanitize($_POST['class'] ?? '');
+
+        if ($newRole === 'admin' && !isAdmin()) {
+            $message = ['type' => 'error', 'text' => 'Nur Administratoren können die Admin-Rolle vergeben'];
+        } else {
+            // Aktuelle Rolle laden
+            $stmt = $db->prepare("SELECT role, firstname, lastname FROM users WHERE id = ?");
+            $stmt->execute([$userId]);
+            $currentUser = $stmt->fetch();
+            $oldRole = $currentUser ? $currentUser['role'] : null;
+
+            if ($oldRole === 'admin' && !isAdmin()) {
+                $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts bearbeiten'];
+            } else {
+                $stmt = $db->prepare("UPDATE users SET firstname = ?, lastname = ?, email = ?, role = ?, class = ? WHERE id = ?");
+                if ($stmt->execute([$firstname, $lastname, $email, $newRole, $class, $userId])) {
+                    // Wenn Rolle zu Schüler geändert: alle Berechtigungen entziehen
+                    if ($newRole === 'student' && $oldRole !== 'student') {
+                        $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$userId]);
+                        logAuditAction('benutzer_rolle_geaendert', "Benutzer #{$userId} ({$currentUser['firstname']} {$currentUser['lastname']}): Rolle $oldRole → $newRole. Alle Berechtigungen entzogen.");
+                        $message = ['type' => 'success', 'text' => 'Benutzer aktualisiert. Da die Rolle auf Schüler geändert wurde, wurden alle Berechtigungen entzogen.'];
+                    } else {
+                        logAuditAction('benutzer_bearbeitet', "Benutzer #{$userId}: Rolle $oldRole → $newRole, Name: $firstname $lastname");
+                        $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich aktualisiert'];
+                    }
+                } else {
+                    $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren des Benutzers'];
+                }
+            }
+        }
     } elseif (isset($_POST['reset_password'])) {
         if (!isAdmin() && !hasPermission('benutzer_passwort_zuruecksetzen')) die('Keine Berechtigung');
         // Passwort zurücksetzen
@@ -288,14 +325,18 @@ $stats['teachers'] = $stmt->fetch()['count'];
             <p class="text-sm text-gray-500 mt-1">Benutzer erstellen, bearbeiten und löschen</p>
         </div>
         <div class="flex gap-2">
+            <?php if (isAdmin() || hasPermission('benutzer_importieren')): ?>
             <button onclick="openImportCsvModal()" class="px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center gap-2">
                 <i class="fas fa-file-upload"></i>
                 CSV Import
             </button>
+            <?php endif; ?>
+            <?php if (isAdmin() || hasPermission('benutzer_erstellen')): ?>
             <button onclick="openCreateUserModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
                 <i class="fas fa-user-plus"></i>
                 Neuer Benutzer
             </button>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -403,11 +444,19 @@ $stats['teachers'] = $stmt->fetch()['count'];
                                 $canEdit = ($user['role'] !== 'admin') || isAdmin();
                                 ?>
                                 <?php if ($canEdit): ?>
+                                    <?php if (isAdmin() || hasPermission('benutzer_bearbeiten')): ?>
+                                    <button onclick="openEditUserModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($user['lastname'], ENT_QUOTES); ?>', '<?php echo htmlspecialchars($user['email'] ?? '', ENT_QUOTES); ?>', '<?php echo $user['role']; ?>', '<?php echo htmlspecialchars($user['class'] ?? '', ENT_QUOTES); ?>')"
+                                            class="px-3 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200 transition text-sm font-medium">
+                                        <i class="fas fa-edit mr-1"></i>Bearbeiten
+                                    </button>
+                                    <?php endif; ?>
+                                    <?php if (isAdmin() || hasPermission('benutzer_passwort_zuruecksetzen')): ?>
                                     <button onclick="openResetPasswordModal(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
                                             class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
                                         <i class="fas fa-key mr-1"></i>Passwort
                                     </button>
-                                    <?php if ($user['id'] !== $_SESSION['user_id']): ?>
+                                    <?php endif; ?>
+                                    <?php if ($user['id'] !== $_SESSION['user_id'] && (isAdmin() || hasPermission('benutzer_loeschen'))): ?>
                                     <button onclick="confirmDeleteUser(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
                                             class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm font-medium">
                                         <i class="fas fa-trash mr-1"></i>Löschen
@@ -655,6 +704,74 @@ $stats['teachers'] = $stmt->fetch()['count'];
     </div>
 </div>
 
+<!-- Edit User Modal -->
+<div id="editUserModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-t-xl flex items-center justify-between">
+            <h3 class="text-xl font-bold">Benutzer bearbeiten</h3>
+            <button type="button" onclick="closeEditUserModal()" class="text-white/70 hover:text-white text-xl leading-none">&times;</button>
+        </div>
+
+        <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="user_id" id="editUserId">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Vorname *</label>
+                    <input type="text" name="firstname" id="editFirstname" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Nachname *</label>
+                    <input type="text" name="lastname" id="editLastname" required
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">E-Mail</label>
+                <input type="email" name="email" id="editEmail"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+            </div>
+
+            <div>
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Rolle *</label>
+                <select name="role" id="editRole" required onchange="toggleEditClassField()"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                    <option value="student">Schüler</option>
+                    <option value="teacher">Lehrer</option>
+                    <option value="orga">Orga</option>
+                    <?php if (isAdmin()): ?>
+                    <option value="admin">Administrator</option>
+                    <?php endif; ?>
+                </select>
+                <p class="text-xs text-amber-600 mt-1">
+                    <i class="fas fa-exclamation-triangle mr-1"></i>
+                    Wird die Rolle auf <strong>Schüler</strong> geändert, werden alle Berechtigungen dieser Person automatisch entzogen.
+                </p>
+            </div>
+
+            <div id="editClassField">
+                <label class="block text-sm font-semibold text-gray-700 mb-2">Klasse</label>
+                <input type="text" name="class" id="editClass"
+                       class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                       placeholder="z.B. 10A">
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeEditUserModal()"
+                        class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Abbrechen
+                </button>
+                <button type="submit" name="edit_user"
+                        class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
+                    <i class="fas fa-save mr-2"></i>Speichern
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 // Handle file drag and drop for CSV upload
 const csvFile = document.getElementById('csvFile');
@@ -793,6 +910,33 @@ function toggleClassField() {
     }
 }
 
+function openEditUserModal(userId, firstname, lastname, email, role, userClass) {
+    document.getElementById('editUserId').value = userId;
+    document.getElementById('editFirstname').value = firstname;
+    document.getElementById('editLastname').value = lastname;
+    document.getElementById('editEmail').value = email;
+    document.getElementById('editRole').value = role;
+    document.getElementById('editClass').value = userClass;
+    toggleEditClassField();
+    document.getElementById('editUserModal').classList.remove('hidden');
+    document.getElementById('editUserModal').classList.add('flex');
+}
+
+function closeEditUserModal() {
+    document.getElementById('editUserModal').classList.add('hidden');
+    document.getElementById('editUserModal').classList.remove('flex');
+}
+
+function toggleEditClassField() {
+    const roleSelect = document.getElementById('editRole');
+    const classField = document.getElementById('editClassField');
+    if (roleSelect.value === 'student') {
+        classField.style.display = 'block';
+    } else {
+        classField.style.display = 'none';
+    }
+}
+
 // Close modals on ESC key
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
@@ -800,6 +944,7 @@ document.addEventListener('keydown', function(e) {
         closeResetPasswordModal();
         closeDeleteUserModal();
         closeImportCsvModal();
+        closeEditUserModal();
     }
 });
 </script>

@@ -3,7 +3,6 @@
  * PDF-Generator für Klassenübersichten
  * Tabellenformat, sortiert nach Nachname, keine Farben
  */
-session_start();
 require_once '../config.php';
 require_once '../functions.php';
 require_once '../fpdf/fpdf.php';

@@ -35,8 +35,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
     $message = ['type' => 'success', 'text' => 'QR-Code URL erfolgreich gespeichert'];
 }
 
+// Handle QR Validity Settings
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_validity'])) {
+    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+        die('Keine Berechtigung');
+    }
+    $before = max(0, intval($_POST['qr_validity_before']));
+    $after  = max(0, intval($_POST['qr_validity_after']));
+    updateSetting('qr_validity_before', $before);
+    updateSetting('qr_validity_after', $after);
+    logAuditAction('qr_gueltigkeit_geaendert', "QR-Gültigkeitsfenster: $before Min. vor Slotbeginn, $after Min. nach Slotende");
+    $message = ['type' => 'success', 'text' => 'QR-Gültigkeitsdauer erfolgreich gespeichert'];
+}
+
 // Handle Industry Actions
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isAdmin() || hasPermission('einstellungen_bearbeiten'))) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && (isAdmin() || hasPermission('branchen_bearbeiten'))) {
     if (isset($_POST['add_industry'])) {
         $indName = trim($_POST['industry_name'] ?? '');
         $indOrder = intval($_POST['industry_sort_order'] ?? 0);
@@ -107,7 +120,9 @@ $currentSettings = [
     'event_date' => getSetting('event_date'),
     'max_registrations_per_student' => getSetting('max_registrations_per_student', 3),
     'auto_close_registration' => getSetting('auto_close_registration', '1'),
-    'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL)
+    'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL),
+    'qr_validity_before' => intval(getSetting('qr_validity_before', 10)),
+    'qr_validity_after'  => intval(getSetting('qr_validity_after',  15)),
 ];
 
 // Branchen laden
@@ -142,10 +157,12 @@ $allIndustries = getIndustries();
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-qrcode"></i> <span>QR-Codes</span>
             </button>
+            <?php if (isAdmin() || hasPermission('branchen_sehen')): ?>
             <button onclick="switchSettingsTab('branchen')" data-tab="branchen"
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-industry"></i> <span>Branchen</span>
             </button>
+            <?php endif; ?>
             <button onclick="switchSettingsTab('system')" data-tab="system"
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-info-circle"></i> <span>System</span>
@@ -239,10 +256,12 @@ $allIndustries = getIndustries();
 
                 <!-- Speichern -->
                 <div class="pt-2">
+                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
                     <button type="submit" name="save_settings"
                             class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>Einstellungen speichern
                     </button>
+                    <?php endif; ?>
                 </div>
             </form>
         </div>
@@ -301,10 +320,68 @@ $allIndustries = getIndustries();
                         </div>
                     </div>
                     
+                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
                     <button type="submit" name="save_qr_url"
                             class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>URL speichern
                     </button>
+                    <?php endif; ?>
+                </form>
+
+                <hr class="border-gray-200 my-4">
+
+                <!-- Gültigkeitsdauer der QR-Codes -->
+                <form method="POST" class="space-y-4">
+                    <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        <i class="fas fa-clock text-amber-500"></i> Gültigkeitsdauer der QR-Codes
+                    </h4>
+                    <p class="text-xs text-gray-500">
+                        Lege fest, wie lange vor Slotbeginn und wie lange nach Slotende ein QR-Code gültig ist.
+                        Das Datum wird dem in den Einstellungen festgelegten Messetermin entnommen.
+                    </p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
+                            <label class="block text-xs font-semibold text-blue-800 mb-2">
+                                <i class="fas fa-hourglass-start mr-1"></i>
+                                Minuten <strong>vor</strong> Slotbeginn (Check-in erlaubt ab)
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" name="qr_validity_before"
+                                       value="<?php echo $currentSettings['qr_validity_before']; ?>"
+                                       min="0" max="120" required
+                                       class="w-24 px-3 py-2 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-400 text-center font-bold text-lg bg-white">
+                                <span class="text-xs text-blue-700">Minuten</span>
+                            </div>
+                            <p class="text-xs text-blue-600 mt-1">
+                                Bsp.: <strong>10</strong> → QR-Code bei Slot 09:00 gültig ab <strong>08:50</strong>
+                            </p>
+                        </div>
+
+                        <div class="bg-orange-50 border border-orange-100 rounded-lg p-4">
+                            <label class="block text-xs font-semibold text-orange-800 mb-2">
+                                <i class="fas fa-hourglass-end mr-1"></i>
+                                Minuten <strong>nach</strong> Slotende (Check-in erlaubt bis)
+                            </label>
+                            <div class="flex items-center gap-2">
+                                <input type="number" name="qr_validity_after"
+                                       value="<?php echo $currentSettings['qr_validity_after']; ?>"
+                                       min="0" max="120" required
+                                       class="w-24 px-3 py-2 border border-orange-200 rounded-lg focus:ring-2 focus:ring-orange-400 text-center font-bold text-lg bg-white">
+                                <span class="text-xs text-orange-700">Minuten</span>
+                            </div>
+                            <p class="text-xs text-orange-600 mt-1">
+                                Bsp.: <strong>15</strong> → QR-Code bei Slot 09:00–09:30 erlaubt bis <strong>09:45</strong>
+                            </p>
+                        </div>
+                    </div>
+
+                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                    <button type="submit" name="save_qr_validity"
+                            class="w-full sm:w-auto px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition font-medium text-sm">
+                        <i class="fas fa-save mr-2"></i>Gültigkeitsdauer speichern
+                    </button>
+                    <?php endif; ?>
                 </form>
             </div>
         </div>
@@ -327,13 +404,16 @@ $allIndustries = getIndustries();
                     <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-industry text-emerald-500"></i> Branchen verwalten
                     </h4>
+                    <?php if (isAdmin() || hasPermission('branchen_bearbeiten')): ?>
                     <button onclick="document.getElementById('addIndustryForm').classList.toggle('hidden')"
                             class="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs hover:bg-emerald-600 transition font-medium">
                         <i class="fas fa-plus mr-1"></i>Neue Branche
                     </button>
+                    <?php endif; ?>
                 </div>
 
                 <!-- Formular: Neue Branche -->
+                <?php if (isAdmin() || hasPermission('branchen_bearbeiten')): ?>
                 <div id="addIndustryForm" class="hidden bg-gray-50 rounded-lg p-4 border border-gray-200">
                     <form method="POST" class="space-y-3">
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -353,8 +433,7 @@ $allIndustries = getIndustries();
                             <i class="fas fa-plus mr-1"></i>Anlegen
                         </button>
                     </form>
-                </div>
-
+                </div>                <?php endif; ?>
                 <!-- Branchen-Liste -->
                 <?php if (empty($allIndustries)): ?>
                 <p class="text-center text-gray-400 py-8 text-sm italic">Keine Branchen vorhanden.</p>
@@ -369,6 +448,7 @@ $allIndustries = getIndustries();
                             </span>
                             <span class="text-sm font-medium text-gray-800 truncate"><?php echo htmlspecialchars($ind['name']); ?></span>
                         </div>
+                        <?php if (isAdmin() || hasPermission('branchen_bearbeiten')): ?>
                         <div class="flex items-center gap-1 flex-shrink-0" id="ind-actions-<?php echo $ind['id']; ?>">
                             <button onclick="editIndustry(<?php echo $ind['id']; ?>)"
                                     class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Bearbeiten">
@@ -382,6 +462,7 @@ $allIndustries = getIndustries();
                                 </button>
                             </form>
                         </div>
+                        <?php endif; ?>
                         
                         <!-- Bearbeiten-Modus (hidden) -->
                         <form id="ind-edit-form-<?php echo $ind['id']; ?>" method="POST" class="hidden w-full">

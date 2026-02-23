@@ -338,6 +338,12 @@ function getPermissionDependencies() {
         'aussteller_erstellen'            => ['aussteller_sehen'],
         'aussteller_bearbeiten'           => ['aussteller_sehen'],
         'aussteller_loeschen'             => ['aussteller_sehen'],
+        'orga_team_sehen'                 => ['aussteller_sehen'],
+        'orga_team_bearbeiten'            => ['orga_team_sehen'],
+        // Branchen
+        'branchen_bearbeiten'             => ['branchen_sehen'],
+        // Anwesenheit
+        'attendance_bearbeiten'           => ['qr_codes_sehen'],
         'aussteller_dokumente_verwalten'  => ['aussteller_sehen'],
         // Räume
         'raeume_erstellen'                => ['raeume_sehen'],
@@ -440,6 +446,14 @@ function getAvailablePermissions() {
             'aussteller_loeschen'            => 'Aussteller löschen (erfordert: aussteller_sehen)',
             'aussteller_dokumente_verwalten' => 'Dokumente zu Ausstellern hochladen/löschen (erfordert: aussteller_sehen)',
         ],
+        'Branchen-Verwaltung' => [
+            'branchen_sehen'      => 'Branchen/Kategorien im Aussteller-Bereich einsehen',
+            'branchen_bearbeiten' => 'Branchen anlegen, bearbeiten und löschen (erfordert: branchen_sehen)',
+        ],
+        'Orga-Team' => [
+            'orga_team_sehen'      => 'Orga-Team Tab auf der Aussteller-Seite einsehen (erfordert: aussteller_sehen)',
+            'orga_team_bearbeiten' => 'Orga-Mitglieder Ausstellern zuweisen/entfernen (erfordert: orga_team_sehen)',
+        ],
         'Raum-Verwaltung' => [
             'raeume_sehen'      => 'Raumliste und Raumplan einsehen',
             'raeume_erstellen'  => 'Neue Räume anlegen (erfordert: raeume_sehen)',
@@ -474,6 +488,9 @@ function getAvailablePermissions() {
         'QR-Codes' => [
             'qr_codes_sehen'    => 'QR-Code Übersicht einsehen',
             'qr_codes_erstellen' => 'QR-Codes und Tokens generieren (erfordert: qr_codes_sehen)',
+        ],
+        'Anwesenheit' => [
+            'attendance_bearbeiten' => 'Anwesenheit manuell eintragen/entfernen (erfordert: qr_codes_sehen)',
         ],
         'Anmeldungen' => [
             'anmeldungen_sehen'    => 'Alle Schüler-Anmeldungen einsehen',

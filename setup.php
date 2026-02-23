@@ -6,7 +6,6 @@
  * WICHTIG: Dieses Skript einmalig nach dem ersten Deployment ausführen!
  */
 
-session_start();
 require_once 'config.php';
 require_once 'functions.php';
 

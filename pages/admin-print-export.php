@@ -1,7 +1,4 @@
 <?php
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-}
 /**
  * Berufsmesse - Admin Print Export
  * Professionelle Druckansicht für Lehrkräfte und Administratoren

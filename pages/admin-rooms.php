@@ -41,10 +41,12 @@ foreach ($exhibitors as $ex) {
             <h2 class="text-xl font-semibold text-gray-800">Raum-Zuteilung</h2>
             <p class="text-sm text-gray-500 mt-1">Ziehe Aussteller auf Räume, um sie zuzuordnen</p>
         </div>
+        <?php if (isAdmin() || hasPermission('raeume_erstellen')): ?>
         <button onclick="openAddRoomModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
             <i class="fas fa-plus"></i>
             Neuer Raum
         </button>
+        <?php endif; ?>
     </div>
 
     <!-- Statistics -->
@@ -216,9 +218,9 @@ foreach ($exhibitors as $ex) {
                                 <span class="text-sm font-semibold text-gray-600">
                                     <?php echo isset($assignedExhibitors[$room['id']]) ? count($assignedExhibitors[$room['id']]) : 0; ?> zugeordnet
                                 </span>
-                                <?php if (!isset($assignedExhibitors[$room['id']]) || count($assignedExhibitors[$room['id']]) === 0): ?>
-                                    <button onclick="deleteRoom(<?php echo $room['id']; ?>, '<?php echo htmlspecialchars($room['room_number'], ENT_QUOTES); ?>')" 
-                                            class="text-red-500 hover:text-red-700 transition px-2 py-1 rounded hover:bg-red-50" 
+                                <?php if ((!isset($assignedExhibitors[$room['id']]) || count($assignedExhibitors[$room['id']]) === 0) && (isAdmin() || hasPermission('raeume_loeschen'))): ?>
+                                    <button onclick="deleteRoom(<?php echo $room['id']; ?>, '<?php echo htmlspecialchars($room['room_number'], ENT_QUOTES); ?>')"
+                                            class="text-red-500 hover:text-red-700 transition px-2 py-1 rounded hover:bg-red-50"
                                             title="Raum löschen">
                                         <i class="fas fa-trash"></i>
                                     </button>

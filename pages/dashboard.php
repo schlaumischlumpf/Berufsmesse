@@ -26,8 +26,13 @@ $regStatus = getRegistrationStatus();
 $regStart = getSetting('registration_start');
 $regEnd = getSetting('registration_end');
 
-// Statistiken
-$stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ?");
+// Statistiken: nur verwaltete Slots 1, 3, 5 zählen (Slots 2/4 sind Freislots – kein Maximum)
+$stmt = $db->prepare("
+    SELECT COUNT(*) as count
+    FROM registrations r
+    JOIN timeslots t ON r.timeslot_id = t.id
+    WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+");
 $stmt->execute([$_SESSION['user_id']]);
 $totalRegistrations = $stmt->fetch()['count'];
 $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));

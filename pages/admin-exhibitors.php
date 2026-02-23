@@ -155,6 +155,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
+// === Branchen-Verwaltung Handlers ===
+$industryMessage = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_industry'])) {
+    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    $name = trim($_POST['industry_name'] ?? '');
+    $sortOrder = intval($_POST['industry_sort_order'] ?? 0);
+    if (empty($name)) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf nicht leer sein'];
+    } elseif (mb_strlen($name) > 100) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf maximal 100 Zeichen lang sein'];
+    } else {
+        try {
+            $stmt = $db->prepare("INSERT INTO industries (name, sort_order) VALUES (?, ?)");
+            $stmt->execute([$name, $sortOrder]);
+            logAuditAction('branche_erstellt', "Branche '$name' angelegt");
+            $industryMessage = ['type' => 'success', 'text' => "Branche '$name' angelegt"];
+        } catch (PDOException $e) {
+            $industryMessage = ['type' => 'error', 'text' => 'Branchenname bereits vorhanden'];
+        }
+    }
+    $activeTab = 'branchen';
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_industry'])) {
+    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    $id = intval($_POST['industry_id']);
+    $name = trim($_POST['industry_name'] ?? '');
+    $sortOrder = intval($_POST['industry_sort_order'] ?? 0);
+    if (empty($name)) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf nicht leer sein'];
+    } elseif (mb_strlen($name) > 100) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branchenname darf maximal 100 Zeichen lang sein'];
+    } else {
+        $stmt = $db->prepare("UPDATE industries SET name = ?, sort_order = ? WHERE id = ?");
+        $stmt->execute([$name, $sortOrder, $id]);
+        logAuditAction('branche_bearbeitet', "Branche #$id auf '$name' geändert");
+        $industryMessage = ['type' => 'success', 'text' => 'Branche aktualisiert'];
+    }
+    $activeTab = 'branchen';
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_industry'])) {
+    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    $id = intval($_POST['industry_id']);
+    $stmt = $db->prepare("SELECT COUNT(*) FROM exhibitors WHERE category = (SELECT name FROM industries WHERE id = ?)");
+    $stmt->execute([$id]);
+    if ($stmt->fetchColumn() > 0) {
+        $industryMessage = ['type' => 'error', 'text' => 'Branche kann nicht gelöscht werden, da sie noch von Ausstellern verwendet wird'];
+    } else {
+        $nameStmt = $db->prepare("SELECT name FROM industries WHERE id = ?");
+        $nameStmt->execute([$id]);
+        $delName = $nameStmt->fetchColumn();
+        $db->prepare("DELETE FROM industries WHERE id = ?")->execute([$id]);
+        logAuditAction('branche_geloescht', "Branche '$delName' gelöscht");
+        $industryMessage = ['type' => 'success', 'text' => 'Branche gelöscht'];
+    }
+    $activeTab = 'branchen';
+}
+
+// === Orga-Team Handlers ===
+$orgaMessage = null;
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
+    if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
+    $exhibitorId = intval($_POST['exhibitor_id']);
+    $userId = intval($_POST['user_id']);
+    if ($exhibitorId && $userId) {
+        try {
+            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga (exhibitor_id, user_id) VALUES (?, ?)");
+            $stmt->execute([$exhibitorId, $userId]);
+            logAuditAction('orga_zugewiesen', "Orga-Mitglied #$userId Aussteller #$exhibitorId zugewiesen");
+            $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich zugewiesen'];
+        } catch (PDOException $e) {
+            $orgaMessage = ['type' => 'error', 'text' => 'Zuweisung fehlgeschlagen: ' . $e->getMessage()];
+        }
+    }
+    $activeTab = 'orga-team';
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_orga'])) {
+    if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
+    $orgaId = intval($_POST['orga_id']);
+    $db->prepare("DELETE FROM exhibitor_orga WHERE id = ?")->execute([$orgaId]);
+    logAuditAction('orga_entfernt', "Orga-Zuweisung #$orgaId entfernt");
+    $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied entfernt'];
+    $activeTab = 'orga-team';
+}
+
 // Logo-Upload Funktion
 function handleLogoUpload($file) {
     $allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -181,7 +265,38 @@ function handleLogoUpload($file) {
 
 // Branchen aus DB laden
 $industries = getIndustries();
+$allIndustries = $industries;
 $industryNames = array_column($industries, 'name');
+
+// Orga-Mitglieder laden (Benutzer mit Rolle 'orga')
+$orgaUsers = [];
+if (isAdmin() || hasPermission('orga_team_sehen')) {
+    $stmtOrga = $db->query("SELECT id, firstname, lastname, username FROM users WHERE role = 'orga' ORDER BY lastname, firstname");
+    $orgaUsers = $stmtOrga->fetchAll();
+}
+
+// Orga-Zuweisungen laden
+$orgaAssignments = [];
+if (isAdmin() || hasPermission('orga_team_sehen')) {
+    try {
+        $stmtOA = $db->query("
+            SELECT eo.id, eo.exhibitor_id, eo.user_id, eo.assigned_at,
+                   u.firstname, u.lastname, u.username
+            FROM exhibitor_orga eo
+            JOIN users u ON eo.user_id = u.id
+            ORDER BY eo.exhibitor_id, u.lastname
+        ");
+        foreach ($stmtOA->fetchAll() as $row) {
+            $orgaAssignments[$row['exhibitor_id']][] = $row;
+        }
+    } catch (PDOException $e) {
+        // Table might not exist yet in old installations
+        $orgaAssignments = [];
+    }
+}
+
+// Aktiver Tab bestimmen
+$activeTab = $activeTab ?? ($_GET['tab'] ?? 'aussteller');
 
 // Alle Aussteller laden mit Raum-Kapazitaet
 $stmt = $db->query("
@@ -193,7 +308,42 @@ $stmt = $db->query("
 $allExhibitors = $stmt->fetchAll();
 ?>
 
-<div class="space-y-6">
+<div class="space-y-4">
+    <!-- Seitenüberschrift -->
+    <div>
+        <h2 class="text-xl font-semibold text-gray-800">Verwalte Aussteller und Branchen</h2>
+        <p class="text-sm text-gray-500 mt-1">Aussteller, Branchen und Orga-Team verwalten</p>
+    </div>
+
+    <!-- Tab-Navigation -->
+    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div class="flex border-b border-gray-100 overflow-x-auto" id="exhibitorMainTabs" style="-webkit-overflow-scrolling:touch;scrollbar-width:none;">
+            <?php if (isAdmin() || hasPermission('aussteller_sehen')): ?>
+            <button onclick="switchExhibitorTab('aussteller')" data-tab="aussteller"
+                    class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-building"></i> <span>Aussteller</span>
+            </button>
+            <?php endif; ?>
+            <?php if (isAdmin() || hasPermission('branchen_sehen')): ?>
+            <button onclick="switchExhibitorTab('branchen')" data-tab="branchen"
+                    class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-industry"></i> <span>Branchen</span>
+            </button>
+            <?php endif; ?>
+            <?php if (isAdmin() || hasPermission('orga_team_sehen')): ?>
+            <button onclick="switchExhibitorTab('orga-team')" data-tab="orga-team"
+                    class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-users-cog"></i> <span>Orga-Team</span>
+            </button>
+            <?php endif; ?>
+        </div>
+    </div>
+
+<!-- ============================================================ -->
+<!-- TAB: Aussteller -->
+<!-- ============================================================ -->
+<div id="tab-aussteller" class="exhibitor-main-tab-content space-y-4">
+
     <?php if (isset($message)): ?>
     <div class="mb-4">
         <?php if (($message['type'] ?? $message['success']) === 'success' || ($message['success'] ?? false)): ?>
@@ -220,9 +370,11 @@ $allExhibitors = $stmt->fetchAll();
             <h2 class="text-xl font-semibold text-gray-800">Aussteller verwalten</h2>
             <p class="text-sm text-gray-500 mt-1"><?php echo count($allExhibitors); ?> Aussteller registriert</p>
         </div>
+        <?php if (isAdmin() || hasPermission('aussteller_erstellen')): ?>
         <button onclick="openAddModal()" class="bg-emerald-500 text-white px-5 py-2.5 rounded-lg hover:bg-emerald-600 transition font-medium">
             <i class="fas fa-plus mr-2"></i>Neuer Aussteller
         </button>
+        <?php endif; ?>
     </div>
 
     <!-- Exhibitors List -->
@@ -268,20 +420,26 @@ $allExhibitors = $stmt->fetchAll();
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
+                        <?php if (isAdmin() || hasPermission('aussteller_bearbeiten')): ?>
                         <button onclick="openEditModal(<?php echo htmlspecialchars(json_encode($exhibitor)); ?>)" 
                                 class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
                             <i class="fas fa-edit mr-1"></i>Bearbeiten
                         </button>
+                        <?php endif; ?>
+                        <?php if (isAdmin() || hasPermission('aussteller_dokumente_verwalten')): ?>
                         <button onclick="openDocumentModal(<?php echo $exhibitor['id']; ?>, '<?php echo htmlspecialchars($exhibitor['name']); ?>')" 
                                 class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
                             <i class="fas fa-file-upload mr-1"></i>Dokumente
                         </button>
+                        <?php endif; ?>
+                        <?php if (isAdmin() || hasPermission('aussteller_loeschen')): ?>
                         <form method="POST" class="inline" onsubmit="return confirm('Wirklich loeschen?')">
                             <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                             <button type="submit" name="delete_exhibitor" class="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition">
                                 <i class="fas fa-trash"></i>
                             </button>
                         </form>
+                        <?php endif; ?>
                     </div>
                 </div>
             </div>
@@ -333,7 +491,224 @@ $allExhibitors = $stmt->fetchAll();
         </div>
         <?php endforeach; ?>
     </div>
-</div>
+</div><!-- /tab-aussteller -->
+
+<!-- ============================================================ -->
+<!-- TAB: Branchen -->
+<!-- ============================================================ -->
+<div id="tab-branchen" class="exhibitor-main-tab-content hidden space-y-4">
+
+    <?php if (isset($industryMessage)): ?>
+    <div class="<?php echo $industryMessage['type'] === 'success' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'; ?> border p-4 rounded-xl flex items-center gap-3 text-sm">
+        <i class="fas <?php echo $industryMessage['type'] === 'success' ? 'fa-check-circle text-emerald-500' : 'fa-exclamation-circle text-red-500'; ?>"></i>
+        <span class="<?php echo $industryMessage['type'] === 'success' ? 'text-emerald-700' : 'text-red-700'; ?>"><?php echo htmlspecialchars($industryMessage['text']); ?></span>
+    </div>
+    <?php endif; ?>
+
+    <div class="bg-white rounded-xl border border-gray-100 p-5 sm:p-6">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-5">
+            <h3 class="text-base font-semibold text-gray-800 flex items-center gap-2">
+                <i class="fas fa-industry text-emerald-500"></i> Branchen verwalten
+            </h3>
+            <?php if (isAdmin() || hasPermission('branchen_bearbeiten')): ?>
+            <button onclick="document.getElementById('addIndustryFormEx').classList.toggle('hidden')"
+                    class="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm hover:bg-emerald-600 transition font-medium">
+                <i class="fas fa-plus mr-2"></i>Neue Branche
+            </button>
+            <?php endif; ?>
+        </div>
+
+        <?php if (isAdmin() || hasPermission('branchen_bearbeiten')): ?>
+        <!-- Add form -->
+        <div id="addIndustryFormEx" class="hidden bg-gray-50 rounded-lg p-4 border border-gray-200 mb-5">
+            <form method="POST" class="space-y-3">
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+                        <input type="text" name="industry_name" placeholder="Branchenname" maxlength="100" required
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1">Reihenfolge</label>
+                        <input type="number" name="industry_sort_order" placeholder="0" min="0" value="0"
+                               class="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                    </div>
+                </div>
+                <button type="submit" name="add_industry"
+                        class="px-5 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition text-sm font-medium">
+                    <i class="fas fa-plus mr-1"></i>Anlegen
+                </button>
+            </form>
+        </div>
+        <?php endif; ?>
+
+        <!-- Industries list -->
+        <?php if (empty($allIndustries)): ?>
+        <p class="text-center text-gray-400 py-8 text-sm italic">Keine Branchen vorhanden.</p>
+        <?php else: ?>
+        <div class="space-y-2">
+            <?php foreach ($allIndustries as $ind): ?>
+            <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-100 hover:bg-white transition" id="ex-industry-row-<?php echo $ind['id']; ?>">
+                <div class="flex items-center gap-3 flex-1 min-w-0" id="ex-ind-display-<?php echo $ind['id']; ?>">
+                    <span class="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-100 text-emerald-600 text-xs font-bold flex-shrink-0">
+                        <?php echo $ind['sort_order']; ?>
+                    </span>
+                    <span class="text-sm font-medium text-gray-800 truncate"><?php echo htmlspecialchars($ind['name']); ?></span>
+                </div>
+                <?php if (isAdmin() || hasPermission('branchen_bearbeiten')): ?>
+                <div class="flex items-center gap-1 flex-shrink-0" id="ex-ind-actions-<?php echo $ind['id']; ?>">
+                    <button onclick="editIndustryEx(<?php echo $ind['id']; ?>)"
+                            class="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition" title="Bearbeiten">
+                        <i class="fas fa-edit text-sm"></i>
+                    </button>
+                    <form method="POST" class="inline" onsubmit="return confirm('Branche wirklich löschen?')">
+                        <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
+                        <button type="submit" name="delete_industry"
+                                class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Löschen">
+                            <i class="fas fa-trash text-sm"></i>
+                        </button>
+                    </form>
+                </div>
+                <form id="ex-ind-edit-form-<?php echo $ind['id']; ?>" method="POST" class="hidden w-full">
+                    <div class="flex flex-col sm:flex-row gap-2 w-full">
+                        <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
+                        <input type="text" name="industry_name" value="<?php echo htmlspecialchars($ind['name']); ?>" maxlength="100" required
+                               class="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                        <input type="number" name="industry_sort_order" value="<?php echo $ind['sort_order']; ?>" min="0"
+                               class="w-20 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                        <div class="flex gap-1">
+                            <button type="submit" name="edit_industry" class="p-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button type="button" onclick="cancelEditIndustryEx(<?php echo $ind['id']; ?>)" class="p-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </form>
+                <?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+    </div>
+</div><!-- /tab-branchen -->
+
+<!-- ============================================================ -->
+<!-- TAB: Orga-Team -->
+<!-- ============================================================ -->
+<div id="tab-orga-team" class="exhibitor-main-tab-content hidden space-y-4">
+
+    <?php if (isset($orgaMessage)): ?>
+    <div class="<?php echo $orgaMessage['type'] === 'success' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'; ?> border p-4 rounded-xl flex items-center gap-3 text-sm">
+        <i class="fas <?php echo $orgaMessage['type'] === 'success' ? 'fa-check-circle text-emerald-500' : 'fa-exclamation-circle text-red-500'; ?>"></i>
+        <span class="<?php echo $orgaMessage['type'] === 'success' ? 'text-emerald-700' : 'text-red-700'; ?>"><?php echo htmlspecialchars($orgaMessage['text']); ?></span>
+    </div>
+    <?php endif; ?>
+
+    <!-- Info Banner -->
+    <div class="bg-blue-50 border border-blue-200 rounded-xl p-4">
+        <div class="flex items-start gap-3">
+            <i class="fas fa-info-circle text-blue-500 mt-0.5"></i>
+            <div>
+                <p class="text-sm font-semibold text-blue-800">Orga-Team für Aussteller</p>
+                <p class="text-sm text-blue-700 mt-1">Hier können Sie einzelnen Orga-Mitgliedern Zugang zu bestimmten Ausstellern geben. Diese Mitglieder können dann nur für ihre zugewiesenen Aussteller QR-Codes generieren und verwalten.</p>
+            </div>
+        </div>
+    </div>
+
+    <?php if (empty($orgaUsers) && (isAdmin() || hasPermission('orga_team_sehen'))): ?>
+    <div class="bg-white rounded-xl border border-gray-100 p-8 text-center">
+        <i class="fas fa-users text-4xl text-gray-200 mb-3"></i>
+        <p class="text-gray-500 text-sm">Keine Orga-Mitglieder vorhanden.</p>
+        <p class="text-gray-400 text-xs mt-1">Lege zuerst Benutzer mit der Rolle "Orga" an.</p>
+    </div>
+    <?php else: ?>
+
+    <?php foreach ($allExhibitors as $exhibitor):
+        $assignments = $orgaAssignments[$exhibitor['id']] ?? [];
+        $memberCount = count($assignments);
+    ?>
+    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <!-- Exhibitor Header -->
+        <div class="flex items-center justify-between px-5 py-3.5 bg-gray-50 border-b border-gray-100">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-building text-emerald-600 text-sm"></i>
+                </div>
+                <span class="font-semibold text-gray-800 text-sm"><?php echo htmlspecialchars($exhibitor['name']); ?></span>
+            </div>
+            <span class="text-xs font-medium px-2.5 py-1 rounded-full <?php echo $memberCount > 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'; ?>">
+                <?php echo $memberCount; ?> Mitglied<?php echo $memberCount !== 1 ? 'er' : ''; ?>
+            </span>
+        </div>
+
+        <div class="px-5 py-4 space-y-3">
+            <?php if (isAdmin() || hasPermission('orga_team_bearbeiten')): ?>
+            <!-- Add orga member form -->
+            <form method="POST" class="flex gap-3">
+                <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
+                <select name="user_id" required
+                        class="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 text-sm">
+                    <option value="">-- Orga-Mitglied auswählen --</option>
+                    <?php foreach ($orgaUsers as $orgaUser): ?>
+                    <option value="<?php echo $orgaUser['id']; ?>">
+                        <?php echo htmlspecialchars($orgaUser['firstname'] . ' ' . $orgaUser['lastname'] . ' (' . $orgaUser['username'] . ')'); ?>
+                    </option>
+                    <?php endforeach; ?>
+                </select>
+                <button type="submit" name="assign_orga"
+                        class="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition text-sm font-medium whitespace-nowrap">
+                    <i class="fas fa-plus mr-1"></i>Hinzufügen
+                </button>
+            </form>
+            <?php endif; ?>
+
+            <!-- Assigned members -->
+            <?php if (empty($assignments)): ?>
+            <div class="text-center py-4">
+                <i class="fas fa-users text-3xl text-gray-200 mb-2"></i>
+                <p class="text-sm text-gray-400">Noch keine Orga-Mitglieder zugewiesen</p>
+            </div>
+            <?php else: ?>
+            <div class="space-y-2">
+                <?php foreach ($assignments as $assignment): ?>
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div class="flex items-center gap-3">
+                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <span class="text-xs font-bold text-blue-700">
+                                <?php echo strtoupper(substr($assignment['firstname'], 0, 1) . substr($assignment['lastname'], 0, 1)); ?>
+                            </span>
+                        </div>
+                        <div>
+                            <p class="text-sm font-medium text-gray-800">
+                                <?php echo htmlspecialchars($assignment['firstname'] . ' ' . $assignment['lastname']); ?>
+                            </p>
+                            <p class="text-xs text-gray-400"><?php echo htmlspecialchars($assignment['username']); ?></p>
+                        </div>
+                    </div>
+                    <?php if (isAdmin() || hasPermission('orga_team_bearbeiten')): ?>
+                    <form method="POST" class="inline" onsubmit="return confirm('Zuweisung entfernen?')">
+                        <input type="hidden" name="orga_id" value="<?php echo $assignment['id']; ?>">
+                        <button type="submit" name="remove_orga"
+                                class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Entfernen">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </form>
+                    <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+        </div>
+    </div>
+    <?php endforeach; ?>
+    <?php endif; ?>
+
+</div><!-- /tab-orga-team -->
+
+</div><!-- /space-y-4 outer container -->
 
 <!-- Add/Edit Modal -->
 <div id="exhibitorModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50 p-4">
@@ -734,4 +1109,45 @@ function loadDocuments(exhibitorId) {
             }
         });
 }
+
+// Tab-Switching für Aussteller/Branchen/Orga-Team
+function switchExhibitorTab(tabName) {
+    // Alle Tab-Buttons deaktivieren
+    document.querySelectorAll('.exhibitor-main-tab').forEach(btn => {
+        btn.classList.remove('border-emerald-500', 'text-emerald-600', 'bg-emerald-50/50');
+        btn.classList.add('border-transparent', 'text-gray-500');
+    });
+    // Alle Tab-Inhalte ausblenden
+    document.querySelectorAll('.exhibitor-main-tab-content').forEach(content => {
+        content.classList.add('hidden');
+    });
+    // Aktiven Tab aktivieren
+    const activeBtn = document.querySelector(`.exhibitor-main-tab[data-tab="${tabName}"]`);
+    if (activeBtn) {
+        activeBtn.classList.remove('border-transparent', 'text-gray-500');
+        activeBtn.classList.add('border-emerald-500', 'text-emerald-600', 'bg-emerald-50/50');
+    }
+    const activeContent = document.getElementById('tab-' + tabName);
+    if (activeContent) activeContent.classList.remove('hidden');
+}
+
+// Branchen-Edit Funktionen (Exhibitor-Seite)
+function editIndustryEx(id) {
+    document.getElementById('ex-ind-display-' + id).classList.add('hidden');
+    document.getElementById('ex-ind-actions-' + id).classList.add('hidden');
+    document.getElementById('ex-ind-edit-form-' + id).classList.remove('hidden');
+}
+function cancelEditIndustryEx(id) {
+    document.getElementById('ex-ind-display-' + id).classList.remove('hidden');
+    document.getElementById('ex-ind-actions-' + id).classList.remove('hidden');
+    document.getElementById('ex-ind-edit-form-' + id).classList.add('hidden');
+}
+
+// Initial Tab aus PHP-Variable oder URL-Hash laden
+document.addEventListener('DOMContentLoaded', function() {
+    const phpTab = <?php echo json_encode($activeTab); ?>;
+    const hashTab = location.hash.replace('#tab-', '');
+    const startTab = hashTab && document.getElementById('tab-' + hashTab) ? hashTab : phpTab;
+    switchExhibitorTab(startTab);
+});
 </script>

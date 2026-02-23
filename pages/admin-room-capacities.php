@@ -160,6 +160,7 @@ foreach ($stmt->fetchAll() as $cap) {
                 Änderungen werden sofort auf die automatische Zuteilung angewendet
             </div>
             <div class="flex gap-3">
+                <?php if (isAdmin() || hasPermission('kapazitaeten_bearbeiten')): ?>
                 <button type="button" 
                         onclick="resetToDefaults()"
                         class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold">
@@ -170,6 +171,7 @@ foreach ($stmt->fetchAll() as $cap) {
                         class="px-6 py-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-semibold shadow-lg">
                     <i class="fas fa-save mr-2"></i>Speichern
                 </button>
+                <?php endif; ?>
             </div>
         </div>
     </form>
