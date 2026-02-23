@@ -243,39 +243,6 @@ foreach ($userRegistrations as $reg) {
                     <?php endforeach; ?>
                 </div>
             </div>
-
-            <!-- Progress Section -->
-            <?php if ($regStatus === 'open'): ?>
-            <div class="card p-6 animate-on-scroll stagger-6">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="font-bold text-gray-800">Einschreibungs-Fortschritt</h3>
-                    <span class="text-sm text-gray-500"><?php echo $totalRegistrations; ?> von <?php echo $maxRegistrations; ?> Slots</span>
-                </div>
-                
-                <!-- Progress Bar -->
-                <div class="relative h-4 bg-gray-100 rounded-full overflow-hidden mb-4">
-                    <div class="absolute inset-0 h-full bg-gradient-to-r from-emerald-400 to-emerald-500 rounded-full transition-all duration-500 ease-out" 
-                         style="width: <?php echo ($totalRegistrations / $maxRegistrations) * 100; ?>%">
-                    </div>
-                </div>
-                
-                <?php if ($totalRegistrations < $maxRegistrations): ?>
-                <div class="flex items-center justify-between">
-                    <p class="text-sm text-gray-500">
-                        Noch <?php echo $maxRegistrations - $totalRegistrations; ?> Slot(s) verfügbar
-                    </p>
-                    <a href="?page=registration" class="btn btn-primary btn-sm">
-                        <i class="fas fa-plus mr-1"></i>Jetzt einschreiben
-                    </a>
-                </div>
-                <?php else: ?>
-                <div class="flex items-center gap-2 text-emerald-600">
-                    <i class="fas fa-check-circle"></i>
-                    <span class="text-sm font-medium">Alle Slots belegt!</span>
-                </div>
-                <?php endif; ?>
-            </div>
-            <?php endif; ?>
         </div>
 
         <!-- Right Column: Info Cards -->
