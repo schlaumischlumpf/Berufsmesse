@@ -402,7 +402,6 @@ $currentSettings = [
                             class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>Sicherheitseinstellungen speichern
                     </button>
-                    <?php endif; ?>
                 </div>
             </form>
         </div>

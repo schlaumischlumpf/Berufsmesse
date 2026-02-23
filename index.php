@@ -1229,6 +1229,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 </a>
                 <?php endif; ?>
                 <?php endif; ?>
+                <?php endif; ?>
             </nav>
         </div>
 

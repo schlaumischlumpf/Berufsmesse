@@ -541,7 +541,6 @@ $stats['teachers'] = $stmt->fetch()['count'];
                                             class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
                                         <i class="fas fa-key mr-1"></i>Passwort
                                     </button>
-                                    <?php endif; ?>
                                     <?php if ($user['id'] !== $_SESSION['user_id'] && (isAdmin() || hasPermission('benutzer_loeschen'))): ?>
                                     <button onclick="confirmDeleteUser(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
                                             class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm font-medium">

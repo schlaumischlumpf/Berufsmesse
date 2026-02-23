@@ -394,7 +394,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
     $userId = intval($_POST['user_id']);
     if ($exhibitorId && $userId) {
         try {
-            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga (exhibitor_id, user_id) VALUES (?, ?)");
+            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga_team (exhibitor_id, user_id) VALUES (?, ?)");
             $stmt->execute([$exhibitorId, $userId]);
             logAuditAction('orga_zugewiesen', "Orga-Mitglied #$userId Aussteller #$exhibitorId zugewiesen");
             $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich zugewiesen'];
@@ -407,7 +407,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_orga'])) {
     if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
     $orgaId = intval($_POST['orga_id']);
-    $db->prepare("DELETE FROM exhibitor_orga WHERE id = ?")->execute([$orgaId]);
+    $db->prepare("DELETE FROM exhibitor_orga_team WHERE id = ?")->execute([$orgaId]);
     logAuditAction('orga_entfernt', "Orga-Zuweisung #$orgaId entfernt");
     $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied entfernt'];
     $activeTab = 'orga-team';
@@ -457,7 +457,7 @@ if (isAdmin() || hasPermission('orga_team_sehen')) {
         $stmtOA = $db->query("
             SELECT eo.id, eo.exhibitor_id, eo.user_id, eo.assigned_at,
                    u.firstname, u.lastname, u.username
-            FROM exhibitor_orga eo
+            FROM exhibitor_orga_team eo
             JOIN users u ON eo.user_id = u.id
             ORDER BY eo.exhibitor_id, u.lastname
         ");
@@ -528,7 +528,6 @@ $orgaUsers = $stmt->fetchAll();
 <!-- TAB: Aussteller -->
 <!-- ============================================================ -->
 <div id="tab-aussteller" class="exhibitor-main-tab-content space-y-4">
-
     <?php if (isset($message)): ?>
     <div class="mb-4">
         <?php if (($message['type'] ?? $message['success']) === 'success' || ($message['success'] ?? false)): ?>
@@ -549,44 +548,15 @@ $orgaUsers = $stmt->fetchAll();
     </div>
     <?php endif; ?>
 
-    <!-- Header -->
-    <div class="flex items-center justify-between mb-6">
-        <div>
-            <h2 class="text-xl font-semibold text-gray-800">Aussteller & Branchen</h2>
-            <p class="text-sm text-gray-500 mt-1">Verwalte Aussteller und Branchen</p>
-        </div>
-    </div>
-
-    <!-- Tab Navigation -->
-    <div class="bg-white rounded-xl border border-gray-100 overflow-hidden mb-6">
-        <div class="flex border-b border-gray-100">
-            <button onclick="switchExhibitorsTab('aussteller')" data-tab="aussteller"
-                    class="exhibitors-tab-button flex-1 px-6 py-4 text-sm font-medium transition border-b-2 border-emerald-500 text-emerald-600">
-                <i class="fas fa-building mr-2"></i>Aussteller
-            </button>
-            <button onclick="switchExhibitorsTab('branchen')" data-tab="branchen"
-                    class="exhibitors-tab-button flex-1 px-6 py-4 text-sm font-medium transition border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                <i class="fas fa-industry mr-2"></i>Branchen
-            </button>
-            <button onclick="switchExhibitorsTab('orga-team')" data-tab="orga-team"
-                    class="exhibitors-tab-button flex-1 px-6 py-4 text-sm font-medium transition border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300">
-                <i class="fas fa-users-cog mr-2"></i>Orga-Team
-            </button>
-        </div>
-    </div>
-
-    <!-- ============================================================ -->
-    <!-- TAB 1: Aussteller -->
-    <!-- ============================================================ -->
-    <div id="tab-aussteller" class="exhibitors-tab-content">
+    <!-- Add Button -->
         <!-- Add Button -->
-        <div class="flex justify-end mb-4">
-            <button onclick="openAddModal()" class="bg-emerald-500 text-white px-5 py-2.5 rounded-lg hover:bg-emerald-600 transition font-medium">
-                <i class="fas fa-plus mr-2"></i>Neuer Aussteller
-            </button>
-        </div>
+    <div class="flex justify-end mb-4">
+        <button onclick="openAddModal()" class="bg-emerald-500 text-white px-5 py-2.5 rounded-lg hover:bg-emerald-600 transition font-medium">
+            <i class="fas fa-plus mr-2"></i>Neuer Aussteller
+        </button>
+    </div>
 
-        <!-- Exhibitors List -->
+    <!-- Exhibitors List -->
     <div class="grid grid-cols-1 gap-4">
         <?php foreach ($allExhibitors as $exhibitor): 
             // Raum-basierte Kapazitaet berechnen
@@ -714,12 +684,12 @@ $orgaUsers = $stmt->fetchAll();
         </div>
         <?php endforeach; ?>
     </div>
-    </div><!-- Ende Tab Aussteller -->
+</div><!-- Ende Tab Aussteller -->
 
-    <!-- ============================================================ -->
-    <!-- TAB 2: Branchen -->
-    <!-- ============================================================ -->
-    <div id="tab-branchen" class="exhibitors-tab-content hidden">
+<!-- ============================================================ -->
+<!-- TAB: Branchen -->
+<!-- ============================================================ -->
+<div id="tab-branchen" class="exhibitor-main-tab-content hidden">
         <div class="space-y-4">
 
             <?php if (isset($industryMessage)): ?>
@@ -815,10 +785,10 @@ $orgaUsers = $stmt->fetchAll();
         </div>
     </div><!-- Ende Tab Branchen -->
 
-    <!-- ============================================================ -->
-    <!-- TAB 3: Orga-Team -->
-    <!-- ============================================================ -->
-    <div id="tab-orga-team" class="exhibitors-tab-content hidden">
+<!-- ============================================================ -->
+<!-- TAB: Orga-Team -->
+<!-- ============================================================ -->
+<div id="tab-orga-team" class="exhibitor-main-tab-content hidden">
         <?php if (isset($orgaMessage)): ?>
         <div class="mb-4 animate-pulse">
             <?php if ($orgaMessage['type'] === 'success'): ?>
@@ -1366,18 +1336,18 @@ function loadDocuments(exhibitorId) {
 }
 
 // ============================================================
-// Tab-System für Aussteller/Branchen
+// Tab-System für Aussteller/Branchen/Orga-Team
 // ============================================================
-function switchExhibitorsTab(tabName) {
+function switchExhibitorTab(tabName) {
     // Alle Tabs ausblenden
-    document.querySelectorAll('.exhibitors-tab-content').forEach(tab => {
+    document.querySelectorAll('.exhibitor-main-tab-content').forEach(tab => {
         tab.classList.add('hidden');
     });
 
     // Alle Tab-Buttons inaktiv setzen
-    document.querySelectorAll('.exhibitors-tab-button').forEach(btn => {
+    document.querySelectorAll('.exhibitor-main-tab').forEach(btn => {
         btn.classList.remove('border-emerald-500', 'text-emerald-600');
-        btn.classList.add('border-transparent', 'text-gray-500');
+        btn.classList.add('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:bg-gray-50');
     });
 
     // Aktiven Tab anzeigen
@@ -1387,19 +1357,18 @@ function switchExhibitorsTab(tabName) {
     }
 
     // Aktiven Button markieren
-    const activeBtn = document.querySelector('.exhibitors-tab-button[data-tab="' + tabName + '"]');
+    const activeBtn = document.querySelector('.exhibitor-main-tab[data-tab="' + tabName + '"]');
     if (activeBtn) {
         activeBtn.classList.add('border-emerald-500', 'text-emerald-600');
-        activeBtn.classList.remove('border-transparent', 'text-gray-500');
+        activeBtn.classList.remove('border-transparent', 'text-gray-500', 'hover:text-gray-700', 'hover:bg-gray-50');
     }
 }
 
 // Beim Laden der Seite den richtigen Tab aktivieren
-<?php if (isset($activeTab)): ?>
 document.addEventListener('DOMContentLoaded', function() {
-    switchExhibitorsTab('<?php echo $activeTab; ?>');
+    const activeTab = '<?php echo $activeTab ?? "aussteller"; ?>';
+    switchExhibitorTab(activeTab);
 });
-<?php endif; ?>
 
 // ============================================================
 // Branchen-Verwaltung (von admin-settings.php übernommen)

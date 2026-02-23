@@ -373,7 +373,6 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                                             data-group-ids='<?php echo htmlspecialchars(json_encode($userGroups), ENT_QUOTES, 'UTF-8'); ?>'>
                                         <i class="fas fa-shield-alt mr-2"></i>Berechtigungen
                                     </button>
-                                    <?php endif; ?>
                                 </div>
                             <?php else: ?>
                                 <span class="text-gray-400 text-sm italic">-</span>
