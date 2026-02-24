@@ -191,6 +191,47 @@ function generateDetailsTab($exhibitor) {
             </a>
         </div>
         <?php endif; ?>
+
+        <?php
+        // Dokumente für Schüler anzeigen (nur visible_for_students = 1)
+        $db = getDB();
+        $stmtDocs = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 ORDER BY uploaded_at DESC");
+        $stmtDocs->execute([$exhibitor['id']]);
+        $visibleDocuments = $stmtDocs->fetchAll();
+        if (!empty($visibleDocuments)):
+        ?>
+        <div class="pt-4 border-t border-gray-100">
+            <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                <i class="fas fa-file-alt mr-1"></i> Dokumente
+            </h4>
+            <div class="space-y-2">
+                <?php foreach ($visibleDocuments as $doc):
+                    $iconClass = match($doc['file_type']) {
+                        'pdf' => 'fa-file-pdf text-red-500',
+                        'doc', 'docx' => 'fa-file-word text-blue-500',
+                        'ppt', 'pptx' => 'fa-file-powerpoint text-orange-500',
+                        'jpg', 'jpeg', 'png', 'gif' => 'fa-file-image text-green-500',
+                        default => 'fa-file text-gray-500'
+                    };
+                    $fileSize = round($doc['file_size'] / 1024, 2);
+                ?>
+                <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition">
+                    <div class="flex items-center space-x-3 flex-1 min-w-0">
+                        <i class="fas <?php echo $iconClass; ?> text-2xl flex-shrink-0"></i>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-medium text-gray-800 truncate"><?php echo htmlspecialchars($doc['original_name']); ?></p>
+                            <p class="text-xs text-gray-500"><?php echo $fileSize; ?> KB</p>
+                        </div>
+                    </div>
+                    <a href="<?php echo BASE_URL; ?>api/download-document.php?id=<?php echo intval($doc['id']); ?>"
+                       class="ml-3 bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition text-sm flex-shrink-0">
+                        <i class="fas fa-download mr-1"></i>Download
+                    </a>
+                </div>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php endif; ?>
     </div>
     <?php
     return ob_get_clean();
@@ -301,7 +342,7 @@ function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
 
 function generateDocumentsTab($exhibitorId) {
     $db = getDB();
-    $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? ORDER BY uploaded_at DESC");
+    $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 ORDER BY uploaded_at DESC");
     $stmt->execute([$exhibitorId]);
     $documents = $stmt->fetchAll();
     

@@ -4,11 +4,6 @@ require_once '../functions.php';
 
 requireLogin();
 
-if (!isAdmin() && !hasPermission('aussteller_dokumente_verwalten')) {
-    http_response_code(403);
-    die('Keine Berechtigung');
-}
-
 $documentId = intval($_GET['id'] ?? 0);
 
 if (!$documentId) {
@@ -17,13 +12,21 @@ if (!$documentId) {
 }
 
 $db = getDB();
-$stmt = $db->prepare("SELECT filename, original_name, file_type FROM exhibitor_documents WHERE id = ?");
+$stmt = $db->prepare("SELECT filename, original_name, file_type, visible_for_students FROM exhibitor_documents WHERE id = ?");
 $stmt->execute([$documentId]);
 $doc = $stmt->fetch();
 
 if (!$doc) {
     http_response_code(404);
     die('Dokument nicht gefunden');
+}
+
+// Admins/Berechtigte dürfen alle Dokumente herunterladen; andere nur sichtbare
+if (!isAdmin() && !hasPermission('aussteller_dokumente_verwalten')) {
+    if (!$doc['visible_for_students']) {
+        http_response_code(403);
+        die('Keine Berechtigung');
+    }
 }
 
 $filepath = UPLOAD_DIR . $doc['filename'];
