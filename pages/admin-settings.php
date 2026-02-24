@@ -66,6 +66,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
     $message = ['type' => 'success', 'text' => 'QR-Code URL erfolgreich gespeichert'];
 }
 
+// Handle QR Code Validity Update
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_validity'])) {
+    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+        die('Keine Berechtigung');
+    }
+    $before = max(0, intval($_POST['qr_validity_before']));
+    $after  = max(0, intval($_POST['qr_validity_after']));
+    updateSetting('qr_validity_before', $before);
+    updateSetting('qr_validity_after', $after);
+    logAuditAction('qr_gueltigkeit_geaendert', "QR-Gültigkeitsfenster: $before Min. vor / $after Min. nach Slot");
+    $message = ['type' => 'success', 'text' => 'Gültigkeitsdauer erfolgreich gespeichert'];
+}
+
 // Branchen-Verwaltung wurde nach admin-exhibitors.php verschoben (Issue #XX)
 
 // Aktuelle Einstellungen laden
@@ -76,6 +89,8 @@ $currentSettings = [
     'max_registrations_per_student' => getSetting('max_registrations_per_student', 3),
     'auto_close_registration' => getSetting('auto_close_registration', '1'),
     'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL),
+    'qr_validity_before' => getSetting('qr_validity_before', 10),
+    'qr_validity_after' => getSetting('qr_validity_after', 15),
     'registration_page_enabled' => getSetting('registration_page_enabled', '0'),
     'site_password_enabled' => getSetting('site_password_enabled', '0'),
     'site_password_set' => !empty(getSetting('site_password', ''))

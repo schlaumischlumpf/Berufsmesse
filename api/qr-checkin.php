@@ -25,7 +25,8 @@ if (empty($token)) {
 try {
     // Token validieren
     $stmt = $db->prepare("
-        SELECT qt.*, e.name as exhibitor_name, t.slot_name, t.slot_number
+        SELECT qt.*, e.name as exhibitor_name, t.slot_name, t.slot_number,
+               t.start_time, t.end_time
         FROM qr_tokens qt
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
@@ -43,6 +44,30 @@ try {
     $exhibitorId = $qrToken['exhibitor_id'];
     $timeslotId = $qrToken['timeslot_id'];
     $slotNumber = $qrToken['slot_number'];
+
+    // Zeitfenster-Prüfung anhand der Einstellungen
+    $eventDate      = getSetting('event_date');
+    $validityBefore = intval(getSetting('qr_validity_before', 10));
+    $validityAfter  = intval(getSetting('qr_validity_after', 15));
+
+    if ($eventDate && !empty($qrToken['start_time']) && !empty($qrToken['end_time'])) {
+        $now           = time();
+        $tsWindowStart = strtotime("$eventDate " . $qrToken['start_time']);
+        $tsWindowEnd   = strtotime("$eventDate " . $qrToken['end_time']);
+
+        if ($tsWindowStart !== false && $tsWindowEnd !== false) {
+            $windowStart = $tsWindowStart - $validityBefore * 60;
+            $windowEnd   = $tsWindowEnd   + $validityAfter  * 60;
+
+            if ($now < $windowStart) {
+                echo json_encode(['success' => false, 'message' => 'Check-in noch nicht möglich. Bitte komm kurz vor Slotbeginn wieder.']);
+                exit;
+            } elseif ($now > $windowEnd) {
+                echo json_encode(['success' => false, 'message' => 'Das Zeitfenster für diesen Check-in ist abgelaufen.']);
+                exit;
+            }
+        }
+    }
 
     $isFreeSlot = in_array($slotNumber, [2, 4]);
 

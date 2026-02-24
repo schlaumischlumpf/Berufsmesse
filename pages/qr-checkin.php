@@ -11,7 +11,7 @@ if (!empty($token)) {
     // Token validieren
     $stmt = $db->prepare("
         SELECT qt.*, e.name as exhibitor_name, e.short_description, t.slot_name, t.slot_number,
-               r.room_number
+               t.start_time, t.end_time, r.room_number
         FROM qr_tokens qt
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
@@ -29,6 +29,33 @@ if (!empty($token)) {
         $timeslotId = $qrToken['timeslot_id'];
         $slotNumber = $qrToken['slot_number'];
         $isFreeSlot = in_array($slotNumber, [2, 4]);
+
+        // Zeitfenster-Prüfung anhand der Einstellungen
+        $eventDate      = getSetting('event_date');
+        $validityBefore = intval(getSetting('qr_validity_before', 10));
+        $validityAfter  = intval(getSetting('qr_validity_after', 15));
+        $timeWindowValid = true;
+
+        if ($eventDate && !empty($qrToken['start_time']) && !empty($qrToken['end_time'])) {
+            $now         = time();
+            $tsWindowStart = strtotime("$eventDate " . $qrToken['start_time']);
+            $tsWindowEnd   = strtotime("$eventDate " . $qrToken['end_time']);
+
+            if ($tsWindowStart !== false && $tsWindowEnd !== false) {
+                $windowStart = $tsWindowStart - $validityBefore * 60;
+                $windowEnd   = $tsWindowEnd   + $validityAfter  * 60;
+
+                if ($now < $windowStart) {
+                    $checkinResult = ['type' => 'error', 'message' => 'Check-in noch nicht möglich. Bitte komm kurz vor Slotbeginn wieder.'];
+                    $timeWindowValid = false;
+                } elseif ($now > $windowEnd) {
+                    $checkinResult = ['type' => 'error', 'message' => 'Das Zeitfenster für diesen Check-in ist abgelaufen.'];
+                    $timeWindowValid = false;
+                }
+            }
+        }
+
+        if ($timeWindowValid) {
 
         // Prüfen ob der Schüler für diesen Aussteller/Slot registriert ist
         $stmt = $db->prepare("
@@ -118,6 +145,7 @@ if (!empty($token)) {
                 }
             }
         }
+        } // end if ($timeWindowValid)
     }
 }
 ?>
