@@ -207,6 +207,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (deleteFile($documentId)) {
             $message = ['success' => true, 'message' => 'Dokument erfolgreich geloescht'];
         }
+    } elseif (isset($_POST['toggle_document_visibility'])) {
+        if (!isAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
+        // Sichtbarkeit für Schüler umschalten
+        $documentId = intval($_POST['document_id']);
+        $db = getDB();
+        $stmt = $db->prepare("UPDATE exhibitor_documents SET visible_for_students = NOT visible_for_students WHERE id = ?");
+        if ($stmt->execute([$documentId])) {
+            $message = ['type' => 'success', 'text' => 'Sichtbarkeit erfolgreich geändert'];
+        } else {
+            $message = ['type' => 'error', 'text' => 'Fehler beim Ändern der Sichtbarkeit'];
+        }
     } elseif (isset($_POST['delete_logo'])) {
         // Logo loeschen
         $id = intval($_POST['exhibitor_id']);
@@ -1319,16 +1330,30 @@ function loadDocuments(exhibitorId) {
             } else {
                 container.innerHTML = data.documents.map(doc => `
                     <div class="flex items-center justify-between p-3 bg-gray-50 rounded-lg mb-2">
-                        <div class="flex items-center space-x-3">
-                            <i class="fas fa-file text-emerald-500"></i>
-                            <span class="text-sm text-gray-700">${doc.original_name}</span>
+                        <div class="flex items-center space-x-3 min-w-0 flex-1">
+                            <i class="fas fa-file text-emerald-500 flex-shrink-0"></i>
+                            <span class="text-sm text-gray-700 truncate">${doc.original_name}</span>
+                            ${doc.visible_for_students == 1 ? '<span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-100 text-emerald-700 flex-shrink-0"><i class="fas fa-eye mr-1"></i>Schüler</span>' : ''}
                         </div>
-                        <form method="POST" class="inline" onsubmit="return confirm('Wirklich loeschen?')">
-                            <input type="hidden" name="document_id" value="${doc.id}">
-                            <button type="submit" name="delete_document" class="text-red-500 hover:text-red-600">
-                                <i class="fas fa-trash"></i>
-                            </button>
-                        </form>
+                        <div class="flex items-center gap-2 flex-shrink-0 ml-2">
+                            <a href="api/download-document.php?id=${doc.id}" class="p-1.5 text-blue-500 hover:text-blue-600 hover:bg-blue-50 rounded transition" title="Herunterladen">
+                                <i class="fas fa-download"></i>
+                            </a>
+                            <form method="POST" class="inline">
+                                <input type="hidden" name="document_id" value="${doc.id}">
+                                <button type="submit" name="toggle_document_visibility"
+                                        class="p-1.5 rounded transition ${doc.visible_for_students == 1 ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50' : 'text-gray-400 hover:text-gray-500 hover:bg-gray-100'}"
+                                        title="${doc.visible_for_students == 1 ? 'Für Schüler sichtbar (klicken zum Ausblenden)' : 'Für Schüler ausgeblendet (klicken zum Anzeigen)'}">
+                                    <i class="fas ${doc.visible_for_students == 1 ? 'fa-eye' : 'fa-eye-slash'}"></i>
+                                </button>
+                            </form>
+                            <form method="POST" class="inline" onsubmit="return confirm('Wirklich loeschen?')">
+                                <input type="hidden" name="document_id" value="${doc.id}">
+                                <button type="submit" name="delete_document" class="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition" title="Löschen">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
                     </div>
                 `).join('');
             }

@@ -106,6 +106,7 @@ CREATE TABLE IF NOT EXISTS `exhibitor_documents` (
   `original_name` varchar(255) NOT NULL,
   `file_type` varchar(50) DEFAULT NULL,
   `file_size` int(11) DEFAULT NULL,
+  `visible_for_students` tinyint(1) DEFAULT 0 COMMENT 'Gibt an ob das Dokument für Schüler sichtbar ist',
   `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
