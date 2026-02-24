@@ -27,6 +27,7 @@ try {
     ]);
     
 } catch (Exception $e) {
+    logErrorToAudit($e, 'API-RaumClear');
     echo json_encode([
         'success' => false,
         'message' => 'Fehler beim Löschen: ' . $e->getMessage()

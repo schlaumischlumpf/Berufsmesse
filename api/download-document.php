@@ -4,6 +4,8 @@ require_once '../functions.php';
 
 requireLogin();
 
+try {
+
 $documentId = intval($_GET['id'] ?? 0);
 
 if (!$documentId) {
@@ -59,4 +61,11 @@ header('Cache-Control: private, no-cache');
 
 readfile($filepath);
 exit();
-?>
+
+} catch (Exception $e) {
+    logErrorToAudit($e, 'API-DokumentDownload');
+    if (!headers_sent()) {
+        http_response_code(500);
+    }
+    die('Fehler beim Herunterladen des Dokuments.');
+}

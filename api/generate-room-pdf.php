@@ -12,6 +12,8 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
     die('Keine Berechtigung');
 }
 
+try {
+
 $db = getDB();
 
 // Filter
@@ -208,3 +210,12 @@ if ($filterRoom) {
 }
 
 $pdf->Output('D', $filename);
+
+} catch (Exception $e) {
+    logErrorToAudit($e, 'PDF-Raumuebersicht');
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    die('Fehler beim Erstellen des PDFs.');
+}

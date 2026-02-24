@@ -111,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                         }
                     } catch (PDOException $e) {
                         $importResult['errors'][] = "Zeile $rowNumber: Datenbankfehler - " . $e->getMessage();
+                        logErrorToAudit($e, 'Benutzerverwaltung');
                     }
                     
                     $rowNumber++;
@@ -178,6 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $message = ['type' => 'error', 'text' => 'Fehler beim Erstellen des Benutzers'];
                     }
                 } catch (PDOException $e) {
+                    logErrorToAudit($e, 'Benutzerverwaltung');
                     // Log and show a friendly error instead of letting the script crash
                     error_log('PDOException when inserting user: ' . $e->getMessage());
                     $message = ['type' => 'error', 'text' => 'Datenbankfehler beim Erstellen des Benutzers. Bitte überprüfe Eingaben und Schema.'];

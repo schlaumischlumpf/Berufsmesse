@@ -12,6 +12,8 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
     die('Keine Berechtigung');
 }
 
+try {
+
 $db = getDB();
 
 // Filter
@@ -251,3 +253,11 @@ if (empty($groupedByClass)) {
 // PDF ausgeben
 $filename = 'Berufsmesse_' . ($filterClass ? str_replace(' ', '_', $filterClass) : 'Alle_Klassen') . '_' . date('Y-m-d') . '.pdf';
 $pdf->Output('D', $filename);
+} catch (Exception $e) {
+    logErrorToAudit($e, 'PDF-Klassenuebersicht');
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    die('Fehler beim Erstellen des PDFs.');
+}

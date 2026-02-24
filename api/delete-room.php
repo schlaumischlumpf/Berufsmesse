@@ -78,12 +78,14 @@ try {
         logAuditAction('raum_geloescht', "Raum '$roomName' (ID: $roomId) gelöscht");
         
     } catch (Exception $e) {
+        logErrorToAudit($e, 'API-RaumLöschen');
         // Rollback bei Fehler
         $db->rollBack();
         throw $e;
     }
     
 } catch (Exception $e) {
+    logErrorToAudit($e, 'API-RaumLöschen');
     echo json_encode([
         'success' => false,
         'message' => 'Fehler beim Löschen: ' . $e->getMessage()

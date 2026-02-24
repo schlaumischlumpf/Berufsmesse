@@ -190,11 +190,13 @@ try {
                 user_id INT DEFAULT NULL,
                 username VARCHAR(100) NOT NULL,
                 action VARCHAR(255) NOT NULL,
+                severity ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info' COMMENT 'Schweregrad des Log-Eintrags',
                 details TEXT DEFAULT NULL,
                 ip_address VARCHAR(45) DEFAULT NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_user_id (user_id),
                 INDEX idx_action (action),
+                INDEX idx_severity (severity),
                 INDEX idx_created_at (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Audit Logs für alle Nutzeraktionen (Issue #21)'
         ");
@@ -204,6 +206,20 @@ try {
     }
 } catch (PDOException $e) {
     $errors[] = "Fehler bei audit_logs: " . $e->getMessage();
+}
+
+// Migration 10b: severity-Spalte zu audit_logs hinzufügen (falls fehlend)
+try {
+    $cols = $db->query("SHOW COLUMNS FROM audit_logs LIKE 'severity'")->fetchAll();
+    if (empty($cols)) {
+        $db->exec("ALTER TABLE audit_logs ADD COLUMN severity ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info' COMMENT 'Schweregrad des Log-Eintrags' AFTER action");
+        $db->exec("ALTER TABLE audit_logs ADD INDEX idx_severity (severity)");
+        $success[] = "Spalte 'severity' zu audit_logs hinzugefügt";
+    } else {
+        $success[] = "Spalte 'severity' in audit_logs existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler bei audit_logs severity-Migration: " . $e->getMessage();
 }
 
 // Migration 11: permission_groups Tabellen erstellen (Issue #26)

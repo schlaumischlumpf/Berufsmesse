@@ -46,11 +46,12 @@ try {
     $slotNumber = $qrToken['slot_number'];
 
     // Zeitfenster-Prüfung anhand der Einstellungen
-    $eventDate      = getSetting('event_date');
-    $validityBefore = intval(getSetting('qr_validity_before', 10));
-    $validityAfter  = intval(getSetting('qr_validity_after', 15));
+    $eventDate       = getSetting('event_date');
+    $validityEnabled = getSetting('qr_validity_enabled', '1');
+    $validityBefore  = intval(getSetting('qr_validity_before', 10));
+    $validityAfter   = intval(getSetting('qr_validity_after', 15));
 
-    if ($eventDate && !empty($qrToken['start_time']) && !empty($qrToken['end_time'])) {
+    if ($validityEnabled !== '0' && $eventDate && !empty($qrToken['start_time']) && !empty($qrToken['end_time'])) {
         $now           = time();
         $tsWindowStart = strtotime("$eventDate " . $qrToken['start_time']);
         $tsWindowEnd   = strtotime("$eventDate " . $qrToken['end_time']);
@@ -133,5 +134,6 @@ try {
     ]);
     
 } catch (Exception $e) {
+    logErrorToAudit($e, 'API-QRCheckin');
     echo json_encode(['success' => false, 'message' => 'Fehler: ' . $e->getMessage()]);
 }

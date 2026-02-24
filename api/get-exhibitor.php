@@ -9,6 +9,8 @@ if (!isLoggedIn()) {
     exit();
 }
 
+try {
+
 $exhibitorId = intval($_GET['id'] ?? 0);
 $tab = $_GET['tab'] ?? 'info';
 
@@ -68,6 +70,11 @@ echo json_encode([
     'content' => $content
 ]);
 
+} catch (Exception $e) {
+    logErrorToAudit($e, 'API-AusstellerInfo');
+    echo json_encode(['success' => false, 'message' => 'Fehler beim Laden des Ausstellers.']);
+}
+
 // Neue Funktion für Schüler-Detailansicht
 function generateDetailsTab($exhibitor) {
     // Angebot aus offer_types JSON laden (Fallback: aus Beschreibung parsen)
@@ -99,6 +106,15 @@ function generateDetailsTab($exhibitor) {
     // Berufe/Tätigkeiten (aus jobs Feld oder Description parsen)
     $jobs = $exhibitor['jobs'] ?? '';
     
+    // Kategorien dekodieren (wird als JSON-Array gespeichert)
+    $categoryRaw = $exhibitor['category'] ?? '';
+    $categoryLabels = [];
+    if ($categoryRaw) {
+        $decoded = json_decode($categoryRaw, true);
+        $categoryLabels = is_array($decoded) ? $decoded : [$categoryRaw];
+    }
+    $categoryDisplay = !empty($categoryLabels) ? implode(', ', $categoryLabels) : 'Allgemein';
+    
     // Besonderheiten
     $besonderheiten = $exhibitor['features'] ?? '';
     
@@ -119,7 +135,7 @@ function generateDetailsTab($exhibitor) {
             <div>
                 <h3 class="text-xl font-bold text-gray-900"><?php echo htmlspecialchars($exhibitor['name']); ?></h3>
                 <span class="inline-flex items-center px-2.5 py-1 mt-2 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700">
-                    <i class="fas fa-tag mr-1.5"></i> <?php echo htmlspecialchars($exhibitor['category'] ?? 'Allgemein'); ?>
+                    <i class="fas fa-tag mr-1.5"></i> <?php echo htmlspecialchars($categoryDisplay); ?>
                 </span>
             </div>
         </div>
@@ -135,7 +151,17 @@ function generateDetailsTab($exhibitor) {
         <!-- Branche -->
         <div>
             <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Branche</h4>
-            <p class="text-gray-700"><?php echo htmlspecialchars($exhibitor['category'] ?? 'Keine Angabe'); ?></p>
+            <?php if (!empty($categoryLabels)): ?>
+            <div class="flex flex-wrap gap-2">
+                <?php foreach ($categoryLabels as $cat): ?>
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-emerald-50 text-emerald-700">
+                    <i class="fas fa-tag mr-2"></i><?php echo htmlspecialchars($cat); ?>
+                </span>
+                <?php endforeach; ?>
+            </div>
+            <?php else: ?>
+            <p class="text-gray-400 italic">Keine Angabe</p>
+            <?php endif; ?>
         </div>
 
         <!-- Typische Berufe/Tätigkeiten -->
@@ -289,10 +315,17 @@ function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
 
         <!-- Kategorie (wenn sichtbar) -->
         <?php if ($isVisible('category') && $exhibitor['category']): ?>
-        <div>
+        <?php
+            $catRaw2 = $exhibitor['category'];
+            $catArr2 = json_decode($catRaw2, true);
+            $catArr2 = is_array($catArr2) ? $catArr2 : [$catRaw2];
+        ?>
+        <div class="flex flex-wrap gap-2">
+            <?php foreach ($catArr2 as $cat2): ?>
             <span class="inline-flex items-center px-4 py-2 rounded-full text-sm bg-purple-100 text-purple-800">
-                <i class="fas fa-tag mr-2"></i><?php echo htmlspecialchars($exhibitor['category']); ?>
+                <i class="fas fa-tag mr-2"></i><?php echo htmlspecialchars($cat2); ?>
             </span>
+            <?php endforeach; ?>
         </div>
         <?php endif; ?>
 

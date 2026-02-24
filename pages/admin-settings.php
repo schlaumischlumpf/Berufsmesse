@@ -73,9 +73,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_validity'])) 
     }
     $before = max(0, intval($_POST['qr_validity_before']));
     $after  = max(0, intval($_POST['qr_validity_after']));
+    $enabled = isset($_POST['qr_validity_enabled']) ? '1' : '0';
     updateSetting('qr_validity_before', $before);
     updateSetting('qr_validity_after', $after);
-    logAuditAction('qr_gueltigkeit_geaendert', "QR-Gültigkeitsfenster: $before Min. vor / $after Min. nach Slot");
+    updateSetting('qr_validity_enabled', $enabled);
+    logAuditAction('qr_gueltigkeit_geaendert', "QR-Gültigkeitsfenster: $before Min. vor / $after Min. nach Slot | Aktiviert: $enabled");
     $message = ['type' => 'success', 'text' => 'Gültigkeitsdauer erfolgreich gespeichert'];
 }
 
@@ -91,6 +93,7 @@ $currentSettings = [
     'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL),
     'qr_validity_before' => getSetting('qr_validity_before', 10),
     'qr_validity_after' => getSetting('qr_validity_after', 15),
+    'qr_validity_enabled' => getSetting('qr_validity_enabled', '1'),
     'registration_page_enabled' => getSetting('registration_page_enabled', '0'),
     'site_password_enabled' => getSetting('site_password_enabled', '0'),
     'site_password_set' => !empty(getSetting('site_password', ''))
@@ -310,7 +313,20 @@ $currentSettings = [
                         Das Datum wird dem in den Einstellungen festgelegten Messetermin entnommen.
                     </p>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Zeitfenster-Toggle -->
+                    <label class="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition">
+                        <input type="checkbox" name="qr_validity_enabled" value="1"
+                               id="qrValidityEnabled"
+                               <?php echo $currentSettings['qr_validity_enabled'] === '1' ? 'checked' : ''; ?>
+                               onchange="toggleQrValidityFields(this.checked)"
+                               class="w-5 h-5 text-amber-500 rounded border-gray-300 focus:ring-amber-400 mt-0.5 flex-shrink-0">
+                        <div>
+                            <span class="text-sm font-medium text-gray-700 block">Zeitfenster-Prüfung aktivieren</span>
+                            <span class="text-xs text-gray-500">Wenn deaktiviert, sind QR-Codes jederzeit gültig – unabhängig vom Zeitslot.</span>
+                        </div>
+                    </label>
+
+                    <div id="qrValidityFields" class="grid grid-cols-1 sm:grid-cols-2 gap-4 <?php echo $currentSettings['qr_validity_enabled'] !== '1' ? 'opacity-40 pointer-events-none' : ''; ?>">
                         <div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
                             <label class="block text-xs font-semibold text-blue-800 mb-2">
                                 <i class="fas fa-hourglass-start mr-1"></i>
@@ -541,6 +557,18 @@ function toggleSitePasswordField() {
         field.classList.remove('hidden');
     } else {
         field.classList.add('hidden');
+    }
+}
+
+// QR-Gültigkeitsfelder ein-/ausblenden
+function toggleQrValidityFields(enabled) {
+    const fields = document.getElementById('qrValidityFields');
+    if (fields) {
+        if (enabled) {
+            fields.classList.remove('opacity-40', 'pointer-events-none');
+        } else {
+            fields.classList.add('opacity-40', 'pointer-events-none');
+        }
     }
 }
 

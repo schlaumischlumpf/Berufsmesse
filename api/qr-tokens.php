@@ -101,5 +101,6 @@ try {
         echo json_encode(['success' => false, 'message' => 'Unbekannte Aktion']);
     }
 } catch (Exception $e) {
+    logErrorToAudit($e, 'API-QRTokens');
     echo json_encode(['success' => false, 'message' => $e->getMessage()]);
 }

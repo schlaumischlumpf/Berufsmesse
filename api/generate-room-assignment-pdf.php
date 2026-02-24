@@ -12,6 +12,8 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
     die('Keine Berechtigung');
 }
 
+try {
+
 $db = getDB();
 
 $stmt = $db->query("
@@ -106,3 +108,12 @@ if (empty($data)) {
 }
 
 $pdf->Output('D', 'Berufsmesse_Raumzuteilung_' . date('Y-m-d') . '.pdf');
+
+} catch (Exception $e) {
+    logErrorToAudit($e, 'PDF-Raumzuteilung');
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    die('Fehler beim Erstellen des PDFs.');
+}

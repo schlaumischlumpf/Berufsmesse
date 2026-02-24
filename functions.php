@@ -639,21 +639,53 @@ function getClientIp(): string {
 }
 
 // Audit Log System (Issue #21)
-function logAuditAction($action, $details = '') {
+function logAuditAction($action, $details = '', $severity = 'info') {
     try {
         $db = getDB();
         $userId = $_SESSION['user_id'] ?? null;
         $username = $_SESSION['username'] ?? 'System';
         $ipAddress = getClientIp();
-        
+
+        // Sanitize severity – only allow known values
+        $allowedSeverities = ['info', 'warning', 'error'];
+        $severity = in_array($severity, $allowedSeverities, true) ? $severity : 'info';
+
         $stmt = $db->prepare("
-            INSERT INTO audit_logs (user_id, username, action, details, ip_address, created_at)
-            VALUES (?, ?, ?, ?, ?, NOW())
+            INSERT INTO audit_logs (user_id, username, action, details, severity, ip_address, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, NOW())
         ");
-        $stmt->execute([$userId, $username, $action, $details, $ipAddress]);
+        $stmt->execute([$userId, $username, $action, $details, $severity, $ipAddress]);
     } catch (Exception $e) {
         error_log('Audit Log Error: ' . $e->getMessage());
     }
+}
+
+/**
+ * Logs a caught exception or error to the audit log with severity = 'error'.
+ * Also calls PHP's error_log() so server logs remain unchanged.
+ *
+ * @param Throwable $e         The caught exception or error.
+ * @param string    $context   Short label for where the error occurred, e.g. 'Registrierung', 'Admin-Benutzer'.
+ * @param string    $extraInfo Optional additional detail string to append.
+ */
+function logErrorToAudit(Throwable $e, string $context = 'Unbekannt', string $extraInfo = ''): void {
+    // Always preserve the original error_log behaviour
+    error_log('[' . $context . '] ' . get_class($e) . ': ' . $e->getMessage());
+
+    $details = '[' . $context . '] '
+        . get_class($e) . ': '
+        . $e->getMessage()
+        . ' | Datei: ' . basename($e->getFile())
+        . ':' . $e->getLine();
+
+    if ($extraInfo !== '') {
+        $details .= ' | Info: ' . $extraInfo;
+    }
+
+    // Truncate details to prevent oversized DB entries
+    $details = mb_substr($details, 0, 2000);
+
+    logAuditAction('error', $details, 'error');
 }
 
 // Branchen/Kategorien aus DB laden

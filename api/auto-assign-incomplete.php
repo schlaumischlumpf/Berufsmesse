@@ -208,6 +208,7 @@ try {
     ]);
     
 } catch (Exception $e) {
+    logErrorToAudit($e, 'API-AutoZuweisung');
     echo json_encode([
         'success' => false,
         'message' => 'Fehler bei der automatischen Zuweisung: ' . $e->getMessage()

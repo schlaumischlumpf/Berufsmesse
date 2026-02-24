@@ -96,6 +96,7 @@ try {
     ]);
     
 } catch (Exception $e) {
+    logErrorToAudit($e, 'API-Benutzersuche');
     echo json_encode([
         'success' => false,
         'message' => 'Fehler beim Laden der Benutzer: ' . $e->getMessage()

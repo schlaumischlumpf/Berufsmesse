@@ -169,6 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $redistributedCount++;
                         }
                     } catch (PDOException $e) {
+                        logErrorToAudit($e, 'Aussteller-Admin');
                         // Constraint-Verletzung - Registrierung wird durch CASCADE gelöscht
                     }
                 } else {
@@ -251,6 +252,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 logAuditAction('branche_erstellt', "Branche '$indName' erstellt");
                 $industryMessage = ['type' => 'success', 'text' => "Branche '$indName' erfolgreich angelegt"];
             } catch (PDOException $e) {
+                logErrorToAudit($e, 'Aussteller-Admin');
                 if ($e->getCode() == 23000) {
                     $industryMessage = ['type' => 'error', 'text' => "Branche '$indName' existiert bereits"];
                 } else {
@@ -274,6 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 logAuditAction('branche_bearbeitet', "Branche ID $indId zu '$indName' umbenannt");
                 $industryMessage = ['type' => 'success', 'text' => "Branche erfolgreich aktualisiert"];
             } catch (PDOException $e) {
+                logErrorToAudit($e, 'Aussteller-Admin');
                 if ($e->getCode() == 23000) {
                     $industryMessage = ['type' => 'error', 'text' => "Eine Branche mit diesem Namen existiert bereits"];
                 } else {
@@ -357,6 +360,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_industry'])) {
             logAuditAction('branche_erstellt', "Branche '$name' angelegt");
             $industryMessage = ['type' => 'success', 'text' => "Branche '$name' angelegt"];
         } catch (PDOException $e) {
+            logErrorToAudit($e, 'Aussteller-Admin');
             $industryMessage = ['type' => 'error', 'text' => 'Branchenname bereits vorhanden'];
         }
     }
@@ -410,6 +414,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
             logAuditAction('orga_zugewiesen', "Orga-Mitglied #$userId Aussteller #$exhibitorId zugewiesen");
             $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich zugewiesen'];
         } catch (PDOException $e) {
+            logErrorToAudit($e, 'Aussteller-Admin');
             $orgaMessage = ['type' => 'error', 'text' => 'Zuweisung fehlgeschlagen: ' . $e->getMessage()];
         }
     }
@@ -476,6 +481,7 @@ if (isAdmin() || hasPermission('orga_team_sehen')) {
             $orgaAssignments[$row['exhibitor_id']][] = $row;
         }
     } catch (PDOException $e) {
+        logErrorToAudit($e, 'Aussteller-Admin');
         // Table might not exist yet in old installations
         $orgaAssignments = [];
     }
@@ -646,6 +652,7 @@ $orgaUsers = $stmt->fetchAll();
                             try {
                                 $categories = json_decode($exhibitor['category'], true) ?? [];
                             } catch (Exception $e) {
+                                logErrorToAudit($e, 'Aussteller-Admin');
                                 // Fallback für alte String-Werte
                                 $categories = [$exhibitor['category']];
                             }

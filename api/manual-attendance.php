@@ -68,5 +68,6 @@ try {
         echo json_encode(['success' => false, 'message' => 'Unbekannte Aktion']);
     }
 } catch (Exception $e) {
+    logErrorToAudit($e, 'API-Anwesenheit');
     echo json_encode(['success' => false, 'message' => 'Fehler: ' . $e->getMessage()]);
 }

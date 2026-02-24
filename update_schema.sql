@@ -39,12 +39,14 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
   `user_id` int(11) DEFAULT NULL,
   `username` varchar(100) NOT NULL,
   `action` varchar(255) NOT NULL,
+  `severity` ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info' COMMENT 'Schweregrad des Log-Eintrags',
   `details` text DEFAULT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_action` (`action`),
+  KEY `idx_severity` (`severity`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Audit Logs für alle Nutzeraktionen';
 
@@ -263,29 +265,26 @@ DELIMITER //
 -- Stored Procedure zum sicheren Hinzufügen von Spalten
 DROP PROCEDURE IF EXISTS add_column_if_not_exists//
 CREATE PROCEDURE add_column_if_not_exists(
-    IN table_name VARCHAR(128),
-    IN column_name VARCHAR(128),
-    IN column_definition TEXT
+    IN p_table VARCHAR(128),
+    IN p_column VARCHAR(128),
+    IN p_definition TEXT
 )
 BEGIN
-    DECLARE column_exists INT DEFAULT 0;
+    DECLARE col_exists INT DEFAULT 0;
 
     -- Prüfen ob Spalte existiert
-    SELECT COUNT(*) INTO column_exists
+    SELECT COUNT(*) INTO col_exists
     FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME = table_name
-      AND COLUMN_NAME = column_name;
+      AND TABLE_NAME   = p_table
+      AND COLUMN_NAME  = p_column;
 
     -- Spalte hinzufügen wenn sie nicht existiert
-    IF column_exists = 0 THEN
-        SET @sql = CONCAT('ALTER TABLE `', table_name, '` ADD COLUMN `', column_name, '` ', column_definition);
+    IF col_exists = 0 THEN
+        SET @sql = CONCAT('ALTER TABLE `', p_table, '` ADD COLUMN `', p_column, '` ', p_definition);
         PREPARE stmt FROM @sql;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
-        SELECT CONCAT('Column ', column_name, ' added to table ', table_name) AS message;
-    ELSE
-        SELECT CONCAT('Column ', column_name, ' already exists in table ', table_name) AS message;
     END IF;
 END//
 
@@ -301,9 +300,36 @@ CALL add_column_if_not_exists('users', 'must_change_password', 'tinyint(1) DEFAU
 CALL add_column_if_not_exists('registrations', 'priority', 'int(11) DEFAULT NULL COMMENT \'Priorität der Anmeldung (1 = höchste Priorität)\'');
 CALL add_column_if_not_exists('rooms', 'equipment', 'varchar(500) DEFAULT NULL COMMENT \'Raumausstattung (z.B. Beamer, Smartboard)\'');
 CALL add_column_if_not_exists('exhibitor_documents', 'visible_for_students', 'tinyint(1) DEFAULT 0 COMMENT \'Gibt an ob das Dokument für Schüler sichtbar ist\'');
+CALL add_column_if_not_exists('audit_logs', 'severity', "ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info' COMMENT 'Schweregrad des Log-Eintrags'");
 
 -- Stored Procedure entfernen
 DROP PROCEDURE IF EXISTS add_column_if_not_exists;
+
+-- Index für severity hinzufügen (nur wenn nicht vorhanden)
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
+DELIMITER //
+CREATE PROCEDURE add_index_if_not_exists(
+    IN p_table VARCHAR(128),
+    IN p_index VARCHAR(128),
+    IN p_column VARCHAR(128)
+)
+BEGIN
+    DECLARE idx_exists INT DEFAULT 0;
+    SELECT COUNT(*) INTO idx_exists
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = p_table
+      AND INDEX_NAME   = p_index;
+    IF idx_exists = 0 THEN
+        SET @sql = CONCAT('ALTER TABLE `', p_table, '` ADD INDEX `', p_index, '` (`', p_column, '`)');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+CALL add_index_if_not_exists('audit_logs', 'idx_severity', 'severity');
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
 
 -- ============================================================================
 -- Foreign Key Constraints hinzufügen (nur wenn sie nicht existieren)
@@ -314,9 +340,9 @@ DELIMITER //
 -- Stored Procedure zum sicheren Hinzufügen von Foreign Keys
 DROP PROCEDURE IF EXISTS add_fk_if_not_exists//
 CREATE PROCEDURE add_fk_if_not_exists(
-    IN table_name VARCHAR(128),
-    IN constraint_name VARCHAR(128),
-    IN fk_definition TEXT
+    IN p_table VARCHAR(128),
+    IN p_constraint VARCHAR(128),
+    IN p_definition TEXT
 )
 BEGIN
     DECLARE fk_exists INT DEFAULT 0;
@@ -324,20 +350,17 @@ BEGIN
     -- Prüfen ob Foreign Key existiert
     SELECT COUNT(*) INTO fk_exists
     FROM information_schema.TABLE_CONSTRAINTS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME = table_name
-      AND CONSTRAINT_NAME = constraint_name
-      AND CONSTRAINT_TYPE = 'FOREIGN KEY';
+    WHERE TABLE_SCHEMA     = DATABASE()
+      AND TABLE_NAME       = p_table
+      AND CONSTRAINT_NAME  = p_constraint
+      AND CONSTRAINT_TYPE  = 'FOREIGN KEY';
 
     -- Foreign Key hinzufügen wenn er nicht existiert
     IF fk_exists = 0 THEN
-        SET @sql = CONCAT('ALTER TABLE `', table_name, '` ADD CONSTRAINT `', constraint_name, '` ', fk_definition);
+        SET @sql = CONCAT('ALTER TABLE `', p_table, '` ADD CONSTRAINT `', p_constraint, '` ', p_definition);
         PREPARE stmt FROM @sql;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
-        SELECT CONCAT('Foreign Key ', constraint_name, ' added to table ', table_name) AS message;
-    ELSE
-        SELECT CONCAT('Foreign Key ', constraint_name, ' already exists in table ', table_name) AS message;
     END IF;
 END//
 
@@ -390,10 +413,6 @@ ALTER TABLE exhibitors MODIFY COLUMN category TEXT;
 -- ============================================================================
 
 COMMIT;
-
-SELECT 'Schema update completed successfully!' AS message;
-SELECT 'All missing tables and columns have been created.' AS message;
-SELECT 'Existing data has been preserved.' AS message;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;

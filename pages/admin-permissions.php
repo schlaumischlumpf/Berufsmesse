@@ -55,6 +55,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
     }
 }
 
+// Handle Bulk Permission Changes (mehrere Benutzer gleichzeitig)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_save_permissions'])) {
+    if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
+    $userIds    = array_map('intval', $_POST['user_ids'] ?? []);
+    $permissions = $_POST['permissions'] ?? [];
+    $groupIds    = $_POST['group_ids'] ?? [];
+
+    $affectedCount = 0;
+    foreach ($userIds as $uid) {
+        if ($uid === intval($_SESSION['user_id'])) continue; // Eigene Berechtigungen nicht ändern
+        if (isAdmin()) {
+            $db->prepare("DELETE FROM user_permission_groups WHERE user_id = ?")->execute([$uid]);
+            foreach ($groupIds as $gid) {
+                $db->prepare("INSERT IGNORE INTO user_permission_groups (user_id, group_id) VALUES (?, ?)")->execute([$uid, intval($gid)]);
+            }
+            $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$uid]);
+            foreach ($permissions as $permission) {
+                grantPermission($uid, $permission);
+            }
+        } else {
+            $ownPermissions = getUserPermissions($_SESSION['user_id']);
+            foreach ($ownPermissions as $perm) {
+                $db->prepare("DELETE FROM user_permissions WHERE user_id = ? AND permission = ?")->execute([$uid, $perm]);
+            }
+            foreach ($permissions as $permission) {
+                if (in_array($permission, $ownPermissions)) {
+                    grantPermission($uid, $permission);
+                }
+            }
+        }
+        $affectedCount++;
+    }
+    logAuditAction('Bulk-Berechtigungen geändert', "Berechtigungen für $affectedCount Benutzer aktualisiert: " . implode(', ', $permissions));
+    $message = ['type' => 'success', 'text' => "Berechtigungen für $affectedCount Benutzer erfolgreich gespeichert"];
+}
+
 // Handle Apply Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
     if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
@@ -95,6 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
             logAuditAction('Berechtigungsgruppe erstellt', "Gruppe '$groupName' mit " . count($groupPermissions) . " Berechtigungen erstellt");
             $message = ['type' => 'success', 'text' => "Berechtigungsgruppe '$groupName' erfolgreich erstellt"];
         } catch (PDOException $e) {
+            logErrorToAudit($e, 'Berechtigungen');
             $message = ['type' => 'error', 'text' => 'Fehler: Gruppenname existiert bereits oder ungültige Daten'];
         }
     } else {
@@ -131,6 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_group'])) {
             logAuditAction('Berechtigungsgruppe bearbeitet', "Gruppe '$groupName' mit " . count($groupPermissions) . " Berechtigungen aktualisiert");
             $message = ['type' => 'success', 'text' => "Berechtigungsgruppe '$groupName' erfolgreich aktualisiert"];
         } catch (PDOException $e) {
+            logErrorToAudit($e, 'Berechtigungen');
             $db->rollBack();
             $message = ['type' => 'error', 'text' => 'Fehler: Gruppenname existiert bereits oder ungültige Daten'];
         }
@@ -152,6 +190,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
         logAuditAction('Berechtigungsgruppe gelöscht', "Gruppe '" . ($group['name'] ?? $groupId) . "' gelöscht");
         $message = ['type' => 'success', 'text' => 'Berechtigungsgruppe gelöscht'];
     } catch (Exception $e) {
+        logErrorToAudit($e, 'Berechtigungen');
         $message = ['type' => 'error', 'text' => 'Fehler beim Löschen der Gruppe'];
     }
 }
@@ -301,6 +340,10 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
             <table class="w-full">
                 <thead class="bg-gray-50 border-b border-gray-200">
                     <tr>
+                        <th class="px-4 py-4">
+                            <input type="checkbox" id="selectAllUsers" class="w-4 h-4 rounded text-purple-600 cursor-pointer"
+                                   onchange="toggleSelectAllUsers(this)" title="Alle auswählen">
+                        </th>
                         <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Benutzer</th>
                         <th class="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Rolle</th>
                         <th class="px-6 py-4 text-center text-xs font-semibold text-gray-600 uppercase tracking-wider">Berechtigungen</th>
@@ -313,6 +356,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                         try {
                             $userGroups = getUserPermissionGroups($user['id']);
                         } catch (Exception $e) {
+                            logErrorToAudit($e, 'Berechtigungen');
                             $userGroups = [];
                         }
                     ?>
@@ -321,6 +365,15 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                         data-username="<?php echo strtolower($user['username']); ?>"
                         data-role="<?php echo strtolower($user['role']); ?>"
                         data-permissions="<?php echo strtolower(implode(' ', $userPermissions)); ?>">
+                        <td class="px-4 py-4">
+                            <?php if ($user['id'] !== $_SESSION['user_id'] && $user['role'] !== 'admin'): ?>
+                            <input type="checkbox" class="user-select-checkbox w-4 h-4 rounded text-purple-600 cursor-pointer"
+                                   value="<?php echo $user['id']; ?>"
+                                   onchange="updateBulkSelectionBar()">
+                            <?php else: ?>
+                            <span class="w-4 h-4 block"></span>
+                            <?php endif; ?>
+                        </td>
                         <td class="px-6 py-4">
                             <div class="flex items-center">
                                 <div class="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center mr-3">
@@ -488,7 +541,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
             <p class="text-sm text-purple-100 mt-1" id="modalUserName"></p>
         </div>
         
-        <form method="POST" class="p-6 space-y-6">
+        <form method="POST" class="p-6 space-y-6" id="permissionModalForm">
             <input type="hidden" name="user_id" id="modal_user_id">
 
             <!-- Berechtigungsgruppen Sektion -->
@@ -562,11 +615,108 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
             </div>
             
             <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <span id="autoSaveIndicator" class="text-xs self-center mr-auto"></span>
                 <button type="button" onclick="closePermissionModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
-                    Abbrechen
+                    Schließen
                 </button>
                 <button type="submit" name="save_permissions" class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
                     <i class="fas fa-save mr-2"></i>Speichern
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Floating Bulk Selection Bar -->
+<div id="bulkSelectionBar" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-purple-700 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 z-40 transition-all">
+    <i class="fas fa-users text-purple-200"></i>
+    <span class="font-semibold"><span id="selectedCount">0</span> Benutzer ausgewählt</span>
+    <?php if (isAdmin() || hasPermission('berechtigungen_vergeben')): ?>
+    <button onclick="openBulkPermissionModal()"
+            class="px-4 py-2 bg-white text-purple-700 rounded-lg font-semibold hover:bg-purple-50 transition text-sm">
+        <i class="fas fa-shield-alt mr-2"></i>Berechtigungen vergeben
+    </button>
+    <?php endif; ?>
+    <button onclick="clearUserSelection()" class="text-purple-200 hover:text-white transition ml-2" title="Auswahl aufheben">
+        <i class="fas fa-times"></i>
+    </button>
+</div>
+
+<!-- Bulk Permission Modal -->
+<div id="bulkPermissionModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50">
+    <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+        <div class="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-4 rounded-t-xl">
+            <h3 class="text-xl font-bold">Berechtigungen für mehrere Benutzer</h3>
+            <p class="text-sm text-purple-100 mt-1">Berechtigungen werden für <strong id="bulkModalUserCount">0</strong> Benutzer gesetzt</p>
+        </div>
+
+        <form method="POST" class="p-6 space-y-6" id="bulkPermissionForm">
+            <div id="bulkUserIdsContainer"></div>
+
+            <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                <strong>Achtung:</strong> Die hier gewählten Berechtigungen <em>ersetzen</em> die vorhandenen für alle ausgewählten Benutzer.
+            </div>
+
+            <!-- Berechtigungsgruppen -->
+            <div class="border-2 border-indigo-200 rounded-lg p-4 bg-indigo-50/50">
+                <label class="block text-sm font-bold text-indigo-900 mb-3 flex items-center gap-2">
+                    <i class="fas fa-layer-group"></i> Berechtigungsgruppen
+                </label>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <?php
+                    $allPermGroups = getPermissionGroups();
+                    foreach ($allPermGroups as $group):
+                        $groupPerms = getPermissionGroupPermissions($group['id']);
+                    ?>
+                    <label class="flex items-start p-3 bg-white rounded-lg border border-indigo-200 hover:bg-indigo-50 cursor-pointer transition">
+                        <input type="checkbox" name="group_ids[]" value="<?php echo $group['id']; ?>"
+                               class="bulk-group-checkbox mt-1 mr-3 rounded text-indigo-600 w-4 h-4">
+                        <div class="flex-1 min-w-0">
+                            <div class="font-semibold text-sm text-gray-800"><?php echo htmlspecialchars($group['name']); ?></div>
+                            <div class="text-xs text-indigo-600 mt-1"><?php echo count($groupPerms); ?> Berechtigungen</div>
+                        </div>
+                    </label>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
+            <!-- Individuelle Berechtigungen -->
+            <div class="space-y-4">
+                <label class="block text-sm font-semibold text-gray-700">Individuelle Berechtigungen:</label>
+                <?php foreach ($availablePermissions as $groupName => $groupPerms): ?>
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <div class="bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-600 uppercase tracking-wider">
+                        <?php echo htmlspecialchars($groupName); ?>
+                    </div>
+                    <div class="divide-y divide-gray-100">
+                    <?php foreach ($groupPerms as $key => $description):
+                        $canManage = in_array($key, $currentUserPermissions);
+                    ?>
+                    <label class="flex items-start p-3 <?php echo $canManage ? 'bg-white hover:bg-gray-50 cursor-pointer' : 'bg-gray-50 cursor-not-allowed opacity-50'; ?> transition">
+                        <input type="checkbox"
+                               name="permissions[]"
+                               value="<?php echo $key; ?>"
+                               class="bulk-perm-checkbox mt-1 mr-3 rounded text-purple-600 w-4 h-4"
+                               <?php echo $canManage ? '' : 'disabled'; ?>>
+                        <div class="flex-1">
+                            <div class="font-semibold text-sm text-gray-800"><?php echo $key; ?></div>
+                            <div class="text-xs text-gray-600 mt-0.5"><?php echo $description; ?></div>
+                        </div>
+                    </label>
+                    <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endforeach; ?>
+            </div>
+
+            <div class="flex justify-end gap-3 pt-4 border-t border-gray-200">
+                <button type="button" onclick="closeBulkPermissionModal()" class="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">
+                    Abbrechen
+                </button>
+                <button type="submit" name="bulk_save_permissions" value="1"
+                        class="px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
+                    <i class="fas fa-save mr-2"></i>Für alle Ausgewählten speichern
                 </button>
             </div>
         </form>
@@ -686,6 +836,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.perm-checkbox').forEach(cb => {
         cb.addEventListener('change', function() {
             checkDependencies(this.getAttribute('data-key'), this.checked);
+            scheduleAutoSave();
         });
     });
 
@@ -738,12 +889,143 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
             }
+            // Gruppen-Änderungen NICHT auto-speichern: beim Abwählen einer Gruppe würden
+            // sonst individuelle Berechtigungen, die sich mit der Gruppe überschneiden,
+            // sofort aus der DB gelöscht. → Manuell auf „Speichern" klicken.
         });
     });
 });
 
+// ============================================================
+// Auto-Save: Speichert Berechtigungen sofort bei Checkbox-Klick
+// ============================================================
+let autoSaveTimer;
+
+function scheduleAutoSave() {
+    clearTimeout(autoSaveTimer);
+    autoSaveTimer = setTimeout(doAutoSave, 250);
+}
+
+function doAutoSave() {
+    const userId = document.getElementById('modal_user_id').value;
+    if (!userId) return;
+
+    const formData = new FormData();
+    formData.append('save_permissions', '1');
+    formData.append('user_id', userId);
+
+    // Aktuelle Werte VOR dem Fetch merken, damit der Button danach aktualisiert werden kann
+    const savedPermissions = [];
+    const savedGroupIds = [];
+    document.querySelectorAll('#permissionModalForm input[name="permissions[]"]:checked').forEach(cb => {
+        formData.append('permissions[]', cb.value);
+        savedPermissions.push(cb.value);
+    });
+    document.querySelectorAll('#permissionModalForm input[name="group_ids[]"]:checked').forEach(cb => {
+        formData.append('group_ids[]', cb.value);
+        savedGroupIds.push(parseInt(cb.value, 10));
+    });
+
+    const indicator = document.getElementById('autoSaveIndicator');
+    if (indicator) {
+        indicator.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Speichern...';
+        indicator.className = 'text-amber-600 text-xs self-center mr-auto';
+    }
+
+    fetch(window.location.href, { method: 'POST', body: formData })
+        .then(r => r.text())
+        .then(() => {
+            // Button-Datenattribute aktualisieren, damit das erneute Öffnen des Modals
+            // die frisch gespeicherten Werte lädt und nicht veraltete Werte überschreibt
+            const btn = document.querySelector(`.permission-btn[data-user-id="${userId}"]`);
+            if (btn) {
+                btn.setAttribute('data-permissions', JSON.stringify(savedPermissions));
+                btn.setAttribute('data-group-ids', JSON.stringify(savedGroupIds));
+            }
+
+            if (indicator) {
+                indicator.innerHTML = '<i class="fas fa-check-circle mr-1"></i>Gespeichert';
+                indicator.className = 'text-emerald-600 text-xs self-center mr-auto';
+                setTimeout(() => { if (indicator) indicator.innerHTML = ''; }, 2500);
+            }
+        })
+        .catch(err => {
+            console.error('Auto-save error:', err);
+            if (indicator) {
+                indicator.innerHTML = '<i class="fas fa-exclamation-circle mr-1"></i>Fehler beim Speichern';
+                indicator.className = 'text-red-600 text-xs self-center mr-auto';
+            }
+        });
+}
+
+// ============================================================
+// Multi-Select: Mehrere Benutzer auswählen
+// ============================================================
+function toggleSelectAllUsers(checkbox) {
+    document.querySelectorAll('.user-select-checkbox:not([disabled])').forEach(cb => {
+        cb.checked = checkbox.checked;
+    });
+    updateBulkSelectionBar();
+}
+
+function updateBulkSelectionBar() {
+    const selected = document.querySelectorAll('.user-select-checkbox:checked');
+    const bar = document.getElementById('bulkSelectionBar');
+    document.getElementById('selectedCount').textContent = selected.length;
+    if (selected.length > 0) {
+        bar.classList.remove('hidden');
+    } else {
+        bar.classList.add('hidden');
+    }
+}
+
+function clearUserSelection() {
+    document.querySelectorAll('.user-select-checkbox').forEach(cb => cb.checked = false);
+    const selectAll = document.getElementById('selectAllUsers');
+    if (selectAll) selectAll.checked = false;
+    updateBulkSelectionBar();
+}
+
+function openBulkPermissionModal() {
+    const selected = document.querySelectorAll('.user-select-checkbox:checked');
+    if (selected.length === 0) return;
+
+    // Benutzer-IDs als Hidden-Inputs setzen
+    const container = document.getElementById('bulkUserIdsContainer');
+    container.innerHTML = '';
+    selected.forEach(cb => {
+        const input = document.createElement('input');
+        input.type = 'hidden';
+        input.name = 'user_ids[]';
+        input.value = cb.value;
+        container.appendChild(input);
+    });
+
+    document.getElementById('bulkModalUserCount').textContent = selected.length;
+
+    // Alle Checkboxen im Bulk-Modal zurücksetzen
+    document.querySelectorAll('#bulkPermissionModal .bulk-perm-checkbox').forEach(cb => cb.checked = false);
+    document.querySelectorAll('#bulkPermissionModal .bulk-group-checkbox').forEach(cb => cb.checked = false);
+
+    const modal = document.getElementById('bulkPermissionModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeBulkPermissionModal() {
+    document.getElementById('bulkPermissionModal').classList.add('hidden');
+    document.getElementById('bulkPermissionModal').classList.remove('flex');
+}
+
+document.getElementById('bulkPermissionModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeBulkPermissionModal();
+});
+
 function openPermissionModal(userId, userName, currentPermissions, currentGroupIds) {
     try {
+        // Laufenden Auto-Save-Timer abbrechen (verhindert Cross-User-Saves beim schnellen Wechsel)
+        clearTimeout(autoSaveTimer);
+
         // User ID setzen
         const userIdField = document.getElementById('modal_user_id');
         if (userIdField) {
@@ -756,14 +1038,14 @@ function openPermissionModal(userId, userName, currentPermissions, currentGroupI
             userNameField.textContent = userName;
         }
 
-        // Gruppen-Checkboxen zurücksetzen und dann die aktuellen Gruppen setzen
-        const groupCheckboxes = document.querySelectorAll('input[name="group_ids[]"]');
+        // Gruppen-Checkboxen NUR innerhalb des Permission-Modals setzen
+        const groupCheckboxes = document.querySelectorAll('#permissionModal input[name="group_ids[]"]');
         groupCheckboxes.forEach(function(checkbox) {
             checkbox.checked = currentGroupIds.includes(parseInt(checkbox.value));
         });
 
-        // Alle Permission-Checkboxen zurücksetzen und dann die aktuellen Berechtigungen setzen
-        const checkboxes = document.querySelectorAll('input[name="permissions[]"]');
+        // Permission-Checkboxen NUR innerhalb des Permission-Modals setzen
+        const checkboxes = document.querySelectorAll('#permissionModal input[name="permissions[]"]');
         checkboxes.forEach(function(checkbox) {
             checkbox.checked = currentPermissions.includes(checkbox.value);
         });
@@ -771,6 +1053,9 @@ function openPermissionModal(userId, userName, currentPermissions, currentGroupI
         // Modal anzeigen
         const modal = document.getElementById('permissionModal');
         if (modal) {
+            // Auto-save-Indikator zurücksetzen
+            const indicator = document.getElementById('autoSaveIndicator');
+            if (indicator) indicator.innerHTML = '';
             modal.classList.remove('hidden');
             modal.classList.add('flex');
         }
@@ -781,6 +1066,8 @@ function openPermissionModal(userId, userName, currentPermissions, currentGroupI
 }
 
 function closePermissionModal() {
+    // Laufenden Auto-Save-Timer abbrechen, damit kein veralteter Save feuert
+    clearTimeout(autoSaveTimer);
     const modal = document.getElementById('permissionModal');
     if (modal) {
         modal.classList.add('hidden');
@@ -792,6 +1079,7 @@ function closePermissionModal() {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closePermissionModal();
+        closeBulkPermissionModal();
     }
 });
 
@@ -820,6 +1108,7 @@ setTimeout(function() {
 <?php 
     }
 } catch (Exception $e) {
+    logErrorToAudit($e, 'Berechtigungen');
     // Silent error - don't break the page
 }
 ?>

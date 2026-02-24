@@ -59,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                     $stmt->execute([$_SESSION['user_id']]);
                     $userRegCount = $stmt->fetch()['count'];
                 } catch (PDOException $e) {
+                    logErrorToAudit($e, 'Anmeldung');
                     $message = ['type' => 'error', 'text' => 'Ein Fehler ist aufgetreten. Bitte versuche es erneut.'];
                 }
             }

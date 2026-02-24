@@ -12,6 +12,8 @@ if (!isLoggedIn()) {
     die('Nicht eingeloggt');
 }
 
+try {
+
 $db = getDB();
 
 // Helper: UTF-8 zu Latin-1 konvertieren
@@ -269,3 +271,11 @@ $pdf->Legend();
 // PDF ausgeben
 $filename = 'Berufsmesse_Zeitplan_' . str_replace(' ', '_', $userName) . '_' . date('Y-m-d') . '.pdf';
 $pdf->Output('D', $filename);
+} catch (Exception $e) {
+    logErrorToAudit($e, 'PDF-PersoenicherZeitplan');
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    die('Fehler beim Erstellen des PDFs.');
+}

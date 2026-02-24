@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
   `user_id` int(11) DEFAULT NULL,
   `username` varchar(100) NOT NULL,
   `action` varchar(255) NOT NULL,
+  `severity` ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info' COMMENT 'Schweregrad des Log-Eintrags',
   `details` text DEFAULT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp()
@@ -405,6 +406,7 @@ ALTER TABLE `audit_logs`
   ADD PRIMARY KEY (`id`),
   ADD KEY `idx_user_id` (`user_id`),
   ADD KEY `idx_action` (`action`),
+  ADD KEY `idx_severity` (`severity`),
   ADD KEY `idx_created_at` (`created_at`);
 
 --

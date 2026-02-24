@@ -41,6 +41,7 @@ try {
     }
 } catch (Exception $e) {
     $exhibitors = [];
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Exhibitors Query Error: ' . $e->getMessage());
 }
 
@@ -50,6 +51,7 @@ try {
     $timeslots = $stmt->fetchAll();
 } catch (Exception $e) {
     $timeslots = [];
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Timeslots Query Error: ' . $e->getMessage());
 }
 
@@ -79,6 +81,7 @@ try {
     $existingTokens = [];
     $tokenCheck = ['total' => 0, 'earliest' => null, 'latest' => null, 'current_time' => date('Y-m-d H:i:s')];
     $dbError = $e->getMessage();
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Tokens Query Error: ' . $e->getMessage());
 }
 
@@ -113,6 +116,7 @@ try {
     }
 } catch (Exception $e) {
     $attendanceStats = [];
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Attendance Stats Error: ' . $e->getMessage());
 }
 
@@ -137,6 +141,7 @@ try {
     }
 } catch (Exception $e) {
     $attendanceDetails = [];
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Attendance Details Error: ' . $e->getMessage());
 }
 
@@ -149,6 +154,7 @@ try {
 } catch (Exception $e) {
     $totalAttendees = 0;
     $totalCheckins = 0;
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Total Stats Error: ' . $e->getMessage());
 }
 

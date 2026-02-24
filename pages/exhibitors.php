@@ -50,6 +50,7 @@ $categories = !empty($industryList)
                 try {
                     $categoriesArray = json_decode($exhibitor['category'], true) ?? [];
                 } catch (Exception $e) {
+                    logErrorToAudit($e, 'Aussteller-Ansicht');
                     // Fallback für alte String-Werte
                     $categoriesArray = [$exhibitor['category']];
                 }

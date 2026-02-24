@@ -196,6 +196,7 @@ try {
     }
     
 } catch (Exception $e) {
+    logErrorToAudit($e, 'API-AutoZuweisung');
     $_SESSION['auto_assign_error'] = $e->getMessage();
 }
 

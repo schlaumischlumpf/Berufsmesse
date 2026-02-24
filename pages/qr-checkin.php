@@ -108,6 +108,7 @@ if (!empty($token)) {
                         'exhibitor' => $qrToken
                     ];
                 } catch (Exception $e) {
+                    logErrorToAudit($e, 'QR-Checkin');
                     $checkinResult = ['type' => 'error', 'message' => 'Fehler beim Check-in: ' . $e->getMessage()];
                 }
             }
@@ -141,6 +142,7 @@ if (!empty($token)) {
                         'exhibitor' => $qrToken
                     ];
                 } catch (Exception $e) {
+                    logErrorToAudit($e, 'QR-Checkin');
                     $checkinResult = ['type' => 'error', 'message' => 'Fehler beim Check-in: ' . $e->getMessage()];
                 }
             }

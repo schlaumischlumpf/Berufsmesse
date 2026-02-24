@@ -219,10 +219,17 @@ foreach ($exhibitors as $ex) {
                                     <?php endif; ?>
                                 </div>
                             </div>
-                            <div class="flex items-center gap-3">
-                                <span class="text-sm font-semibold text-gray-600">
+                            <div class="flex items-center gap-1">
+                                <span class="text-sm font-semibold text-gray-600 mr-2">
                                     <?php echo isset($assignedExhibitors[$room['id']]) ? count($assignedExhibitors[$room['id']]) : 0; ?> zugeordnet
                                 </span>
+                                <?php if (isAdmin() || hasPermission('raeume_bearbeiten')): ?>
+                                    <button onclick="openEditRoomModal(<?php echo htmlspecialchars(json_encode(['id' => $room['id'], 'room_number' => $room['room_number'], 'floor' => $room['floor'] ?? '', 'capacity' => $room['capacity'], 'equipment' => $room['equipment'] ?? '']), ENT_QUOTES); ?>)"
+                                            class="text-blue-500 hover:text-blue-700 transition px-2 py-1 rounded hover:bg-blue-50"
+                                            title="Raum bearbeiten">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                <?php endif; ?>
                                 <?php if ((!isset($assignedExhibitors[$room['id']]) || count($assignedExhibitors[$room['id']]) === 0) && (isAdmin() || hasPermission('raeume_loeschen'))): ?>
                                     <button onclick="deleteRoom(<?php echo $room['id']; ?>, '<?php echo htmlspecialchars($room['room_number'], ENT_QUOTES); ?>')"
                                             class="text-red-500 hover:text-red-700 transition px-2 py-1 rounded hover:bg-red-50"
@@ -331,7 +338,7 @@ foreach ($exhibitors as $ex) {
                     </label>
                     <input type="text" id="room_number" name="room_number" required
                            class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                           placeholder="z.B. A101">
+                           placeholder="z.B. 112">
                 </div>
 
                 <!-- Floor and Capacity -->
@@ -403,6 +410,103 @@ foreach ($exhibitors as $ex) {
     </div>
 </div>
 
+<!-- Modal: Raum bearbeiten -->
+<div id="editRoomModal" class="fixed inset-0 bg-black bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div class="p-6 border-b border-gray-200">
+            <div class="flex items-center justify-between">
+                <h3 class="text-2xl font-bold text-gray-800">
+                    <i class="fas fa-edit text-blue-600 mr-3"></i>
+                    Raum bearbeiten
+                </h3>
+                <button onclick="closeEditRoomModal()" class="text-gray-500 hover:text-gray-700 text-2xl">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        </div>
+
+        <form id="editRoomForm" class="p-6">
+            <input type="hidden" id="edit_room_id">
+            <div class="space-y-6">
+                <!-- Room Number -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        Raumnummer <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" id="edit_room_number" name="room_number" required
+                           class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                           placeholder="z.B. 112">
+                </div>
+
+                <!-- Floor and Capacity -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">
+                            Stockwerk
+                        </label>
+                        <input type="number" id="edit_floor" name="floor" min="0" max="20"
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="z.B. 1">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">
+                            Kapazität <span class="text-red-500">*</span>
+                        </label>
+                        <input type="number" id="edit_capacity" name="capacity" required min="1" value="25"
+                               class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                               placeholder="Max. Personen">
+                    </div>
+                </div>
+
+                <!-- Equipment -->
+                <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        <i class="fas fa-tools text-gray-400 mr-1"></i> Ausstattung
+                    </label>
+                    <div class="flex flex-wrap gap-2 mb-2" id="editEquipmentCheckboxes">
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Beamer" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-video text-gray-400 mr-1"></i> Beamer
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Smartboard" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-chalkboard text-gray-400 mr-1"></i> Smartboard
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Whiteboard" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-chalkboard-teacher text-gray-400 mr-1"></i> Whiteboard
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Lautsprecher" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-volume-up text-gray-400 mr-1"></i> Lautsprecher
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="WLAN" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-wifi text-gray-400 mr-1"></i> WLAN
+                        </label>
+                        <label class="inline-flex items-center px-3 py-1.5 bg-gray-50 rounded-lg border border-gray-200 cursor-pointer hover:bg-blue-50 hover:border-blue-300 transition">
+                            <input type="checkbox" name="equipment[]" value="Steckdosen" class="mr-2 rounded text-blue-600">
+                            <i class="fas fa-plug text-gray-400 mr-1"></i> Steckdosen
+                        </label>
+                    </div>
+                    <input type="text" id="edit_equipment_custom" name="equipment_custom"
+                           class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                           placeholder="Weitere Ausstattung (kommagetrennt)">
+                </div>
+            </div>
+
+            <div class="mt-8 flex gap-3">
+                <button type="submit" class="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold">
+                    <i class="fas fa-save mr-2"></i>Änderungen speichern
+                </button>
+                <button type="button" onclick="closeEditRoomModal()" class="px-6 py-3 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition font-semibold">
+                    Abbrechen
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
 <script>
 let draggedElement = null;
 
@@ -456,6 +560,7 @@ document.getElementById('addRoomForm').addEventListener('submit', function(e) {
 document.addEventListener('keydown', function(e) {
     if (e.key === 'Escape') {
         closeAddRoomModal();
+        closeEditRoomModal();
     }
 });
 
@@ -628,6 +733,90 @@ function deleteRoom(roomId, roomNumber) {
         showNotification('error', 'Fehler beim Löschen des Raums');
     });
 }
+
+// Edit Room Modal Functions
+function openEditRoomModal(roomData) {
+    document.getElementById('edit_room_id').value = roomData.id;
+    document.getElementById('edit_room_number').value = roomData.room_number;
+    document.getElementById('edit_floor').value = roomData.floor || '';
+    document.getElementById('edit_capacity').value = roomData.capacity || 25;
+
+    // Reset all checkboxes first
+    document.querySelectorAll('#editRoomModal input[name="equipment[]"]').forEach(cb => cb.checked = false);
+    document.getElementById('edit_equipment_custom').value = '';
+
+    // Set equipment checkboxes based on current room data
+    if (roomData.equipment) {
+        const equipList = roomData.equipment.split(',').map(e => e.trim());
+        const knownEquip = ['Beamer', 'Smartboard', 'Whiteboard', 'Lautsprecher', 'WLAN', 'Steckdosen'];
+        const customEquip = [];
+        equipList.forEach(eq => {
+            if (knownEquip.includes(eq)) {
+                const cb = document.querySelector('#editRoomModal input[value="' + eq + '"]');
+                if (cb) cb.checked = true;
+            } else if (eq) {
+                customEquip.push(eq);
+            }
+        });
+        if (customEquip.length > 0) {
+            document.getElementById('edit_equipment_custom').value = customEquip.join(', ');
+        }
+    }
+
+    document.getElementById('editRoomModal').classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeEditRoomModal() {
+    document.getElementById('editRoomModal').classList.add('hidden');
+    document.body.style.overflow = 'auto';
+}
+
+// Edit Room Form Submit
+document.getElementById('editRoomForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+
+    const checked = [...document.querySelectorAll('#editRoomModal input[name="equipment[]"]:checked')].map(cb => cb.value);
+    const custom = document.getElementById('edit_equipment_custom').value.trim();
+    if (custom) {
+        custom.split(',').forEach(item => {
+            const trimmed = item.trim();
+            if (trimmed && !checked.includes(trimmed)) checked.push(trimmed);
+        });
+    }
+
+    const formData = {
+        room_id: document.getElementById('edit_room_id').value,
+        room_number: document.getElementById('edit_room_number').value,
+        floor: document.getElementById('edit_floor').value,
+        capacity: document.getElementById('edit_capacity').value,
+        equipment: checked.join(', ')
+    };
+
+    fetch('api/edit-room.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            showNotification('success', 'Raum erfolgreich aktualisiert!');
+            closeEditRoomModal();
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showNotification('error', data.message || 'Fehler beim Aktualisieren');
+        }
+    })
+    .catch(err => {
+        console.error('Error:', err);
+        showNotification('error', 'Fehler beim Aktualisieren des Raums');
+    });
+});
+
+document.getElementById('editRoomModal').addEventListener('click', function(e) {
+    if (e.target === this) closeEditRoomModal();
+});
 
 // Equipment-Auswahl sammeln (Issue #17)
 function getSelectedEquipment() {
