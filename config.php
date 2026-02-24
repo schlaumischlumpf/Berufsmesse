@@ -12,7 +12,9 @@ date_default_timezone_set('Europe/Berlin');
 if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_httponly', 1);
     ini_set('session.use_only_cookies', 1);
-    ini_set('session.cookie_secure', 0); // Auf 1 setzen bei HTTPS
+    $cookieSecure = getenv('COOKIE_SECURE') ?: ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? '1' : '0');
+    ini_set('session.cookie_secure', $cookieSecure);
+    session_start();
 }
 
 // Upload-Verzeichnis
