@@ -41,4 +41,10 @@ if ($appEnv === 'development') {
     error_reporting(0);
     ini_set('display_errors', 0);
 }
+
+// Trusted Proxy IPs (Docker-interne Netzwerke, Load Balancer, Cloudflare etc.)
+// Kann per Umgebungsvariable überschrieben werden (kommasepariert)
+define('TRUSTED_PROXIES', array_filter(array_map('trim', explode(',',
+    getenv('TRUSTED_PROXIES') ?: '172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.1'
+))));
 ?>

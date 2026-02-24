@@ -522,13 +522,129 @@ function getAllPermissionKeys() {
     return $flat;
 }
 
+/**
+ * Prüft ob eine IP-Adresse in einem CIDR-Bereich liegt (IPv4 und IPv6).
+ */
+function ipInRange(string $ip, string $cidr): bool {
+    if (strpos($cidr, '/') === false) {
+        return $ip === $cidr;
+    }
+
+    [$subnet, $bits] = explode('/', $cidr, 2);
+    $bits = (int)$bits;
+
+    $ipBin = @inet_pton($ip);
+    $subnetBin = @inet_pton($subnet);
+
+    if ($ipBin === false || $subnetBin === false) {
+        return false;
+    }
+
+    // Beide müssen die gleiche Adressfamilie haben
+    if (strlen($ipBin) !== strlen($subnetBin)) {
+        return false;
+    }
+
+    // Bitweise Maske berechnen und vergleichen
+    $ipHex = bin2hex($ipBin);
+    $subnetHex = bin2hex($subnetBin);
+    $ipBits = '';
+    $subnetBits = '';
+    for ($i = 0; $i < strlen($ipHex); $i++) {
+        $ipBits .= str_pad(base_convert($ipHex[$i], 16, 2), 4, '0', STR_PAD_LEFT);
+        $subnetBits .= str_pad(base_convert($subnetHex[$i], 16, 2), 4, '0', STR_PAD_LEFT);
+    }
+
+    return substr($ipBits, 0, $bits) === substr($subnetBits, 0, $bits);
+}
+
+/**
+ * Ermittelt die echte Client-IP-Adresse, auch hinter Reverse-Proxies.
+ */
+function getClientIp(): string {
+    $remoteAddr = $_SERVER['REMOTE_ADDR'] ?? '';
+
+    // IPv4-mapped IPv6 normalisieren (z.B. ::ffff:192.168.1.1 -> 192.168.1.1)
+    $normalizeIp = function(string $ip): string {
+        if (preg_match('/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i', $ip, $matches)) {
+            return $matches[1];
+        }
+        return $ip;
+    };
+
+    $remoteAddr = $normalizeIp($remoteAddr);
+
+    // Prüfen ob REMOTE_ADDR ein Trusted Proxy ist
+    $isTrustedProxy = false;
+    $trustedProxies = defined('TRUSTED_PROXIES') ? TRUSTED_PROXIES : [];
+    foreach ($trustedProxies as $proxy) {
+        if (ipInRange($remoteAddr, $proxy)) {
+            $isTrustedProxy = true;
+            break;
+        }
+    }
+
+    // Nur wenn Trusted Proxy: Proxy-Header auswerten
+    if ($isTrustedProxy) {
+        $headersToCheck = [
+            'HTTP_CF_CONNECTING_IP',
+            'HTTP_X_REAL_IP',
+            'HTTP_X_FORWARDED_FOR',
+            'HTTP_CLIENT_IP',
+        ];
+
+        foreach ($headersToCheck as $header) {
+            if (empty($_SERVER[$header])) {
+                continue;
+            }
+
+            if ($header === 'HTTP_X_FORWARDED_FOR') {
+                // Kommaseparierte Liste: ersten Nicht-Proxy-Eintrag verwenden
+                $ips = array_map('trim', explode(',', $_SERVER[$header]));
+                foreach ($ips as $ip) {
+                    $ip = $normalizeIp($ip);
+                    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+                        error_log('getClientIp: Ungültige IP in ' . $header . ': ' . $ip);
+                        continue;
+                    }
+                    // Trusted-Proxy-IPs überspringen
+                    $isProxy = false;
+                    foreach ($trustedProxies as $proxy) {
+                        if (ipInRange($ip, $proxy)) {
+                            $isProxy = true;
+                            break;
+                        }
+                    }
+                    if (!$isProxy) {
+                        return $ip;
+                    }
+                }
+            } else {
+                $ip = $normalizeIp(trim($_SERVER[$header]));
+                if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                    return $ip;
+                } else {
+                    error_log('getClientIp: Ungültige IP in ' . $header . ': ' . $_SERVER[$header]);
+                }
+            }
+        }
+    }
+
+    // Fallback auf REMOTE_ADDR
+    if ($remoteAddr !== '' && filter_var($remoteAddr, FILTER_VALIDATE_IP)) {
+        return $remoteAddr;
+    }
+
+    return '0.0.0.0';
+}
+
 // Audit Log System (Issue #21)
 function logAuditAction($action, $details = '') {
     try {
         $db = getDB();
         $userId = $_SESSION['user_id'] ?? null;
         $username = $_SESSION['username'] ?? 'System';
-        $ipAddress = $_SERVER['REMOTE_ADDR'] ?? '';
+        $ipAddress = getClientIp();
         
         $stmt = $db->prepare("
             INSERT INTO audit_logs (user_id, username, action, details, ip_address, created_at)

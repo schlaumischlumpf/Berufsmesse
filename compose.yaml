@@ -21,6 +21,7 @@ services:
       DB_USER: root
       DB_PASS: "test"
       DB_NAME: berufsmesse
+      # TRUSTED_PROXIES: "172.16.0.0/12,10.0.0.0/8,192.168.0.0/16"
     volumes:
       - .:/var/www/html
 
