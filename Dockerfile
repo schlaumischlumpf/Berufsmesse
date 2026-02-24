@@ -50,6 +50,11 @@ RUN docker-php-ext-install pdo_mysql mysqli
 # Copy app files from the app directory.
 COPY . /var/www/html
 
+# Ensure the uploads directory exists and is writable by the www-data process.
+RUN mkdir -p /var/www/html/uploads && \
+    chown -R www-data:www-data /var/www/html/uploads && \
+    chmod -R 775 /var/www/html/uploads
+
 # Switch to a non-privileged user (defined in the base image) that the app will run under.
 # See https://docs.docker.com/go/dockerfile-user-best-practices/
 USER www-data
