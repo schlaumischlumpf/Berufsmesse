@@ -131,7 +131,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
             WHERE u.role = 'student'
             GROUP BY u.id
             HAVING assigned_count < " . MANAGED_SLOTS_COUNT . "
-            ORDER BY (total_registrations = 0) ASC, assigned_count DESC
+            ORDER BY (COUNT(r.id) = 0) ASC, assigned_count DESC
         ");
         $studentsNeedingSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
