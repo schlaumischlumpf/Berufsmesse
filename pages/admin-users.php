@@ -184,43 +184,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         }
-    } elseif (isset($_POST['edit_user'])) {
-        if (!isAdmin() && !hasPermission('benutzer_bearbeiten')) die('Keine Berechtigung');
-        $userId    = intval($_POST['user_id']);
-        $firstname = sanitize($_POST['firstname']);
-        $lastname  = sanitize($_POST['lastname']);
-        $email     = sanitize($_POST['email']);
-        $newRole   = sanitize($_POST['role']);
-        $class     = sanitize($_POST['class'] ?? '');
-
-        if ($newRole === 'admin' && !isAdmin()) {
-            $message = ['type' => 'error', 'text' => 'Nur Administratoren können die Admin-Rolle vergeben'];
-        } else {
-            // Aktuelle Rolle laden
-            $stmt = $db->prepare("SELECT role, firstname, lastname FROM users WHERE id = ?");
-            $stmt->execute([$userId]);
-            $currentUser = $stmt->fetch();
-            $oldRole = $currentUser ? $currentUser['role'] : null;
-
-            if ($oldRole === 'admin' && !isAdmin()) {
-                $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts bearbeiten'];
-            } else {
-                $stmt = $db->prepare("UPDATE users SET firstname = ?, lastname = ?, email = ?, role = ?, class = ? WHERE id = ?");
-                if ($stmt->execute([$firstname, $lastname, $email, $newRole, $class, $userId])) {
-                    // Wenn Rolle zu Schüler geändert: alle Berechtigungen entziehen
-                    if ($newRole === 'student' && $oldRole !== 'student') {
-                        $db->prepare("DELETE FROM user_permissions WHERE user_id = ?")->execute([$userId]);
-                        logAuditAction('benutzer_rolle_geaendert', "Benutzer #{$userId} ({$currentUser['firstname']} {$currentUser['lastname']}): Rolle $oldRole → $newRole. Alle Berechtigungen entzogen.");
-                        $message = ['type' => 'success', 'text' => 'Benutzer aktualisiert. Da die Rolle auf Schüler geändert wurde, wurden alle Berechtigungen entzogen.'];
-                    } else {
-                        logAuditAction('benutzer_bearbeitet', "Benutzer #{$userId}: Rolle $oldRole → $newRole, Name: $firstname $lastname");
-                        $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich aktualisiert'];
-                    }
-                } else {
-                    $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren des Benutzers'];
-                }
-            }
-        }
     } elseif (isset($_POST['reset_password'])) {
         if (!isAdmin() && !hasPermission('benutzer_passwort_zuruecksetzen')) die('Keine Berechtigung');
         // Passwort zurücksetzen
