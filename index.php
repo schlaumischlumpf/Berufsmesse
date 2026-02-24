@@ -265,8 +265,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (i
         $stmt = $db->query("SELECT id FROM exhibitors WHERE active = 1");
         $exhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        $stmt = $db->query("SELECT id FROM timeslots ORDER BY slot_number ASC");
-        $timeslots = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        $stmt = $db->query("SELECT id, end_time FROM timeslots ORDER BY slot_number ASC");
+        $timeslots = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($exhibitors)) {
             throw new Exception("Keine aktiven Aussteller gefunden");
@@ -275,15 +275,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (i
             throw new Exception("Keine Zeitslots gefunden");
         }
 
+        $eventDate     = getSetting('event_date');
+        $validityAfter = intval(getSetting('qr_validity_after', 15));
+
         foreach ($exhibitors as $exId) {
-            foreach ($timeslots as $tsId) {
+            foreach ($timeslots as $ts) {
+                $tsId  = $ts['id'];
                 $token = bin2hex(random_bytes(3)); // 6 Zeichen
+                if ($eventDate && !empty($ts['end_time'])) {
+                    $tsEnd = strtotime("$eventDate " . $ts['end_time']);
+                    $expiresAt = $tsEnd !== false
+                        ? date('Y-m-d H:i:s', $tsEnd + $validityAfter * 60)
+                        : date('Y-m-d H:i:s', strtotime('+24 hours'));
+                } else {
+                    $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
+                }
                 $stmt = $db->prepare("
                     INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at)
-                    VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))
+                    VALUES (?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at)
                 ");
-                $stmt->execute([$exId, $tsId, $token]);
+                $stmt->execute([$exId, $tsId, $token, $expiresAt]);
                 $generated++;
             }
         }
@@ -306,14 +318,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (i
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) && (isAdmin() || hasPermission('qr_codes_erstellen'))) {
     try {
         $exhibitorId = intval($_POST['exhibitor_id']);
-        $timeslotId = intval($_POST['timeslot_id']);
-        $token = bin2hex(random_bytes(3)); // 6 Zeichen
+        $timeslotId  = intval($_POST['timeslot_id']);
+        $token       = bin2hex(random_bytes(3)); // 6 Zeichen
+
+        $eventDate     = getSetting('event_date');
+        $validityAfter = intval(getSetting('qr_validity_after', 15));
+
+        $tsStmt = $db->prepare("SELECT end_time FROM timeslots WHERE id = ?");
+        $tsStmt->execute([$timeslotId]);
+        $tsData = $tsStmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($eventDate && $tsData && !empty($tsData['end_time'])) {
+            $tsEnd = strtotime("$eventDate " . $tsData['end_time']);
+            $expiresAt = $tsEnd !== false
+                ? date('Y-m-d H:i:s', $tsEnd + $validityAfter * 60)
+                : date('Y-m-d H:i:s', strtotime('+24 hours'));
+        } else {
+            $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
+        }
+
         $stmt = $db->prepare("
             INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at)
-            VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 24 HOUR))
+            VALUES (?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at)
         ");
-        $stmt->execute([$exhibitorId, $timeslotId, $token]);
+        $stmt->execute([$exhibitorId, $timeslotId, $token, $expiresAt]);
     } catch (Exception $e) {
         error_log('QR generation error: ' . $e->getMessage());
     }
