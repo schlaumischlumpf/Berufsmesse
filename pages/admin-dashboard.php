@@ -375,7 +375,7 @@ $recentRegistrations = $stmt->fetchAll();
                             <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Aussteller</th>
                             <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Zeitslot</th>
                             <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Typ</th>
-                            <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Zeitpunkt</th>
+                            <th class="text-left py-3 px-4 text-sm font-semibold text-gray-700">Zeitpunkt (UTC)</th>
                         </tr>
                     </thead>
                     <tbody>

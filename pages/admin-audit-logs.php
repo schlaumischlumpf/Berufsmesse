@@ -164,7 +164,7 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
             <table class="w-full">
                 <thead class="bg-gray-50 border-b border-gray-200">
                     <tr>
-                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Zeitpunkt</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Zeitpunkt (UTC)</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nutzer</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aktion</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Details</th>
@@ -240,7 +240,7 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
             <i class="fas fa-info-circle text-yellow-500 mr-3 mt-0.5"></i>
             <div class="text-sm text-yellow-800">
                 <strong>Hinweis:</strong> Audit Logs sind schreibgeschützt und können nicht von Administratoren bearbeitet oder gelöscht werden. 
-                Format: Zeitpunkt, Nutzer, Aktion.
+                Format: Zeitpunkt (UTC), Nutzer, Aktion.
             </div>
         </div>
     </div>
