@@ -82,6 +82,7 @@ CREATE TABLE IF NOT EXISTS `exhibitor_documents` (
   `original_name` varchar(255) NOT NULL,
   `file_type` varchar(50) DEFAULT NULL,
   `file_size` int(11) DEFAULT NULL,
+  `visible_for_students` tinyint(1) DEFAULT 0 COMMENT 'Gibt an ob das Dokument für Schüler sichtbar ist',
   `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `exhibitor_id` (`exhibitor_id`)
@@ -299,6 +300,7 @@ CALL add_column_if_not_exists('exhibitors', 'equipment', 'varchar(500) DEFAULT N
 CALL add_column_if_not_exists('users', 'must_change_password', 'tinyint(1) DEFAULT 0 COMMENT \'Erzwingt Passwortänderung beim nächsten Login\'');
 CALL add_column_if_not_exists('registrations', 'priority', 'int(11) DEFAULT NULL COMMENT \'Priorität der Anmeldung (1 = höchste Priorität)\'');
 CALL add_column_if_not_exists('rooms', 'equipment', 'varchar(500) DEFAULT NULL COMMENT \'Raumausstattung (z.B. Beamer, Smartboard)\'');
+CALL add_column_if_not_exists('exhibitor_documents', 'visible_for_students', 'tinyint(1) DEFAULT 0 COMMENT \'Gibt an ob das Dokument für Schüler sichtbar ist\'');
 
 -- Stored Procedure entfernen
 DROP PROCEDURE IF EXISTS add_column_if_not_exists;
