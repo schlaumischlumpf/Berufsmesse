@@ -23,6 +23,7 @@ if (isset($_SESSION['site_authenticated']) && $_SESSION['site_authenticated'] ==
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     $enteredPassword = $_POST['site_password'] ?? '';
     $storedHash = getSetting('site_password', '');
 
@@ -127,6 +128,7 @@ $redirect = $_GET['redirect'] ?? (BASE_URL . 'login.php');
             <?php endif; ?>
 
             <form method="POST" action="" class="space-y-5">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($redirect); ?>">
 
                 <div>

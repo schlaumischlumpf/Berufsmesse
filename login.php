@@ -43,6 +43,7 @@ function recordLoginAttempt(string $username, string $ip): void {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     $username = sanitize($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     
@@ -201,6 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             <?php endif; ?>
 
             <form method="POST" action="" class="space-y-5">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <?php if (!empty($_GET['redirect'])): ?>
                 <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($_GET['redirect']); ?>">
                 <?php endif; ?>

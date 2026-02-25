@@ -15,6 +15,7 @@ $message = '';
 $messageType = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     $username = sanitize($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
     $firstname = sanitize($_POST['firstname'] ?? '');
@@ -207,6 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <?php endif; ?>
 
                 <form method="POST" action="" class="space-y-5">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <!-- Role Selection -->
                     <div>
                         <label class="block text-sm font-bold text-gray-700 mb-2">
