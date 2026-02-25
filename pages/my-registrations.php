@@ -8,7 +8,7 @@ $stmt = $db->prepare("
     FROM registrations r 
     JOIN exhibitors e ON r.exhibitor_id = e.id 
     LEFT JOIN timeslots t ON r.timeslot_id = t.id 
-    WHERE r.user_id = ?
+    WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
     ORDER BY t.slot_number ASC
 ");
 $stmt->execute([$_SESSION['user_id']]);
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                     FROM registrations r 
                     JOIN exhibitors e ON r.exhibitor_id = e.id 
                     LEFT JOIN timeslots t ON r.timeslot_id = t.id 
-                    WHERE r.user_id = ?
+                    WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
                     ORDER BY t.slot_number ASC
                 ");
                 $stmt->execute([$_SESSION['user_id']]);
