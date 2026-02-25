@@ -325,27 +325,23 @@ $recentRegistrations = $stmt->fetchAll();
                     </h3>
                     <p class="text-xs text-gray-500 mb-3">
                         <i class="fas fa-info-circle text-blue-500 mr-1"></i>
-                        Nur feste Zuteilungen (Slot 1, 3, 5)
+                        Nur feste Zuteilungen (Managed Slots)
                     </p>
                     <div class="space-y-3">
                         <?php 
-                        // Nur Slots mit festen Zuteilungen (1, 3, 5)
+                        // Nur Slots mit festen Zuteilungen
                         $assignedSlots = array_filter($slotStats, function($s) { 
                             return in_array($s['slot_number'], getManagedSlotNumbers()); 
                         });
                         $totalSlotRegs = array_sum(array_column($assignedSlots, 'registrations')) ?: 1;
                         
-                        // Farben für die 3 festen Slots
-                        $slotColors = [
-                            1 => 'bg-blue-500',
-                            3 => 'bg-emerald-500',
-                            5 => 'bg-amber-500'
-                        ];
+                        // Dynamische Farben für Slots
+                        $availableColors = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 'bg-rose-500', 'bg-cyan-500'];
                         
                         $slotIndex = 1;
                         foreach ($assignedSlots as $slot): 
                             $percentage = $totalSlotRegs > 0 ? ($slot['registrations'] / $totalSlotRegs) * 100 : 0;
-                            $colorClass = $slotColors[$slot['slot_number']] ?? 'bg-gray-500';
+                            $colorClass = $availableColors[($slotIndex - 1) % count($availableColors)];
                         ?>
                         <div>
                             <div class="flex items-center justify-between mb-1.5">

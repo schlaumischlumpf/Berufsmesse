@@ -129,9 +129,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
     if (empty($slotName)) {
         $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
     } else {
-        $maxNum = (int)$db->query("SELECT COALESCE(MAX(slot_number),0) FROM timeslots")->fetchColumn();
-        $db->prepare("INSERT INTO timeslots (slot_number,slot_name,start_time,end_time,is_managed) VALUES (?,?,?,?,?)")
-           ->execute([$maxNum + 1, $slotName, $startTime ?: null, $endTime ?: null, $isManaged]);
+        $stmt = $db->prepare("SELECT COALESCE(MAX(slot_number),0) FROM timeslots WHERE edition_id = ?");
+        $stmt->execute([$activeEditionId]);
+        $maxNum = (int)$stmt->fetchColumn();
+        $db->prepare("INSERT INTO timeslots (slot_number,slot_name,start_time,end_time,is_managed,edition_id) VALUES (?,?,?,?,?,?)")
+           ->execute([$maxNum + 1, $slotName, $startTime ?: null, $endTime ?: null, $isManaged, $activeEditionId]);
         logAuditAction('timeslot_erstellt', "Neuer Slot '$slotName'");
         $message = ['type' => 'success', 'text' => 'Zeitslot hinzugefügt.'];
     }
@@ -157,7 +159,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_timeslot'])) {
     }
 }
 
-$allTimeslots = $db->query("SELECT * FROM timeslots ORDER BY slot_number ASC")->fetchAll();
+$stmt = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+$stmt->execute([$activeEditionId]);
+$allTimeslots = $stmt->fetchAll();
 ?>
 
 <!-- Einstellungen – Tab-basiertes Mobile-First Layout -->
@@ -273,7 +277,7 @@ $allTimeslots = $db->query("SELECT * FROM timeslots ORDER BY slot_number ASC")->
                             <div class="flex items-center gap-3">
                                 <input type="number" name="max_registrations_per_student" 
                                        value="<?php echo $currentSettings['max_registrations_per_student']; ?>"
-                                       min="1" max="3" required
+                                       min="1" max="20" required
                                        class="w-20 px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 text-sm text-center font-bold text-lg">
                                 <span class="text-xs text-gray-500">Aussteller (= Zeitslots)</span>
                             </div>
