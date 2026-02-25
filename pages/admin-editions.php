@@ -21,13 +21,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $regS    = trim($_POST['registration_start'] ?? '') ?: null;
     $regE    = trim($_POST['registration_end']   ?? '') ?: null;
     $maxReg  = intval($_POST['max_registrations_per_student'] ?? 3);
+    $copyExhibitors = !empty($_POST['copy_exhibitors']);
     if (empty($name) || $year < 2000) {
         $message = ['type' => 'error', 'text' => 'Name und Jahr sind Pflichtfelder.'];
     } else {
         $db->prepare("INSERT INTO messe_editions (name,year,status,event_date,registration_start,registration_end,max_registrations_per_student) VALUES (?,?,'archived',?,?,?,?)")
            ->execute([$name, $year, $evDate, $regS, $regE, $maxReg]);
-        logAuditAction('edition_erstellt', "Edition '$name' ($year) erstellt");
-        $message = ['type' => 'success', 'text' => "Edition '$name' erstellt (Status: archiviert)."];
+        $newEditionId = (int)$db->lastInsertId();
+        $sourceEditionId = getActiveEditionId();
+        $copied = 0;
+
+        if ($copyExhibitors) {
+            // Zeitslots aus aktiver Edition kopieren
+            $db->prepare("
+                INSERT INTO timeslots (slot_number, slot_name, start_time, end_time, is_managed, edition_id)
+                SELECT slot_number, slot_name, start_time, end_time, is_managed, ?
+                FROM timeslots WHERE edition_id = ?
+            ")->execute([$newEditionId, $sourceEditionId]);
+
+            // Aussteller kopieren (ohne Raumzuweisung)
+            $db->prepare("
+                INSERT INTO exhibitors (name, description, short_description, category, logo,
+                    contact_person, email, phone, website, total_slots, room_id, active,
+                    visible_fields, jobs, features, offer_types, equipment, edition_id)
+                SELECT name, description, short_description, category, logo,
+                    contact_person, email, phone, website, total_slots, NULL, active,
+                    visible_fields, jobs, features, offer_types, equipment, ?
+                FROM exhibitors WHERE edition_id = ?
+            ")->execute([$newEditionId, $sourceEditionId]);
+            $copied = $db->query("SELECT ROW_COUNT()")->fetchColumn();
+        }
+
+        logAuditAction('edition_erstellt', "Edition '$name' ($year) erstellt" . ($copied ? ", $copied Aussteller übernommen" : ''));
+        $message = ['type' => 'success', 'text' => "Edition '$name' erstellt (Status: archiviert)."
+            . ($copied ? " $copied Aussteller und Zeitslots wurden übernommen." : '')];
     }
 }
 
@@ -168,6 +195,14 @@ $editions = $db->query("
                 <label class="block text-xs font-medium text-gray-600 mb-1">Max. Anmeldungen/Schüler</label>
                 <input type="number" name="max_registrations_per_student" value="3" min="1" max="20"
                        class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg">
+            </div>
+            <div class="sm:col-span-3">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" name="copy_exhibitors" value="1" checked
+                           class="w-4 h-4 text-emerald-500 rounded">
+                    <span class="text-sm text-gray-700 font-medium">Aussteller und Zeitslots aus aktiver Edition übernehmen</span>
+                </label>
+                <p class="text-xs text-gray-400 mt-1 ml-6">Kopiert alle Aussteller (ohne Raumzuweisungen) und Zeitslots in die neue Edition.</p>
             </div>
             <div class="sm:col-span-3 flex justify-end">
                 <button type="submit"
