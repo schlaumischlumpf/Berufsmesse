@@ -3,6 +3,7 @@ require_once '../config.php';
 require_once '../functions.php';
 
 requireLogin();
+$activeEditionId = getActiveEditionId();
 
 try {
 
@@ -14,7 +15,7 @@ if (!$documentId) {
 }
 
 $db = getDB();
-$stmt = $db->prepare("SELECT filename, original_name, file_type, visible_for_students FROM exhibitor_documents WHERE id = ?");
+$stmt = $db->prepare("SELECT filename, original_name, file_type, visible_for_students FROM exhibitor_documents WHERE id = ? AND exhibitor_documents.edition_id = $activeEditionId");
 $stmt->execute([$documentId]);
 $doc = $stmt->fetch();
 

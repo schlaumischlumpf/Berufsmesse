@@ -15,12 +15,13 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
 try {
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Filter
 $filterClass = $_GET['class'] ?? '';
 
 // Timeslots laden (für Spaltenüberschriften) - nur Slots 1, 3, 5
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " ORDER BY slot_number ASC");
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY slot_number ASC");
 $timeslots = $stmt->fetchAll();
 
 // Daten laden
@@ -34,8 +35,9 @@ $query = "
     JOIN users u ON reg.user_id = u.id
     JOIN exhibitors e ON reg.exhibitor_id = e.id
     JOIN timeslots t ON reg.timeslot_id = t.id
-    LEFT JOIN rooms r ON e.room_id = r.id
+    LEFT JOIN rooms r ON e.room_id = r.id AND r.edition_id = $activeEditionId
     WHERE u.role = 'student'
+    AND reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
 ";
 
 $params = [];

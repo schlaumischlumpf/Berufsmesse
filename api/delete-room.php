@@ -22,9 +22,10 @@ try {
     $roomId = (int)$input['room_id'];
     
     $db = getDB();
+    $activeEditionId = getActiveEditionId();
     
     // Raum existiert?
-    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ?");
+    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = $activeEditionId");
     $stmt->execute([$roomId]);
     $room = $stmt->fetch();
     
@@ -34,7 +35,7 @@ try {
     }
     
     // Prüfen ob Raum ungenutzt ist (keine Aussteller zugeordnet)
-    $stmt = $db->prepare("SELECT COUNT(*) as count FROM exhibitors WHERE room_id = ?");
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM exhibitors WHERE room_id = ? AND exhibitors.edition_id = $activeEditionId");
     $stmt->execute([$roomId]);
     $exhibitorCount = $stmt->fetch()['count'];
     
@@ -47,7 +48,7 @@ try {
     }
     
     // Prüfen ob Raum in room_slot_capacities verwendet wird
-    $stmt = $db->prepare("SELECT COUNT(*) as count FROM room_slot_capacities WHERE room_id = ?");
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM room_slot_capacities WHERE room_id = ? AND room_slot_capacities.edition_id = $activeEditionId");
     $stmt->execute([$roomId]);
     $capacityCount = $stmt->fetch()['count'];
     
@@ -57,12 +58,12 @@ try {
     try {
         // Erst room_slot_capacities löschen (falls vorhanden)
         if ($capacityCount > 0) {
-            $stmt = $db->prepare("DELETE FROM room_slot_capacities WHERE room_id = ?");
+            $stmt = $db->prepare("DELETE FROM room_slot_capacities WHERE room_id = ? AND edition_id = $activeEditionId");
             $stmt->execute([$roomId]);
         }
         
         // Dann den Raum löschen
-        $stmt = $db->prepare("DELETE FROM rooms WHERE id = ?");
+        $stmt = $db->prepare("DELETE FROM rooms WHERE id = ? AND edition_id = $activeEditionId");
         $stmt->execute([$roomId]);
         
         // Transaktion bestätigen

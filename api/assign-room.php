@@ -23,9 +23,10 @@ try {
     $roomId = isset($input['room_id']) && $input['room_id'] !== null ? (int)$input['room_id'] : null;
     
     $db = getDB();
+    $activeEditionId = getActiveEditionId();
     
     // Aussteller existiert?
-    $stmt = $db->prepare("SELECT id, name FROM exhibitors WHERE id = ?");
+    $stmt = $db->prepare("SELECT id, name FROM exhibitors WHERE id = ? AND exhibitors.edition_id = $activeEditionId");
     $stmt->execute([$exhibitorId]);
     $exhibitor = $stmt->fetch();
     
@@ -36,7 +37,7 @@ try {
     
     // Wenn room_id gesetzt ist, prüfen ob Raum existiert
     if ($roomId !== null) {
-        $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ?");
+        $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = $activeEditionId");
         $stmt->execute([$roomId]);
         $room = $stmt->fetch();
         
@@ -47,7 +48,7 @@ try {
     }
     
     // Zuordnung aktualisieren
-    $stmt = $db->prepare("UPDATE exhibitors SET room_id = ? WHERE id = ?");
+    $stmt = $db->prepare("UPDATE exhibitors SET room_id = ? WHERE id = ? AND edition_id = $activeEditionId");
     $stmt->execute([$roomId, $exhibitorId]);
     
     if ($roomId === null) {

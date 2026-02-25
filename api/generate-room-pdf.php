@@ -15,6 +15,7 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
 try {
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Filter
 $filterRoom = $_GET['room'] ?? '';
@@ -31,11 +32,12 @@ $query = "
     JOIN exhibitors e ON reg.exhibitor_id = e.id
     JOIN timeslots t ON reg.timeslot_id = t.id
     JOIN rooms r ON e.room_id = r.id
+    WHERE reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId AND r.edition_id = $activeEditionId
 ";
 
 $params = [];
 if ($filterRoom) {
-    $query .= " WHERE r.id = ?";
+    $query .= " AND r.id = ?";
     $params[] = intval($filterRoom);
 }
 
@@ -46,7 +48,7 @@ $stmt->execute($params);
 $registrations = $stmt->fetchAll();
 
 // Räume für Titel
-$stmt = $db->query("SELECT id, room_number FROM rooms ORDER BY room_number");
+$stmt = $db->query("SELECT id, room_number FROM rooms WHERE rooms.edition_id = $activeEditionId ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Nach Raum und Slot gruppieren

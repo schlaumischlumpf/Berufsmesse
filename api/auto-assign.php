@@ -19,6 +19,7 @@ if (!isAdmin() && !hasPermission('zuteilung_ausfuehren')) {
 set_time_limit(300); // 5 Minuten Timeout
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 try {
     // Verwaltete Slots (nur 1, 3, 5)
@@ -39,6 +40,7 @@ try {
         WHERE r.timeslot_id IS NULL
         AND e.active = 1
         AND e.room_id IS NOT NULL
+        AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
         ORDER BY COALESCE(r.priority, 2) ASC, r.registered_at ASC
     ");
     $pendingRegistrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -55,6 +57,7 @@ try {
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
             WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
+            AND r.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
         ");
         $stmt->execute([$studentId]);
         $usedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -73,13 +76,13 @@ try {
         $lowestCount = PHP_INT_MAX;
         
         foreach ($availableSlots as $slotNumber) {
-            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
+            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ? AND timeslots.edition_id = $activeEditionId");
             $stmt->execute([$slotNumber]);
             $timeslotId = $stmt->fetchColumn();
             
             if (!$timeslotId) continue;
             
-            $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
+            $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = $activeEditionId");
             $stmt->execute([$exhibitorId, $timeslotId]);
             $currentCount = $stmt->fetchColumn();
             
@@ -109,8 +112,8 @@ try {
         SELECT u.id,
                COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number " . getManagedSlotsSqlIn() . " THEN 1 ELSE 0 END), 0) as assigned_count
         FROM users u
-        LEFT JOIN registrations r ON u.id = r.user_id
-        LEFT JOIN timeslots t ON r.timeslot_id = t.id
+        LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = $activeEditionId
+        LEFT JOIN timeslots t ON r.timeslot_id = t.id AND t.edition_id = $activeEditionId
         WHERE u.role = 'student'
         GROUP BY u.id
         HAVING assigned_count < " . getManagedSlotCount() . "
@@ -126,18 +129,19 @@ try {
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
             WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
+            AND r.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
         ");
         $stmt->execute([$studentId]);
         $assignedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
-        $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ?");
+        $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
         $stmt->execute([$studentId]);
         $existingExhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
         $missingSlots = array_diff($managedSlots, $assignedSlots);
         
         foreach ($missingSlots as $slotNumber) {
-            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
+            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ? AND timeslots.edition_id = $activeEditionId");
             $stmt->execute([$slotNumber]);
             $timeslotId = $stmt->fetchColumn();
             
@@ -146,8 +150,8 @@ try {
             $stmt = $db->prepare("
                 SELECT e.id, e.name, e.room_id, COUNT(DISTINCT reg.user_id) as current_count
                 FROM exhibitors e
-                LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
-                WHERE e.active = 1 AND e.room_id IS NOT NULL
+                LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ? AND reg.edition_id = $activeEditionId
+                WHERE e.active = 1 AND e.room_id IS NOT NULL AND e.edition_id = $activeEditionId
                 GROUP BY e.id, e.name, e.room_id
                 ORDER BY current_count ASC, RAND()
             ");
@@ -167,7 +171,7 @@ try {
             }
             
             if ($selectedExhibitor) {
-                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'automatic')");
+                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, edition_id) VALUES (?, ?, ?, 'automatic', $activeEditionId)");
                 if ($stmt->execute([$studentId, $selectedExhibitor['id'], $timeslotId])) {
                     $assignedCount++;
                     $existingExhibitors[] = $selectedExhibitor['id'];

@@ -12,6 +12,7 @@ if (!isAdmin() && !hasPermission('benutzer_sehen')) {
 
 try {
     $db = getDB();
+    $activeEditionId = getActiveEditionId();
     
     // Parameter abrufen
     $name = $_GET['name'] ?? '';
@@ -30,7 +31,7 @@ try {
             u.role,
             COUNT(r.id) as registration_count
         FROM users u
-        LEFT JOIN registrations r ON u.id = r.user_id
+        LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = $activeEditionId
         WHERE 1=1
     ";
     

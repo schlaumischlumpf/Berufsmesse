@@ -12,6 +12,7 @@ if (!isAdmin() && !hasPermission('raeume_bearbeiten')) {
 }
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 $data = json_decode(file_get_contents('php://input'), true);
 
 if (empty($data['room_id'])) {
@@ -31,7 +32,7 @@ if (empty($data['capacity']) || $data['capacity'] < 1) {
 
 try {
     // Prüfen ob Raum existiert
-    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ?");
+    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = $activeEditionId");
     $stmt->execute([$data['room_id']]);
     $existingRoom = $stmt->fetch();
 
@@ -41,7 +42,7 @@ try {
     }
 
     // Prüfen ob Raumnummer bereits durch anderen Raum verwendet wird
-    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ? AND id != ?");
+    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ? AND id != ? AND rooms.edition_id = $activeEditionId");
     $stmt->execute([$data['room_number'], $data['room_id']]);
     if ($stmt->fetch()) {
         echo json_encode(['success' => false, 'message' => 'Ein anderer Raum mit dieser Nummer existiert bereits']);
@@ -50,7 +51,7 @@ try {
 
     // Raum aktualisieren
     $stmt = $db->prepare("
-        UPDATE rooms SET room_number = ?, floor = ?, capacity = ?, equipment = ? WHERE id = ?
+        UPDATE rooms SET room_number = ?, floor = ?, capacity = ?, equipment = ? WHERE id = ? AND edition_id = $activeEditionId
     ");
     $stmt->execute([
         $data['room_number'],

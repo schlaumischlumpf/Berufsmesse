@@ -15,6 +15,7 @@ if (!isLoggedIn()) {
 try {
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Helper: UTF-8 zu Latin-1 konvertieren
 function conv($str) {
@@ -38,8 +39,9 @@ $stmt = $db->prepare("
     FROM registrations r
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
-    LEFT JOIN rooms rm ON e.room_id = rm.id
+    LEFT JOIN rooms rm ON e.room_id = rm.id AND rm.edition_id = $activeEditionId
     WHERE r.user_id = ?
+    AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
     ORDER BY t.slot_number ASC
 ");
 $stmt->execute([$_SESSION['user_id']]);

@@ -15,6 +15,7 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
 try {
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 $stmt = $db->query("
     SELECT u.firstname, u.lastname, u.class, e.name as exhibitor_name,
@@ -23,9 +24,10 @@ $stmt = $db->query("
     JOIN users u ON reg.user_id = u.id
     JOIN exhibitors e ON reg.exhibitor_id = e.id
     JOIN timeslots t ON reg.timeslot_id = t.id
-    LEFT JOIN rooms r ON e.room_id = r.id
-    LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id
+    LEFT JOIN rooms r ON e.room_id = r.id AND r.edition_id = $activeEditionId
+    LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id AND a.edition_id = $activeEditionId
     WHERE reg.timeslot_id IS NOT NULL AND a.id IS NULL AND u.role = 'student'
+    AND reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
     ORDER BY t.slot_number, u.class, u.lastname, u.firstname
 ");
 $data = $stmt->fetchAll();

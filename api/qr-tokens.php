@@ -14,6 +14,7 @@ if (!isAdmin() && !hasPermission('qr_codes_erstellen')) {
 }
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 $data = json_decode(file_get_contents('php://input'), true);
 $action = $data['action'] ?? $_GET['action'] ?? 'generate';
 
@@ -30,7 +31,7 @@ try {
             // Einzelnen Token generieren (6 Zeichen)
             $token = bin2hex(random_bytes(3));
 
-            $tsStmt = $db->prepare("SELECT end_time FROM timeslots WHERE id = ?");
+            $tsStmt = $db->prepare("SELECT end_time FROM timeslots WHERE id = ? AND timeslots.edition_id = $activeEditionId");
             $tsStmt->execute([$timeslotId]);
             $tsData = $tsStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -44,8 +45,8 @@ try {
             }
             
             $stmt = $db->prepare("
-                INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at) 
-                VALUES (?, ?, ?, ?)
+                INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at, edition_id) 
+                VALUES (?, ?, ?, ?, $activeEditionId)
                 ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at), created_at = CURRENT_TIMESTAMP
             ");
             $stmt->execute([$exhibitorId, $timeslotId, $token, $expiresAt]);
@@ -53,10 +54,10 @@ try {
             echo json_encode(['success' => true, 'token' => $token, 'expires_at' => $expiresAt]);
         } else {
             // Alle Tokens generieren
-            $stmt = $db->query("SELECT id FROM exhibitors WHERE active = 1");
+            $stmt = $db->query("SELECT id FROM exhibitors WHERE active = 1 AND exhibitors.edition_id = $activeEditionId");
             $exhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
-            $stmt = $db->query("SELECT id, end_time FROM timeslots ORDER BY slot_number ASC");
+            $stmt = $db->query("SELECT id, end_time FROM timeslots WHERE timeslots.edition_id = $activeEditionId ORDER BY slot_number ASC");
             $timeslots = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $generated = 0;
@@ -73,8 +74,8 @@ try {
                     }
                     
                     $stmt = $db->prepare("
-                        INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at) 
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at, edition_id) 
+                        VALUES (?, ?, ?, ?, $activeEditionId)
                         ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at), created_at = CURRENT_TIMESTAMP
                     ");
                     $stmt->execute([$exId, $ts['id'], $token, $expiresAt]);
@@ -92,6 +93,7 @@ try {
             JOIN exhibitors e ON qt.exhibitor_id = e.id
             JOIN timeslots t ON qt.timeslot_id = t.id
             WHERE e.active = 1
+            AND qt.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
             ORDER BY e.name, t.slot_number
         ");
         $tokens = $stmt->fetchAll(PDO::FETCH_ASSOC);

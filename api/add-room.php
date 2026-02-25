@@ -12,6 +12,7 @@ if (!isAdmin() && !hasPermission('raeume_erstellen')) {
 }
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Get POST data
 $data = json_decode(file_get_contents('php://input'), true);
@@ -29,7 +30,7 @@ if (empty($data['capacity']) || $data['capacity'] < 1) {
 
 try {
     // Check if room number already exists
-    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ?");
+    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ? AND rooms.edition_id = $activeEditionId");
     $stmt->execute([$data['room_number']]);
     
     if ($stmt->fetch()) {
@@ -39,8 +40,8 @@ try {
     
     // Insert new room (with equipment - Issue #17)
     $stmt = $db->prepare("
-        INSERT INTO rooms (room_number, floor, capacity, equipment) 
-        VALUES (?, ?, ?, ?)
+        INSERT INTO rooms (room_number, floor, capacity, equipment, edition_id) 
+        VALUES (?, ?, ?, ?, $activeEditionId)
     ");
     
     $stmt->execute([

@@ -15,12 +15,14 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
 try {
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 $stmt = $db->query("
     SELECT r.room_number, e.name as exhibitor_name
     FROM exhibitors e
     JOIN rooms r ON e.room_id = r.id
     WHERE e.active = 1
+    AND e.edition_id = $activeEditionId AND r.edition_id = $activeEditionId
     ORDER BY r.room_number, e.name
 ");
 $data = $stmt->fetchAll();

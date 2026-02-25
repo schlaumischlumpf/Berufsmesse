@@ -14,6 +14,7 @@ if (!isLoggedIn()) {
 }
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 $data = json_decode(file_get_contents('php://input'), true);
 $token = $data['token'] ?? $_GET['token'] ?? '';
 
@@ -31,6 +32,7 @@ try {
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
         WHERE qt.token = ? AND (qt.expires_at IS NULL OR qt.expires_at > NOW())
+        AND qt.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
     ");
     $stmt->execute([$token]);
     $qrToken = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -73,7 +75,7 @@ try {
     $isFreeSlot = in_array($slotNumber, [2, 4]);
 
     // Prüfen ob registriert
-    $stmt = $db->prepare("SELECT id FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?");
+    $stmt = $db->prepare("SELECT id FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = $activeEditionId");
     $stmt->execute([$userId, $exhibitorId, $timeslotId]);
     $registration = $stmt->fetch();
 
@@ -88,12 +90,12 @@ try {
 
     if (!$registration && $isFreeSlot) {
         // Freie Wahl: Automatisch einschreiben falls Kapazität
-        $stmt2 = $db->prepare("SELECT room_id FROM exhibitors WHERE id = ?");
+        $stmt2 = $db->prepare("SELECT room_id FROM exhibitors WHERE id = ? AND exhibitors.edition_id = $activeEditionId");
         $stmt2->execute([$exhibitorId]);
         $exData = $stmt2->fetch();
         $roomId = $exData ? $exData['room_id'] : null;
 
-        $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
+        $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = $activeEditionId");
         $stmt2->execute([$exhibitorId, $timeslotId]);
         $currentCount = $stmt2->fetchColumn();
 
@@ -105,12 +107,12 @@ try {
         }
 
         // Registrierung anlegen
-        $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'qr_checkin')");
+        $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, edition_id) VALUES (?, ?, ?, 'qr_checkin', $activeEditionId)");
         $stmt2->execute([$userId, $exhibitorId, $timeslotId]);
     }
 
     // Prüfen ob bereits eingecheckt
-    $stmt = $db->prepare("SELECT id FROM attendance WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?");
+    $stmt = $db->prepare("SELECT id FROM attendance WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ? AND attendance.edition_id = $activeEditionId");
     $stmt->execute([$userId, $exhibitorId, $timeslotId]);
 
     if ($stmt->fetch()) {
@@ -123,7 +125,7 @@ try {
     }
 
     // Anwesenheit eintragen
-    $stmt = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token) VALUES (?, ?, ?, ?)");
+    $stmt = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token, edition_id) VALUES (?, ?, ?, ?, $activeEditionId)");
     $stmt->execute([$userId, $exhibitorId, $timeslotId, $token]);
 
     echo json_encode([
