@@ -20,7 +20,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $firstname = sanitize($_POST['firstname'] ?? '');
     $lastname = sanitize($_POST['lastname'] ?? '');
     $class = sanitize($_POST['class'] ?? '');
-    $role = $_POST['role'] ?? 'student';
+    $role = 'student'; // Öffentliche Registrierung: nur Student-Rolle erlaubt
     
     // Validierung
     if (empty($username) || empty($password) || empty($firstname) || empty($lastname)) {
@@ -57,10 +57,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Alle Benutzer anzeigen (für Übersicht)
-$db = getDB();
-$stmt = $db->query("SELECT id, username, firstname, lastname, class, role, created_at FROM users ORDER BY created_at DESC");
-$users = $stmt->fetchAll();
 ?>
 <!DOCTYPE html>
 <html lang="de">
@@ -174,7 +170,7 @@ $users = $stmt->fetchAll();
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 gap-8">
             <!-- Registration Form -->
             <div class="glass-card rounded-3xl shadow-2xl p-8 animate-slideUp" style="animation-delay: 100ms;">
                 <div class="text-center mb-8">
@@ -329,90 +325,7 @@ $users = $stmt->fetchAll();
                 </div>
             </div>
 
-            <!-- Users List -->
-            <div class="glass-card rounded-3xl shadow-2xl p-8 animate-slideUp" style="animation-delay: 200ms;">
-                <h2 class="text-2xl font-extrabold text-gray-800 font-display mb-6 flex items-center gap-3">
-                    <div class="w-12 h-12 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
-                        <i class="fas fa-users text-white"></i>
-                    </div>
-                    Alle Benutzer (<?php echo count($users); ?>)
-                </h2>
 
-                <div class="space-y-3 max-h-[500px] overflow-y-auto pr-2" style="scrollbar-width: thin;">
-                    <?php foreach ($users as $index => $user): 
-                        $roleColors = [
-                            'admin' => 'from-red-500 to-rose-500',
-                            'teacher' => 'from-amber-500 to-orange-500',
-                            'student' => 'from-blue-500 to-cyan-500'
-                        ];
-                        $roleColor = $roleColors[$user['role']] ?? 'from-gray-500 to-gray-600';
-                    ?>
-                    <div class="bg-gradient-to-br from-white to-gray-50 border border-gray-100 rounded-2xl p-4 hover:border-accent-200 hover:shadow-lg transition-all duration-300" style="animation-delay: <?php echo $index * 50; ?>ms;">
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center gap-4 flex-1 min-w-0">
-                                <div class="flex-shrink-0 w-12 h-12 bg-gradient-to-br <?php echo $roleColor; ?> rounded-xl flex items-center justify-center shadow-md">
-                                    <span class="font-bold text-sm text-white">
-                                        <?php echo strtoupper(substr($user['firstname'], 0, 1) . substr($user['lastname'], 0, 1)); ?>
-                                    </span>
-                                </div>
-                                <div class="flex-1 min-w-0">
-                                    <p class="font-bold text-gray-800 truncate">
-                                        <?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname']); ?>
-                                    </p>
-                                    <p class="text-sm text-gray-500 truncate">
-                                        <i class="fas fa-at mr-1 text-gray-400"></i><?php echo htmlspecialchars($user['username']); ?>
-                                    </p>
-                                    <?php if (!empty($user['class'])): ?>
-                                    <p class="text-xs text-gray-400">
-                                        <i class="fas fa-school mr-1"></i>Klasse: <?php echo htmlspecialchars($user['class']); ?>
-                                    </p>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                            <div class="flex-shrink-0 ml-3">
-                                <?php if ($user['role'] === 'admin'): ?>
-                                    <span class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-red-50 text-red-700 border border-red-100">
-                                        <i class="fas fa-crown mr-1.5"></i>Admin
-                                    </span>
-                                <?php elseif ($user['role'] === 'teacher'): ?>
-                                    <span class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100">
-                                        <i class="fas fa-chalkboard-teacher mr-1.5"></i>Lehrer
-                                    </span>
-                                <?php else: ?>
-                                    <span class="inline-flex items-center px-3 py-1.5 rounded-xl text-xs font-bold bg-blue-50 text-blue-700 border border-blue-100">
-                                        <i class="fas fa-user-graduate mr-1.5"></i>Schüler
-                                    </span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endforeach; ?>
-                </div>
-
-                <!-- Statistics -->
-                <div class="mt-6 pt-6 border-t border-gray-100">
-                    <div class="grid grid-cols-3 gap-3">
-                        <div class="bg-gradient-to-br from-blue-50 to-cyan-50 border border-blue-100 rounded-2xl p-4 text-center">
-                            <div class="text-2xl font-extrabold text-blue-600">
-                                <?php echo count(array_filter($users, fn($u) => $u['role'] === 'student')); ?>
-                            </div>
-                            <div class="text-xs font-semibold text-blue-700 mt-1">Schüler</div>
-                        </div>
-                        <div class="bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 rounded-2xl p-4 text-center">
-                            <div class="text-2xl font-extrabold text-amber-600">
-                                <?php echo count(array_filter($users, fn($u) => $u['role'] === 'teacher')); ?>
-                            </div>
-                            <div class="text-xs font-semibold text-amber-700 mt-1">Lehrer</div>
-                        </div>
-                        <div class="bg-gradient-to-br from-red-50 to-rose-50 border border-red-100 rounded-2xl p-4 text-center">
-                            <div class="text-2xl font-extrabold text-red-600">
-                                <?php echo count(array_filter($users, fn($u) => $u['role'] === 'admin')); ?>
-                            </div>
-                            <div class="text-xs font-semibold text-red-700 mt-1">Admins</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <!-- Info Box -->

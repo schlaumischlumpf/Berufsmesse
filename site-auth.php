@@ -11,8 +11,12 @@ if (getSetting('site_password_enabled', '0') !== '1' || empty(getSetting('site_p
 
 // Bereits authentifiziert?
 if (isset($_SESSION['site_authenticated']) && $_SESSION['site_authenticated'] === true) {
-    $redirect = $_GET['redirect'] ?? (BASE_URL . 'login.php');
-    header('Location: ' . $redirect);
+    $redirect = $_GET['redirect'] ?? '';
+    if (!empty($redirect) && preg_match('#^/[^/]#', $redirect)) {
+        header('Location: ' . $redirect);
+    } else {
+        header('Location: ' . BASE_URL . 'login.php');
+    }
     exit();
 }
 
@@ -26,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['site_authenticated'] = true;
         $redirect = $_POST['redirect'] ?? (BASE_URL . 'login.php');
         // Sicherheitscheck: Nur relative URLs erlauben
-        if (strpos($redirect, '/') !== 0 && strpos($redirect, BASE_URL) !== 0) {
+        if (!preg_match('#^/[^/]#', $redirect) && strpos($redirect, BASE_URL) !== 0) {
             $redirect = BASE_URL . 'login.php';
         }
         header('Location: ' . $redirect);
