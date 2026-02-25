@@ -2,6 +2,11 @@
 require_once 'config.php';
 require_once 'functions.php';
 
+// Editions-Session-Cache initialisieren
+if (isLoggedIn() && !isset($_SESSION['active_edition_id'])) {
+    getActiveEditionId();
+}
+
 // Seitenpasswort prüfen
 checkSitePassword();
 
@@ -1108,6 +1113,18 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
         <!-- Navigation -->
         <div class="flex-1 overflow-y-auto sidebar-scroll px-4 py-4">
             <nav class="space-y-1">
+                <?php if (isAdmin() || isTeacher()): ?>
+                    <?php $activeEd = getActiveEdition(); ?>
+                    <div class="px-3 py-2 mb-1 rounded-lg bg-emerald-50 border border-emerald-100 text-xs">
+                        <div class="text-emerald-600 font-semibold flex items-center gap-1">
+                            <i class="fas fa-calendar-check text-emerald-500"></i>
+                            Aktive Messe
+                        </div>
+                        <div class="text-gray-700 mt-0.5 truncate font-medium">
+                            <?php echo htmlspecialchars($activeEd['name']); ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
                 <?php if (!isTeacher()): ?>
                 <div class="nav-group-title">Übersicht</div>
                 
@@ -1244,6 +1261,15 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 </a>
                 <?php endif; ?>
                 
+                <?php if (isAdmin()): ?>
+                <a href="<?php echo $currentPage === 'admin-editions' ? 'javascript:void(0)' : '?page=admin-editions'; ?>"
+                   data-page="admin-editions"
+                   class="nav-link <?php echo $currentPage === 'admin-editions' ? 'active' : ''; ?>">
+                    <i class="fas fa-layer-group"></i>
+                    <span>Messe-Editionen</span>
+                </a>
+                <?php endif; ?>
+
                 <?php if (isAdmin() || hasPermission('einstellungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-settings' ? 'javascript:void(0)' : '?page=admin-settings'; ?>" data-page="admin-settings" class="nav-link <?php echo $currentPage === 'admin-settings' ? 'active' : ''; ?>">
                     <i class="fas fa-cog"></i>
@@ -1251,6 +1277,23 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 </a>
                 <?php endif; ?>
                 
+                <?php if (isAdmin()): ?>
+                <a href="<?php echo $currentPage === 'admin-announcements' ? 'javascript:void(0)' : '?page=admin-announcements'; ?>"
+                   data-page="admin-announcements"
+                   class="nav-link <?php echo $currentPage === 'admin-announcements' ? 'active' : ''; ?>">
+                    <i class="fas fa-bullhorn"></i>
+                    <span>Ankündigungen</span>
+                    <?php
+                    try {
+                        $annCount = $db->query("SELECT COUNT(*) FROM announcements
+                            WHERE is_active = 1 AND (expires_at IS NULL OR expires_at > NOW())")->fetchColumn();
+                        if ($annCount > 0): ?>
+                        <span class="ml-auto w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
+                    <?php endif;
+                    } catch (Exception $e) { } ?>
+                </a>
+                <?php endif; ?>
+
                 <?php if (isAdmin() || hasPermission('audit_logs_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-audit-logs' ? 'javascript:void(0)' : '?page=admin-audit-logs'; ?>" data-page="admin-audit-logs" class="nav-link <?php echo $currentPage === 'admin-audit-logs' ? 'active' : ''; ?>">
                     <i class="fas fa-history"></i>
@@ -1299,6 +1342,46 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                     <i class="fas fa-bars text-lg"></i>
                 </button>
             </div>
+            <?php
+            $activeEditionId = getActiveEditionId();
+            ?>
+<?php
+$_announcements = isLoggedIn() ? getActiveAnnouncements($_SESSION['role'] ?? 'student') : [];
+if (!empty($_announcements)):
+?>
+<div id="announcementContainer" class="mb-4 space-y-2">
+    <?php foreach ($_announcements as $_ann):
+        $annColors = [
+            'info'    => 'bg-blue-50 border-blue-200 text-blue-800',
+            'warning' => 'bg-amber-50 border-amber-200 text-amber-800',
+            'success' => 'bg-emerald-50 border-emerald-200 text-emerald-800',
+            'error'   => 'bg-red-50 border-red-200 text-red-800',
+        ];
+        $annIcons = [
+            'info'    => 'fa-info-circle text-blue-500',
+            'warning' => 'fa-exclamation-triangle text-amber-500',
+            'success' => 'fa-check-circle text-emerald-500',
+            'error'   => 'fa-times-circle text-red-500',
+        ];
+        $colorClass = $annColors[$_ann['type']] ?? $annColors['info'];
+        $iconClass  = $annIcons[$_ann['type']]  ?? $annIcons['info'];
+    ?>
+    <div class="announcement-banner flex items-start gap-3 px-4 py-3 rounded-xl border <?php echo $colorClass; ?>"
+         data-announcement-id="<?php echo $_ann['id']; ?>">
+        <i class="fas <?php echo $iconClass; ?> mt-0.5 flex-shrink-0"></i>
+        <div class="flex-1 min-w-0">
+            <p class="font-semibold text-sm"><?php echo htmlspecialchars($_ann['title']); ?></p>
+            <?php if (!empty($_ann['body'])): ?>
+            <p class="text-xs mt-0.5 opacity-80"><?php echo nl2br(htmlspecialchars($_ann['body'])); ?></p>
+            <?php endif; ?>
+        </div>
+        <button onclick="this.closest('.announcement-banner').remove()"
+                class="flex-shrink-0 opacity-50 hover:opacity-100 transition text-lg leading-none"
+                aria-label="Schließen">×</button>
+    </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
             <?php
             // Seiten-Content laden
             $pageLoaded = false;
@@ -1407,6 +1490,20 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                         $pageLoaded = true;
                     }
                     break;
+                case 'admin-announcements':
+                    if (isAdmin()) {
+                        include 'pages/admin-announcements.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'admin-editions':
+                    if (isAdmin()) {
+                        include 'pages/admin-editions.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
                 case 'admin-audit-logs':
                     if (isAdmin() || hasPermission('audit_logs_sehen')) {
                         include 'pages/admin-audit-logs.php';
