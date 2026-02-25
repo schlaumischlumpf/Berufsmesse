@@ -100,6 +100,64 @@ $currentSettings = [
 ];
 
 // Branchen-Verwaltung wurde nach admin-exhibitors.php verschoben
+
+// Zeitslot bearbeiten
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_timeslot'])) {
+    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) die('Keine Berechtigung');
+    $slotId    = intval($_POST['slot_id']);
+    $slotName  = trim($_POST['slot_name']);
+    $startTime = trim($_POST['start_time']);
+    $endTime   = trim($_POST['end_time']);
+    $isManaged = isset($_POST['is_managed']) ? 1 : 0;
+    if (empty($slotName)) {
+        $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
+    } else {
+        $db->prepare("UPDATE timeslots SET slot_name=?, start_time=?, end_time=?, is_managed=? WHERE id=?")
+           ->execute([$slotName, $startTime ?: null, $endTime ?: null, $isManaged, $slotId]);
+        logAuditAction('timeslot_bearbeitet', "Slot #$slotId: '$slotName', managed=$isManaged", 'warning');
+        $message = ['type' => 'success', 'text' => 'Zeitslot gespeichert.'];
+    }
+}
+
+// Zeitslot hinzufügen
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
+    if (!isAdmin()) die('Keine Berechtigung');
+    $slotName  = trim($_POST['new_slot_name']);
+    $startTime = trim($_POST['new_start_time']);
+    $endTime   = trim($_POST['new_end_time']);
+    $isManaged = isset($_POST['new_is_managed']) ? 1 : 0;
+    if (empty($slotName)) {
+        $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
+    } else {
+        $maxNum = (int)$db->query("SELECT COALESCE(MAX(slot_number),0) FROM timeslots")->fetchColumn();
+        $db->prepare("INSERT INTO timeslots (slot_number,slot_name,start_time,end_time,is_managed) VALUES (?,?,?,?,?)")
+           ->execute([$maxNum + 1, $slotName, $startTime ?: null, $endTime ?: null, $isManaged]);
+        logAuditAction('timeslot_erstellt', "Neuer Slot '$slotName'");
+        $message = ['type' => 'success', 'text' => 'Zeitslot hinzugefügt.'];
+    }
+}
+
+// Zeitslot löschen
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_timeslot'])) {
+    if (!isAdmin()) die('Keine Berechtigung');
+    $slotId = intval($_POST['slot_id']);
+    $stmtCheck = $db->prepare("
+        SELECT (SELECT COUNT(*) FROM registrations WHERE timeslot_id=?) +
+               (SELECT COUNT(*) FROM attendance    WHERE timeslot_id=?) +
+               (SELECT COUNT(*) FROM qr_tokens     WHERE timeslot_id=?) AS total
+    ");
+    $stmtCheck->execute([$slotId, $slotId, $slotId]);
+    $usageCount = (int)$stmtCheck->fetchColumn();
+    if ($usageCount > 0) {
+        $message = ['type' => 'error', 'text' => "Slot kann nicht gelöscht werden – $usageCount verknüpfte Einträge."];
+    } else {
+        $db->prepare("DELETE FROM timeslots WHERE id=?")->execute([$slotId]);
+        logAuditAction('timeslot_geloescht', "Slot #$slotId gelöscht", 'warning');
+        $message = ['type' => 'success', 'text' => 'Zeitslot gelöscht.'];
+    }
+}
+
+$allTimeslots = $db->query("SELECT * FROM timeslots ORDER BY slot_number ASC")->fetchAll();
 ?>
 
 <!-- Einstellungen – Tab-basiertes Mobile-First Layout -->
@@ -139,6 +197,12 @@ $currentSettings = [
             <button onclick="switchSettingsTab('system')" data-tab="system"
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-info-circle"></i> <span>System</span>
+            </button>
+            <button onclick="switchSettingsTab('zeitslots')" data-tab="zeitslots"
+                    class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium
+                           whitespace-nowrap border-b-2 border-transparent text-gray-500
+                           hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-clock"></i> Zeitslots
             </button>
         </div>
 
@@ -492,6 +556,102 @@ $currentSettings = [
                 </div>
             </div>
         </div>
+
+        <div id="tab-zeitslots" class="settings-tab-content hidden p-4 sm:p-6">
+
+            <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                <i class="fas fa-exclamation-triangle mr-1"></i>
+                <strong>Achtung:</strong> Änderungen wirken sich sofort auf Anmeldungen, Raumzuteilung
+                und automatische Zuteilung aus. Slots mit Anmeldungen können nicht gelöscht werden.
+            </div>
+
+            <h4 class="text-sm font-semibold text-gray-800 mb-3">Bestehende Zeitslots</h4>
+            <div class="space-y-2 mb-6">
+                <?php foreach ($allTimeslots as $slot): ?>
+                <form method="POST" class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <input type="hidden" name="slot_id" value="<?php echo $slot['id']; ?>">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Name</label>
+                            <input type="text" name="slot_name"
+                                   value="<?php echo htmlspecialchars($slot['slot_name']); ?>"
+                                   class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Von</label>
+                            <input type="time" name="start_time"
+                                   value="<?php echo substr($slot['start_time'] ?? '', 0, 5); ?>"
+                                   class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Bis</label>
+                            <input type="time" name="end_time"
+                                   value="<?php echo substr($slot['end_time'] ?? '', 0, 5); ?>"
+                                   class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="is_managed" value="1"
+                                       <?php echo $slot['is_managed'] ? 'checked' : ''; ?>
+                                       class="w-4 h-4 text-emerald-500 rounded">
+                                <span class="text-xs text-gray-700 font-medium">Feste Zuteilung (Managed)</span>
+                            </label>
+                        </div>
+                        <div class="flex gap-2 sm:col-span-2 justify-end">
+                            <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                            <button type="submit" name="save_timeslot"
+                                    class="px-3 py-2 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition font-medium">
+                                <i class="fas fa-save mr-1"></i>Speichern
+                            </button>
+                            <?php endif; ?>
+                            <?php if (isAdmin()): ?>
+                            <button type="submit" name="delete_timeslot"
+                                    onclick="return confirm('Zeitslot wirklich löschen?')"
+                                    class="px-3 py-2 bg-red-50 border border-red-200 text-red-600 text-xs rounded-lg hover:bg-red-100 transition font-medium">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </form>
+                <?php endforeach; ?>
+            </div>
+
+            <?php if (isAdmin()): ?>
+            <h4 class="text-sm font-semibold text-gray-800 mb-3">Neuen Zeitslot hinzufügen</h4>
+            <form method="POST" class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Name *</label>
+                        <input type="text" name="new_slot_name" required placeholder="z.B. Slot 6"
+                               class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Von</label>
+                        <input type="time" name="new_start_time" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Bis</label>
+                        <input type="time" name="new_end_time" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white">
+                    </div>
+                    <div class="sm:col-span-3">
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" name="new_is_managed" value="1" class="w-4 h-4 text-blue-500 rounded">
+                            <span class="text-xs text-gray-700 font-medium">Feste Zuteilung</span>
+                        </label>
+                    </div>
+                    <div>
+                        <button type="submit" name="add_timeslot"
+                                class="w-full px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition font-medium">
+                            <i class="fas fa-plus mr-1"></i>Hinzufügen
+                        </button>
+                    </div>
+                </div>
+            </form>
+            <?php endif; ?>
+
+        </div><!-- /tab-zeitslots -->
+
     </div>
 </div>
 
