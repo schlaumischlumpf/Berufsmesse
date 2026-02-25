@@ -37,10 +37,10 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN timeslots t ON reg.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
         WHERE u.role = 'student'
-        AND reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+        AND reg.edition_id = ? AND e.edition_id = ?
     ";
     
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     if ($filterClass) {
         $query .= " AND u.class = ?";
         $params[] = $filterClass;
@@ -64,10 +64,10 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN exhibitors e ON reg.exhibitor_id = e.id
         JOIN timeslots t ON reg.timeslot_id = t.id
         JOIN rooms r ON e.room_id = r.id
-        WHERE reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+        WHERE reg.edition_id = ? AND e.edition_id = ?
     ";
     
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     if ($filterRoom) {
         $query .= " AND r.id = ?";
         $params[] = intval($filterRoom);
@@ -86,7 +86,8 @@ $stmtBreaks->execute([$activeEditionId]);
 $breakSlots = $stmtBreaks->fetchAll();
 
 // Räume für Titel
-$stmt = $db->query("SELECT id, room_number FROM rooms WHERE edition_id = $activeEditionId ORDER BY room_number");
+$stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE edition_id = ? ORDER BY room_number");
+$stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
 // Titel bestimmen

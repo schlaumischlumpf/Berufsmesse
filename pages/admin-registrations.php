@@ -14,35 +14,37 @@ $stmt = $db->query("SELECT id, username, firstname, lastname, class FROM users W
 $students = $stmt->fetchAll();
 
 // Alle aktiven Aussteller laden
-$stmt = $db->query("SELECT id, name FROM exhibitors WHERE active = 1 AND exhibitors.edition_id = $activeEditionId ORDER BY name");
+$stmt = $db->prepare("SELECT id, name FROM exhibitors WHERE active = 1 AND exhibitors.edition_id = ? ORDER BY name");
+$stmt->execute([$activeEditionId]);
 $exhibitors = $stmt->fetchAll();
 
 $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
 
 // Handle: Admin meldet Schüler an
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('anmeldungen_erstellen')) die('Keine Berechtigung');
     $studentId = intval($_POST['student_id']);
     $exhibitorId = intval($_POST['exhibitor_id']);
     $priority = max(1, min(3, intval($_POST['priority'] ?? 2)));
     
     // Prüfen ob bereits registriert
-    $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
-    $stmt->execute([$studentId, $exhibitorId]);
+    $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = ?");
+    $stmt->execute([$studentId, $exhibitorId, $activeEditionId]);
     if ($stmt->fetchColumn() > 0) {
         $message = ['type' => 'error', 'text' => 'Schüler ist bereits für diesen Aussteller registriert.'];
     } else {
         // Prüfen ob max. Registrierungen erreicht
-        $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
-        $stmt->execute([$studentId]);
+        $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
+        $stmt->execute([$studentId, $activeEditionId]);
         $regCount = $stmt->fetchColumn();
         
         if ($regCount >= $maxRegistrations) {
             $message = ['type' => 'error', 'text' => 'Schüler hat bereits die maximale Anzahl an Anmeldungen erreicht (' . $maxRegistrations . ').'];
         } else {
             // Prüfen ob diese Priorität bereits verwendet wird
-            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
-            $stmt->execute([$studentId]);
+            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
+            $stmt->execute([$studentId, $activeEditionId]);
             $usedPriorities = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
             if (in_array($priority, $usedPriorities)) {
@@ -51,8 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
                 $availableLabels = array_map(function($p) use ($priorityLabels) { return $priorityLabels[$p]; }, $availablePriorities);
                 $message = ['type' => 'error', 'text' => 'Diese Priorität wurde bereits verwendet. Verfügbare Prioritäten: ' . implode(', ', $availableLabels)];
             } else {
-                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority, edition_id) VALUES (?, ?, NULL, 'admin', ?, $activeEditionId)");
-                $stmt->execute([$studentId, $exhibitorId, $priority]);
+                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority, edition_id) VALUES (?, ?, NULL, 'admin', ?, ?)");
+                $stmt->execute([$studentId, $exhibitorId, $priority, $activeEditionId]);
                 // Für Audit-Log Namen lesen
                 $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM users u, exhibitors e WHERE u.id = ? AND e.id = ?");
                 $stmtN->execute([$studentId, $exhibitorId]);
@@ -67,11 +69,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
 
 // Handle: Admin nimmt Einschreibung zurück
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_unregister'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('anmeldungen_loeschen')) die('Keine Berechtigung');
     $registrationId = intval($_POST['registration_id']);
     // Für Audit-Log vor dem Löschen lesen
-    $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM registrations r JOIN users u ON r.user_id = u.id JOIN exhibitors e ON r.exhibitor_id = e.id WHERE r.id = ? AND r.edition_id = $activeEditionId");
-    $stmtN->execute([$registrationId]);
+    $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM registrations r JOIN users u ON r.user_id = u.id JOIN exhibitors e ON r.exhibitor_id = e.id WHERE r.id = ? AND r.edition_id = ?");
+    $stmtN->execute([$registrationId, $activeEditionId]);
     $logR = $stmtN->fetch();
     $stmt = $db->prepare("DELETE FROM registrations WHERE id = ?");
     if ($stmt->execute([$registrationId])) {
@@ -95,9 +98,9 @@ $query = "
     JOIN users u ON r.user_id = u.id
     JOIN exhibitors e ON r.exhibitor_id = e.id
     LEFT JOIN timeslots t ON r.timeslot_id = t.id
-    WHERE u.role = 'student' AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+    WHERE u.role = 'student' AND r.edition_id = ? AND e.edition_id = ?
 ";
-$params = [];
+$params = [$activeEditionId, $activeEditionId];
 
 if (!empty($filterStudent)) {
     $query .= " AND (u.firstname LIKE ? OR u.lastname LIKE ? OR u.username LIKE ? OR u.class LIKE ?)";
@@ -150,6 +153,7 @@ $registrations = $stmt->fetchAll();
             Schüler einschreiben
         </h3>
         <form method="POST" class="flex flex-col md:flex-row gap-3">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <select name="student_id" required class="flex-1 px-3 py-2 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-300 focus:border-emerald-400">
                 <option value="">Schüler wählen...</option>
                 <?php foreach ($students as $student): ?>
@@ -264,6 +268,7 @@ $registrations = $stmt->fetchAll();
                         <td class="px-4 py-3 text-right">
                             <?php if (isAdmin() || hasPermission('anmeldungen_loeschen')): ?>
                             <form method="POST" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="registration_id" value="<?php echo $reg['id']; ?>">
                                 <button type="submit" name="admin_unregister" value="1"
                                         class="px-3 py-1 bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition text-xs font-medium"

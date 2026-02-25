@@ -30,10 +30,10 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN timeslots t ON reg.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
         WHERE u.role = 'student'
-        AND reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+        AND reg.edition_id = ? AND e.edition_id = ?
     ";
     
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     if ($filterClass) {
         $query .= " AND u.class = ?";
         $params[] = $filterClass;
@@ -57,10 +57,10 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN exhibitors e ON reg.exhibitor_id = e.id
         JOIN timeslots t ON reg.timeslot_id = t.id
         JOIN rooms r ON e.room_id = r.id
-        WHERE reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+        WHERE reg.edition_id = ? AND e.edition_id = ?
     ";
 
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     if ($filterRoom) {
         $query .= " AND r.id = ?";
         $params[] = intval($filterRoom);
@@ -73,18 +73,19 @@ if ($printType === 'all' || $printType === 'class') {
     $registrations = $stmt->fetchAll();
 } elseif ($printType === 'room-assignments') {
     // Raumzuteilungs-Übersicht (Schulleitung)
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT r.room_number, e.name as exhibitor_name, e.short_description
         FROM exhibitors e
         JOIN rooms r ON e.room_id = r.id
         WHERE e.active = 1
-        AND e.edition_id = $activeEditionId
+        AND e.edition_id = ?
         ORDER BY r.room_number, e.name
     ");
+    $stmt->execute([$activeEditionId]);
     $roomAssignments = $stmt->fetchAll();
 } elseif ($printType === 'absent') {
     // Fehlende Schüler: angemeldet aber nicht gescannt (alle Slots)
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT u.firstname, u.lastname, u.class, e.name as exhibitor_name,
                t.slot_name, t.slot_number, r.room_number
         FROM registrations reg
@@ -92,11 +93,12 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN exhibitors e ON reg.exhibitor_id = e.id
         JOIN timeslots t ON reg.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
-        LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id AND a.edition_id = $activeEditionId
+        LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id AND a.edition_id = ?
         WHERE reg.timeslot_id IS NOT NULL AND a.id IS NULL AND u.role = 'student'
-        AND reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+        AND reg.edition_id = ? AND e.edition_id = ?
         ORDER BY t.slot_number, u.class, u.lastname, u.firstname
     ");
+    $stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId]);
     $absentStudents = $stmt->fetchAll();
 }
 
@@ -105,14 +107,17 @@ $stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND 
 $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // Alle Räume für Filter
-$stmt = $db->query("SELECT id, room_number FROM rooms WHERE edition_id = $activeEditionId ORDER BY room_number");
+$stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE edition_id = ? ORDER BY room_number");
+$stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
 // Statistiken
-$stmt = $db->query("SELECT COUNT(DISTINCT user_id) as students FROM registrations WHERE edition_id = $activeEditionId");
+$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as students FROM registrations WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $totalStudents = $stmt->fetch()['students'];
 
-$stmt = $db->query("SELECT COUNT(*) as total FROM registrations WHERE edition_id = $activeEditionId");
+$stmt = $db->prepare("SELECT COUNT(*) as total FROM registrations WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $totalRegistrations = $stmt->fetch()['total'];
 ?>
 

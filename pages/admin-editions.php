@@ -5,6 +5,7 @@ $message = null;
 
 // Edition aktivieren
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'activate') {
+    requireCsrf();
     $edId = intval($_POST['edition_id']);
     $db->exec("UPDATE messe_editions SET status = 'archived'");
     $db->prepare("UPDATE messe_editions SET status = 'active' WHERE id = ?")->execute([$edId]);
@@ -15,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'activ
 
 // Neue Edition erstellen
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create') {
+    requireCsrf();
     $name    = trim($_POST['name'] ?? '');
     $year    = intval($_POST['year'] ?? date('Y'));
     $evDate  = trim($_POST['event_date'] ?? '') ?: null;
@@ -60,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 
 // Edition löschen
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
+    requireCsrf();
     $edId = intval($_POST['edition_id']);
     $stmtChk = $db->prepare("SELECT (SELECT COUNT(*) FROM registrations WHERE edition_id=?) + (SELECT COUNT(*) FROM exhibitors WHERE edition_id=?) + (SELECT COUNT(*) FROM attendance WHERE edition_id=?) AS total");
     $stmtChk->execute([$edId, $edId, $edId]);
@@ -135,7 +138,8 @@ $editions = $db->query("
                     <td class="px-4 py-3">
                         <div class="flex gap-2 justify-end">
                             <?php if ($ed['status'] !== 'active'): ?>
-                            <form method="POST" onsubmit="return confirm('Achtung: Alle Ansichten wechseln zur Edition &quot;<?php echo htmlspecialchars($ed['name'], ENT_QUOTES); ?>&quot;.\n\nAnmeldungen und Check-ins sind editionsspezifisch.\nBenutzerkonten bleiben erhalten.\n\nFortfahren?')">
+                            <form method="POST" onsubmit="return confirm('Achtung: Alle Ansichten wechseln zur Edition &quot;<?php echo htmlspecialchars($ed['name'], ENT_QUOTES); ?>
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">&quot;.\n\nAnmeldungen und Check-ins sind editionsspezifisch.\nBenutzerkonten bleiben erhalten.\n\nFortfahren?')">
                                 <input type="hidden" name="action" value="activate">
                                 <input type="hidden" name="edition_id" value="<?php echo $ed['id']; ?>">
                                 <button type="submit" class="px-3 py-1 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition font-medium">
@@ -144,6 +148,7 @@ $editions = $db->query("
                             </form>
                             <?php if ($ed['cnt_registrations'] == 0 && $ed['cnt_exhibitors'] == 0 && $ed['cnt_checkins'] == 0): ?>
                             <form method="POST" onsubmit="return confirm('Edition wirklich unwiderruflich löschen?')">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="action" value="delete">
                                 <input type="hidden" name="edition_id" value="<?php echo $ed['id']; ?>">
                                 <button type="submit" class="px-3 py-1 bg-red-50 border border-red-200 text-red-600 text-xs rounded-lg hover:bg-red-100 transition">
@@ -166,6 +171,7 @@ $editions = $db->query("
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 class="text-sm font-semibold text-gray-800 mb-4">Neue Edition anlegen</h2>
         <form method="POST" class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="action" value="create">
             <div class="sm:col-span-2">
                 <label class="block text-xs font-medium text-gray-600 mb-1">Name *</label>

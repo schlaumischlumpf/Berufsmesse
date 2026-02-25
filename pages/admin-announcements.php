@@ -6,6 +6,7 @@ $message = null;
 
 // Erstellen
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_announcement'])) {
+    requireCsrf();
     $title      = trim($_POST['title'] ?? '');
     $body       = trim($_POST['body']  ?? '');
     $type       = in_array($_POST['type'] ?? '', ['info','warning','success','error']) ? $_POST['type'] : 'info';
@@ -24,6 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_announcement']
 
 // Toggle
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_announcement'])) {
+    requireCsrf();
     $annId = intval($_POST['announcement_id']);
     $db->prepare("UPDATE announcements SET is_active = 1 - is_active WHERE id = ?")->execute([$annId]);
     logAuditAction('ankuendigung_toggle', "Ankündigung #$annId umgeschaltet");
@@ -32,6 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_announcement']
 
 // Löschen
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_announcement'])) {
+    requireCsrf();
     $annId = intval($_POST['announcement_id']);
     $db->prepare("DELETE FROM announcements WHERE id = ?")->execute([$annId]);
     logAuditAction('ankuendigung_geloescht', "Ankündigung #$annId gelöscht", 'warning');
@@ -111,6 +114,7 @@ $roleLabel = ['all' => 'Alle', 'student' => 'Schüler', 'teacher' => 'Lehrer', '
                     <td class="px-4 py-3">
                         <div class="flex gap-2 justify-end">
                             <form method="POST" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="announcement_id" value="<?php echo $ann['id']; ?>">
                                 <button type="submit" name="toggle_announcement"
                                         class="px-2 py-1 text-xs rounded border <?php echo $ann['is_active'] ? 'border-gray-200 text-gray-600 hover:bg-gray-50' : 'border-emerald-200 text-emerald-600 hover:bg-emerald-50'; ?> transition">
@@ -118,6 +122,7 @@ $roleLabel = ['all' => 'Alle', 'student' => 'Schüler', 'teacher' => 'Lehrer', '
                                 </button>
                             </form>
                             <form method="POST" class="inline" onsubmit="return confirm('Ankündigung wirklich löschen?')">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="announcement_id" value="<?php echo $ann['id']; ?>">
                                 <button type="submit" name="delete_announcement"
                                         class="px-2 py-1 text-xs rounded border border-red-200 text-red-600 hover:bg-red-50 transition">
@@ -139,6 +144,7 @@ $roleLabel = ['all' => 'Alle', 'student' => 'Schüler', 'teacher' => 'Lehrer', '
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
         <h2 class="text-sm font-semibold text-gray-800 mb-4">Neue Ankündigung veröffentlichen</h2>
         <form method="POST" class="space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">Titel *</label>
                 <input type="text" name="title" required

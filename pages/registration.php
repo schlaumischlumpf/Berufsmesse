@@ -9,17 +9,19 @@ $regEnd = getSetting('registration_end');
 $canModify = ($regStatus === 'open') || isAdmin();
 
 // Nur verwaltete Timeslots laden (Slots 1, 3, 5) - Slots 2 und 4 sind freie Wahl vor Ort
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY start_time ASC, slot_number ASC");
+$stmt = $db->prepare("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = ? ORDER BY start_time ASC, slot_number ASC");
+$stmt->execute([$activeEditionId]);
 $timeslots = $stmt->fetchAll();
 
 // Prüfen ob Benutzer bereits für alle Slots registriert ist
-$stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
+$stmt->execute([$_SESSION['user_id'], $activeEditionId]);
 $userRegCount = $stmt->fetch()['count'];
 $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
 
 // Handle Registration Form
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
+    requireCsrf();
     if (!$canModify) {
         $message = ['type' => 'error', 'text' => 'Die Einschreibung ist derzeit nicht möglich.'];
     } elseif ($userRegCount >= $maxRegistrations) {
@@ -29,16 +31,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
         $priority = isset($_POST['priority']) ? max(1, min(3, intval($_POST['priority']))) : 2;
 
         // Prüfen ob User bereits für diesen Aussteller registriert ist
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
-        $stmt->execute([$_SESSION['user_id'], $exhibitorId]);
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = ?");
+        $stmt->execute([$_SESSION['user_id'], $exhibitorId, $activeEditionId]);
         $alreadyRegistered = $stmt->fetch()['count'] > 0;
 
         if ($alreadyRegistered) {
             $message = ['type' => 'error', 'text' => 'Du bist bereits für diesen Aussteller angemeldet.'];
         } else {
             // Prüfen ob diese Priorität bereits verwendet wird
-            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
-            $stmt->execute([$_SESSION['user_id']]);
+            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
+            $stmt->execute([$_SESSION['user_id'], $activeEditionId]);
             $usedPriorities = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
             if (in_array($priority, $usedPriorities)) {
@@ -49,14 +51,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
             } else {
                 try {
                     // Registrierung OHNE Slot-Zuteilung - Slot wird später automatisch zugewiesen
-                    $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority, edition_id) VALUES (?, ?, NULL, 'manual', ?, $activeEditionId)");
-                    $stmt->execute([$_SESSION['user_id'], $exhibitorId, $priority]);
+                    $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority, edition_id) VALUES (?, ?, NULL, 'manual', ?, ?)");
+                    $stmt->execute([$_SESSION['user_id'], $exhibitorId, $priority, $activeEditionId]);
 
                     $message = ['type' => 'success', 'text' => 'Erfolgreich angemeldet! Der Zeitslot wird später automatisch zugeteilt.'];
 
                     // Counter aktualisieren
-                    $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
-                    $stmt->execute([$_SESSION['user_id']]);
+                    $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
+                    $stmt->execute([$_SESSION['user_id'], $activeEditionId]);
                     $userRegCount = $stmt->fetch()['count'];
                 } catch (PDOException $e) {
                     logErrorToAudit($e, 'Anmeldung');
@@ -69,21 +71,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
 
 // Handle Abmeldung - Admins/Lehrer können immer abmelden, Schüler nur bei offener Einschreibung (Issue #12)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
+    requireCsrf();
     $exhibitorId = intval($_POST['exhibitor_id']);
     
     // Prüfen ob die Registrierung dem User gehört
-    $stmt = $db->prepare("SELECT * FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
-    $stmt->execute([$_SESSION['user_id'], $exhibitorId]);
+    $stmt = $db->prepare("SELECT * FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = ?");
+    $stmt->execute([$_SESSION['user_id'], $exhibitorId, $activeEditionId]);
     $registration = $stmt->fetch();
     
     if ($registration && $canModify) {
-        $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
-        if ($stmt->execute([$_SESSION['user_id'], $exhibitorId])) {
+        $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = ?");
+        if ($stmt->execute([$_SESSION['user_id'], $exhibitorId, $activeEditionId])) {
             $message = ['type' => 'success', 'text' => 'Erfolgreich abgemeldet'];
             
             // Counter aktualisieren
-            $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
-            $stmt->execute([$_SESSION['user_id']]);
+            $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
+            $stmt->execute([$_SESSION['user_id'], $activeEditionId]);
             $userRegCount = $stmt->fetch()['count'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Abmelden'];
@@ -95,8 +98,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
 
 // Prüfe für jeden Aussteller ob der User bereits registriert ist
 $userRegistrations = [];
-$stmt = $db->prepare("SELECT exhibitor_id, priority FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt = $db->prepare("SELECT exhibitor_id, priority FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
+$stmt->execute([$_SESSION['user_id'], $activeEditionId]);
 foreach ($stmt->fetchAll() as $row) {
     $userRegistrations[$row['exhibitor_id']] = $row['priority'] ?? 2;
 }
@@ -271,6 +274,7 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                             </span>
                             <?php if ($canModify): ?>
                             <form method="POST" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                                 <button type="submit" 
                                         name="unregister" 
@@ -288,6 +292,7 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                             <!-- Noch nicht angemeldet - Anmelde-Button -->
                             <?php if ($canModify && $userRegCount < $maxRegistrations): ?>
                             <form method="POST" class="inline flex items-center gap-2">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                                 <select name="priority" class="text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white focus:ring-2 focus:ring-emerald-300">
                                     <option value="1">Prio: Hoch</option>

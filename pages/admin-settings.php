@@ -8,6 +8,7 @@ if (!isAdmin() && !hasPermission('einstellungen_sehen')) {
 
 // Handle Settings Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
@@ -31,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
 
 // Handle Security Settings Update (nur Admins)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_security'])) {
+    requireCsrf();
     if (!isAdmin()) {
         die('Keine Berechtigung - nur Administratoren');
     }
@@ -57,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_security'])) {
 
 // Handle QR Code URL Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
@@ -68,6 +71,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
 
 // Handle QR Code Validity Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_validity'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
@@ -103,6 +107,7 @@ $currentSettings = [
 
 // Zeitslot bearbeiten
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_timeslot'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) die('Keine Berechtigung');
     $slotId    = intval($_POST['slot_id']);
     $slotName  = trim($_POST['slot_name']);
@@ -131,6 +136,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_timeslot'])) {
 
 // Zeitslot hinzufügen
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
+    requireCsrf();
     if (!isAdmin()) die('Keine Berechtigung');
     $slotName  = trim($_POST['new_slot_name']);
     $startTime = trim($_POST['new_start_time']);
@@ -161,6 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
 
 // Zeitslot löschen
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_timeslot'])) {
+    requireCsrf();
     if (!isAdmin()) die('Keine Berechtigung');
     $slotId = intval($_POST['slot_id']);
     $stmtCheck = $db->prepare("
@@ -235,6 +242,7 @@ $allTimeslots = $stmt->fetchAll();
         <!-- ============================================================ -->
         <div id="tab-allgemein" class="settings-tab-content p-4 sm:p-6">
             <form method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 
                 <!-- Schnellstatus -->
                 <div class="p-3 rounded-lg border <?php 
@@ -335,6 +343,7 @@ $allTimeslots = $stmt->fetchAll();
                 
                 <!-- Base URL Einstellung -->
                 <form method="POST" class="space-y-4">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-link text-emerald-500"></i> Base-URL für QR-Codes
                     </h4>
@@ -393,6 +402,7 @@ $allTimeslots = $stmt->fetchAll();
 
                 <!-- Gültigkeitsdauer der QR-Codes -->
                 <form method="POST" class="space-y-4">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-clock text-amber-500"></i> Gültigkeitsdauer der QR-Codes
                     </h4>
@@ -466,6 +476,7 @@ $allTimeslots = $stmt->fetchAll();
         <?php if (isAdmin()): ?>
         <div id="tab-sicherheit" class="settings-tab-content hidden p-4 sm:p-6">
             <form method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
 
                 <!-- Registrierungsseite -->
                 <div>
@@ -593,6 +604,7 @@ $allTimeslots = $stmt->fetchAll();
             <div class="space-y-2 mb-6">
                 <?php foreach ($allTimeslots as $slot): ?>
                 <form method="POST" class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <input type="hidden" name="slot_id" value="<?php echo $slot['id']; ?>">
                     <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
                         <div class="sm:col-span-2">
@@ -652,6 +664,7 @@ $allTimeslots = $stmt->fetchAll();
             <?php if (isAdmin()): ?>
             <h4 class="text-sm font-semibold text-gray-800 mb-3">Neuen Zeitslot hinzufügen</h4>
             <form method="POST" class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
                     <div class="sm:col-span-2">
                         <label class="block text-xs font-medium text-gray-500 mb-1">Name *</label>

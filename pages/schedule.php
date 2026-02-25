@@ -18,10 +18,10 @@ $stmt = $db->prepare("
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
     LEFT JOIN rooms rm ON e.room_id = rm.id
-    WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+    WHERE r.user_id = ? AND r.edition_id = ? AND e.edition_id = ?
     ORDER BY t.slot_number ASC
 ");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$_SESSION['user_id'], $activeEditionId, $activeEditionId]);
 $registrations = $stmt->fetchAll();
 
 // Tagesablauf dynamisch aus Datenbank laden

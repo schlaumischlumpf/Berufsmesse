@@ -12,6 +12,7 @@ $db = getDB();
 // Handle CSV Import
 $csvImportResult = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('benutzer_importieren')) die('Keine Berechtigung');
     if (!empty($_FILES['csv_file']['name'])) {
         $file = $_FILES['csv_file'];
@@ -143,6 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
 
 // Handle User Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     if (isset($_POST['create_user'])) {
         if (!isAdmin() && !hasPermission('benutzer_erstellen')) die('Keine Berechtigung');
         // Neuen Benutzer erstellen
@@ -559,6 +561,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p class="text-sm text-blue-900">
                     <i class="fas fa-info-circle mr-2"></i>
@@ -653,6 +656,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Vorname *</label>
@@ -722,6 +726,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="resetUserId">
             
             <p class="text-gray-700">
@@ -754,6 +759,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="deleteUserId">
             
             <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
@@ -786,6 +792,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
 
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="editUserId">
 
             <div class="grid grid-cols-2 gap-4">

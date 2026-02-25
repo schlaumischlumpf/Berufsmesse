@@ -17,30 +17,32 @@ $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")
 $stats['total_students'] = $stmt->fetch()['count'];
 
 // Schüler mit vollständigen Anmeldungen (alle 3 Slots)
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT COUNT(DISTINCT user_id) as count
     FROM (
         SELECT r.user_id, COUNT(DISTINCT t.slot_number) as slot_count
         FROM registrations r
         JOIN timeslots t ON r.timeslot_id = t.id
         JOIN users u ON r.user_id = u.id
-        WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND r.edition_id = $activeEditionId
+        WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND r.edition_id = ?
         GROUP BY r.user_id
         HAVING slot_count = " . getManagedSlotCount() . "
     ) as complete_registrations
 ");
+$stmt->execute([$activeEditionId]);
 $stats['complete_students'] = $stmt->fetch()['count'];
 
 // Schüler mit unvollständigen Anmeldungen
 $stats['incomplete_students'] = $stats['total_students'] - $stats['complete_students'];
 
 // Schüler ohne Anmeldungen
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT COUNT(*) as count 
     FROM users u
     WHERE u.role = 'student' 
-    AND u.id NOT IN (SELECT DISTINCT user_id FROM registrations WHERE edition_id = $activeEditionId)
+    AND u.id NOT IN (SELECT DISTINCT user_id FROM registrations WHERE edition_id = ?)
 ");
+$stmt->execute([$activeEditionId]);
 $stats['no_registrations'] = $stmt->fetch()['count'];
 ?>
 
@@ -156,12 +158,12 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                             FROM registrations r
                             JOIN timeslots t ON r.timeslot_id = t.id
                             JOIN users u ON r.user_id = u.id
-                            WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND u.class = ? AND r.edition_id = $activeEditionId
+                            WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND u.class = ? AND r.edition_id = ?
                             GROUP BY r.user_id
                             HAVING slot_count = " . getManagedSlotCount() . "
                         ) as complete
                     ");
-                    $stmt->execute([$class]);
+                    $stmt->execute([$class, $activeEditionId]);
                     $classComplete = $stmt->fetch()['count'];
                     
                     $percentage = $classTotal > 0 ? round(($classComplete / $classTotal) * 100) : 0;

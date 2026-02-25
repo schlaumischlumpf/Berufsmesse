@@ -21,10 +21,10 @@ foreach ($students as $student) {
         FROM registrations r
         JOIN exhibitors e ON r.exhibitor_id = e.id
         JOIN timeslots t ON r.timeslot_id = t.id
-        WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+        WHERE r.user_id = ? AND r.edition_id = ? AND e.edition_id = ?
         ORDER BY t.slot_number
     ");
-    $stmt->execute([$student['id']]);
+    $stmt->execute([$student['id'], $activeEditionId, $activeEditionId]);
     $registrations = $stmt->fetchAll();
     
     // Slots gruppieren
@@ -42,7 +42,8 @@ foreach ($students as $student) {
 
 // Verwaltete Slots
 $managedSlots = getManagedSlotNumbers();
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY start_time ASC, slot_number ASC");;
+$stmt = $db->prepare("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = ? ORDER BY start_time ASC, slot_number ASC");
+$stmt->execute([$activeEditionId]);;
 $timeslots = $stmt->fetchAll();
 ?>
 

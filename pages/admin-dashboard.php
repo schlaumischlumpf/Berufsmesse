@@ -35,34 +35,38 @@ $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")
 $stats['total_students'] = $stmt->fetch()['count'];
 
 // Gesamtzahl Aussteller
-$stmt = $db->query("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1 AND edition_id = $activeEditionId");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1 AND edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['total_exhibitors'] = $stmt->fetch()['count'];
 
 // Gesamtzahl Anmeldungen
-$stmt = $db->query("SELECT COUNT(*) as count FROM registrations WHERE edition_id = $activeEditionId");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['total_registrations'] = $stmt->fetch()['count'];
 
 // Schüler mit Anmeldungen (nur role='student', nicht Lehrer/Admins - Issue #14)
-$stmt = $db->query("SELECT COUNT(DISTINCT r.user_id) as count FROM registrations r JOIN users u ON r.user_id = u.id WHERE u.role = 'student' AND r.edition_id = $activeEditionId");
+$stmt = $db->prepare("SELECT COUNT(DISTINCT r.user_id) as count FROM registrations r JOIN users u ON r.user_id = u.id WHERE u.role = 'student' AND r.edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['students_registered'] = $stmt->fetch()['count'];
 
 // Schüler ohne Anmeldungen
 $stats['students_not_registered'] = $stats['total_students'] - $stats['students_registered'];
 
 // Aussteller nach Beliebtheit
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT e.name, COUNT(r.id) as registrations
     FROM exhibitors e
-    LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.edition_id = $activeEditionId
-    WHERE e.active = 1 AND e.edition_id = $activeEditionId
+    LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.edition_id = ?
+    WHERE e.active = 1 AND e.edition_id = ?
     GROUP BY e.id
     ORDER BY registrations DESC
     LIMIT 5
 ");
+$stmt->execute([$activeEditionId, $activeEditionId]);
 $topExhibitors = $stmt->fetchAll();
 
 // Registrierungen pro Zeitslot
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT 
         t.slot_name, 
         t.slot_number, 
@@ -70,24 +74,26 @@ $stmt = $db->query("
         t.end_time,
         COUNT(r.id) as registrations
     FROM timeslots t
-    LEFT JOIN registrations r ON t.id = r.timeslot_id AND r.edition_id = $activeEditionId
-    WHERE t.edition_id = $activeEditionId
+    LEFT JOIN registrations r ON t.id = r.timeslot_id AND r.edition_id = ?
+    WHERE t.edition_id = ?
     GROUP BY t.id, t.slot_name, t.slot_number, t.start_time, t.end_time
     ORDER BY t.slot_number ASC
 ");
+$stmt->execute([$activeEditionId, $activeEditionId]);
 $slotStats = $stmt->fetchAll();
 
 // Letzte Registrierungen
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT r.*, u.firstname, u.lastname, e.name as exhibitor_name, t.slot_name
     FROM registrations r
     JOIN users u ON r.user_id = u.id
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
-    WHERE r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
+    WHERE r.edition_id = ? AND e.edition_id = ?
     ORDER BY r.registered_at DESC
     LIMIT 10
 ");
+$stmt->execute([$activeEditionId, $activeEditionId]);
 $recentRegistrations = $stmt->fetchAll();
 ?>
 
