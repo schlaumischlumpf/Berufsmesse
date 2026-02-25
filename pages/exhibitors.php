@@ -1,9 +1,11 @@
 <?php
 // Kategorien fuer Filter aus DB laden (Fallback: DISTINCT aus exhibitors)
 $industryList = getIndustries();
+$__catStmt = $db->prepare("SELECT DISTINCT category FROM exhibitors WHERE active = 1 AND exhibitors.edition_id = ? AND category IS NOT NULL AND category != '' ORDER BY category");
+$__catStmt->execute([$activeEditionId]);
 $categories = !empty($industryList) 
     ? array_column($industryList, 'name')
-    : $db->query("SELECT DISTINCT category FROM exhibitors WHERE active = 1 AND category IS NOT NULL AND category != '' ORDER BY category")->fetchAll(PDO::FETCH_COLUMN);
+    : $__catStmt->fetchAll(PDO::FETCH_COLUMN);
 ?>
 
 <!-- Aussteller-Übersicht -->

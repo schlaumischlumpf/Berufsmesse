@@ -15,19 +15,22 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
 try {
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT u.firstname, u.lastname, u.class, e.name as exhibitor_name,
            t.slot_name, t.slot_number, r.room_number
     FROM registrations reg
     JOIN users u ON reg.user_id = u.id
     JOIN exhibitors e ON reg.exhibitor_id = e.id
     JOIN timeslots t ON reg.timeslot_id = t.id
-    LEFT JOIN rooms r ON e.room_id = r.id
-    LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id
+    LEFT JOIN rooms r ON e.room_id = r.id AND r.edition_id = ?
+    LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id AND a.edition_id = ?
     WHERE reg.timeslot_id IS NOT NULL AND a.id IS NULL AND u.role = 'student'
+    AND reg.edition_id = ? AND e.edition_id = ? AND t.edition_id = ?
     ORDER BY t.slot_number, u.class, u.lastname, u.firstname
 ");
+$stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId, $activeEditionId, $activeEditionId]);
 $data = $stmt->fetchAll();
 
 $eventDate = getSetting('event_date') ?? date('Y-m-d');

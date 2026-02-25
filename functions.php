@@ -18,7 +18,9 @@ class Database {
                 ]
             );
         } catch(PDOException $e) {
-            die("Datenbankverbindung fehlgeschlagen: " . $e->getMessage());
+            error_log("Datenbankverbindung fehlgeschlagen: " . $e->getMessage());
+            http_response_code(503);
+            die("Dienst vorübergehend nicht verfügbar.");
         }
     }
     
@@ -43,8 +45,36 @@ class Database {
 }
 
 // Konstanten für Kapazitätsberechnung
-define('MANAGED_SLOTS_COUNT', 3); // Anzahl der verwalteten Slots (1, 3, 5)
 define('DEFAULT_CAPACITY_DIVISOR', 3); // Standard-Divisor für Raumkapazität
+
+/**
+ * Gibt alle slot_number-Werte zurück, die als managed markiert sind.
+ * Statischer Cache pro Request. Fallback auf [1,3,5] vor Migration.
+ * @return int[]
+ */
+function getManagedSlotNumbers(): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    try {
+        $db    = getDB();
+        $stmt  = $db->query("SELECT slot_number FROM timeslots WHERE is_managed = 1 AND (is_break = 0 OR is_break IS NULL) ORDER BY slot_number ASC");
+        $cache = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+        if (!empty($cache)) return $cache;
+    } catch (Exception $e) { /* Spalte noch nicht vorhanden */ }
+    $cache = [1, 3, 5];
+    return $cache;
+}
+
+function getManagedSlotCount(): int {
+    return count(getManagedSlotNumbers());
+}
+
+/**
+ * Gibt "IN (1,3,5)" zurück — nur Integer, SQL-Injection-sicher für direkte Einbettung.
+ */
+function getManagedSlotsSqlIn(): string {
+    return 'IN (' . implode(',', getManagedSlotNumbers()) . ')';
+}
 
 // Hilfsfunktionen
 function getDB() {
@@ -120,6 +150,44 @@ function sanitize($data) {
     return htmlspecialchars(strip_tags(trim($data)), ENT_QUOTES, 'UTF-8');
 }
 
+// ─── CSRF ────────────────────────────────────────────────────────────────────
+
+function generateCsrfToken(): string {
+    if (empty($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+
+function verifyCsrfToken(?string $token): bool {
+    return !empty($_SESSION['csrf_token'])
+        && !empty($token)
+        && hash_equals($_SESSION['csrf_token'], $token);
+}
+
+/**
+ * Bricht mit HTTP 403 ab wenn der CSRF-Token fehlt oder ungültig ist.
+ * Formulare:  $_POST['csrf_token']
+ * JSON-APIs:  HTTP-Header 'X-CSRF-Token'
+ */
+function requireCsrf(): void {
+    $token = $_POST['csrf_token']
+          ?? $_SERVER['HTTP_X_CSRF_TOKEN']
+          ?? null;
+    if (!verifyCsrfToken($token)) {
+        http_response_code(403);
+        if (!empty($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) {
+            header('Content-Type: application/json');
+            echo json_encode(['success' => false, 'message' => 'Ungültige Anfrage (CSRF).']);
+        } else {
+            echo 'Ungültige Anfrage (CSRF-Token fehlt oder abgelaufen).';
+        }
+        exit;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+
 function formatDate($date) {
     return date('d.m.Y', strtotime($date));
 }
@@ -129,16 +197,32 @@ function formatDateTime($datetime) {
 }
 
 function getSetting($key, $default = null) {
-    $db = getDB();
-    $stmt = $db->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
-    $stmt->execute([$key]);
-    $result = $stmt->fetch();
-    return $result ? $result['setting_value'] : $default;
+    $editionKeys = ['registration_start', 'registration_end', 'event_date', 'max_registrations_per_student'];
+    if (in_array($key, $editionKeys)) {
+        $edition = getActiveEdition();
+        $val     = $edition[$key] ?? null;
+        return $val !== null ? $val : $default;
+    }
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
+        $stmt->execute([$key]);
+        $result = $stmt->fetch();
+        return $result ? $result['setting_value'] : $default;
+    } catch (Exception $e) {
+        return $default;
+    }
 }
 
 function updateSetting($key, $value) {
-    $db = getDB();
-    $stmt = $db->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?) 
+    $editionKeys = ['registration_start', 'registration_end', 'event_date', 'max_registrations_per_student'];
+    if (in_array($key, $editionKeys)) {
+        $db   = getDB();
+        $stmt = $db->prepare("UPDATE messe_editions SET `$key` = ? WHERE id = ?");
+        return $stmt->execute([$value, getActiveEditionId()]);
+    }
+    $db   = getDB();
+    $stmt = $db->prepare("INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)
                           ON DUPLICATE KEY UPDATE setting_value = ?");
     return $stmt->execute([$key, $value, $value]);
 }
@@ -181,6 +265,32 @@ function uploadFile($file, $exhibitorId) {
         return ['success' => false, 'message' => 'Dateityp nicht erlaubt'];
     }
     
+    // Server-seitiger MIME-Typ-Check
+    $allowedMimes = [
+        'pdf'  => 'application/pdf',
+        'doc'  => 'application/msword',
+        'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        'ppt'  => 'application/vnd.ms-powerpoint',
+        'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        'jpg'  => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png'  => 'image/png',
+        'gif'  => 'image/gif',
+    ];
+    if (function_exists('finfo_open')) {
+        $finfo    = new finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->file($file['tmp_name']);
+        $expected = $allowedMimes[$extension] ?? null;
+        if ($expected === null || $mimeType !== $expected) {
+            return ['success' => false, 'message' => 'Dateityp (MIME) nicht erlaubt.'];
+        }
+    }
+    if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif'])) {
+        if (@getimagesize($file['tmp_name']) === false) {
+            return ['success' => false, 'message' => 'Datei ist kein gültiges Bild.'];
+        }
+    }
+
     // Einzigartigen Dateinamen generieren
     $filename = uniqid() . '_' . time() . '.' . $extension;
     $filepath = UPLOAD_DIR . $filename;
@@ -281,7 +391,7 @@ function getExhibitorTotalCapacity($exhibitorId) {
     }
     
     // Alle verwalteten Zeitslots (1, 3, 5)
-    $stmt = $db->query("SELECT id FROM timeslots WHERE slot_number IN (1, 3, 5)");
+    $stmt = $db->query("SELECT id FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . "");
     $timeslots = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
     $totalCapacity = 0;
@@ -661,6 +771,29 @@ function logAuditAction($action, $details = '', $severity = 'info') {
 }
 
 /**
+ * Lädt alle aktiven, nicht abgelaufenen Ankündigungen für die gegebene Rolle.
+ * Gibt leeres Array zurück wenn die Tabelle noch nicht existiert.
+ */
+function getActiveAnnouncements(string $role): array {
+    try {
+        $db   = getDB();
+        $now  = date('Y-m-d H:i:s');
+        $stmt = $db->prepare("
+            SELECT id, title, body, type, target_role
+            FROM   announcements
+            WHERE  is_active   = 1
+              AND  (expires_at IS NULL OR expires_at > ?)
+              AND  (target_role = 'all' OR target_role = ?)
+            ORDER BY created_at DESC
+        ");
+        $stmt->execute([$now, $role]);
+        return $stmt->fetchAll();
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
  * Logs a caught exception or error to the audit log with severity = 'error'.
  * Also calls PHP's error_log() so server logs remain unchanged.
  *
@@ -864,4 +997,48 @@ function canAccessExhibitorQR($userId, $exhibitorId) {
     // Exhibitor-specific orga can only access their assigned exhibitors
     return isExhibitorOrgaMember($userId, $exhibitorId);
 }
+
+// ─── Messe-Editionen (Mehrjährigkeit) ────────────────────────────────────────
+
+function getActiveEditionId(): int {
+    if (isset($_SESSION['active_edition_id'])) {
+        return (int)$_SESSION['active_edition_id'];
+    }
+    try {
+        $db   = getDB();
+        $stmt = $db->query("SELECT id FROM messe_editions WHERE status = 'active' LIMIT 1");
+        $row  = $stmt->fetch();
+        if ($row) {
+            $_SESSION['active_edition_id'] = (int)$row['id'];
+            return (int)$row['id'];
+        }
+    } catch (Exception $e) { /* Tabelle existiert noch nicht */ }
+    return 1; // Fallback
+}
+
+function getActiveEdition(): array {
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("SELECT * FROM messe_editions WHERE id = ?");
+        $stmt->execute([getActiveEditionId()]);
+        $row  = $stmt->fetch();
+        if ($row) return $row;
+    } catch (Exception $e) { }
+    return [
+        'id'                            => 1,
+        'name'                          => 'Berufsmesse',
+        'year'                          => (int)date('Y'),
+        'status'                        => 'active',
+        'registration_start'            => getSetting('registration_start'),
+        'registration_end'              => getSetting('registration_end'),
+        'event_date'                    => getSetting('event_date'),
+        'max_registrations_per_student' => (int)getSetting('max_registrations_per_student', 3),
+    ];
+}
+
+function invalidateEditionCache(): void {
+    unset($_SESSION['active_edition_id']);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 ?>

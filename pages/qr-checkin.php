@@ -16,9 +16,9 @@ if (!empty($token)) {
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
-        WHERE qt.token = ? AND (qt.expires_at IS NULL OR qt.expires_at > NOW())
+        WHERE qt.token = ? AND (qt.expires_at IS NULL OR qt.expires_at > NOW()) AND qt.edition_id = ?
     ");
-    $stmt->execute([$token]);
+    $stmt->execute([$token, $activeEditionId]);
     $qrToken = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$qrToken) {
@@ -60,9 +60,9 @@ if (!empty($token)) {
         // Prüfen ob der Schüler für diesen Aussteller/Slot registriert ist
         $stmt = $db->prepare("
             SELECT id FROM registrations
-            WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?
+            WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?
         ");
-        $stmt->execute([$userId, $exhibitorId, $timeslotId]);
+        $stmt->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
         $registration = $stmt->fetch();
 
         if (!$registration && !$isFreeSlot) {
@@ -81,8 +81,8 @@ if (!empty($token)) {
             if ($exData) $roomId = $exData['room_id'];
 
             // Aktuelle Belegung prüfen
-            $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
-            $stmt2->execute([$exhibitorId, $timeslotId]);
+            $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?");
+            $stmt2->execute([$exhibitorId, $timeslotId, $activeEditionId]);
             $currentCount = $stmt2->fetchColumn();
 
             $slotCapacity = $roomId ? getRoomSlotCapacity($roomId, $timeslotId) : 0;
@@ -96,11 +96,11 @@ if (!empty($token)) {
             } else {
                 // Registrierung + Anwesenheit eintragen
                 try {
-                    $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'qr_checkin')");
-                    $stmt2->execute([$userId, $exhibitorId, $timeslotId]);
+                    $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, edition_id) VALUES (?, ?, ?, 'qr_checkin', ?)");
+                    $stmt2->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
 
-                    $stmt2 = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token) VALUES (?, ?, ?, ?)");
-                    $stmt2->execute([$userId, $exhibitorId, $timeslotId, $token]);
+                    $stmt2 = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token, edition_id) VALUES (?, ?, ?, ?, ?)");
+                    $stmt2->execute([$userId, $exhibitorId, $timeslotId, $token, $activeEditionId]);
 
                     $checkinResult = [
                         'type' => 'success',
@@ -117,9 +117,9 @@ if (!empty($token)) {
             // Prüfen ob bereits eingecheckt
             $stmt = $db->prepare("
                 SELECT id FROM attendance
-                WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?
+                WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ? AND attendance.edition_id = ?
             ");
-            $stmt->execute([$userId, $exhibitorId, $timeslotId]);
+            $stmt->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
 
             if ($stmt->fetch()) {
                 $checkinResult = [
@@ -131,10 +131,10 @@ if (!empty($token)) {
                 // Anwesenheit eintragen
                 try {
                     $stmt = $db->prepare("
-                        INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token, edition_id)
+                        VALUES (?, ?, ?, ?, ?)
                     ");
-                    $stmt->execute([$userId, $exhibitorId, $timeslotId, $token]);
+                    $stmt->execute([$userId, $exhibitorId, $timeslotId, $token, $activeEditionId]);
 
                     $checkinResult = [
                         'type' => 'success',
@@ -234,10 +234,10 @@ if (!empty($token)) {
         FROM attendance a
         JOIN exhibitors e ON a.exhibitor_id = e.id
         JOIN timeslots t ON a.timeslot_id = t.id
-        WHERE a.user_id = ?
+        WHERE a.user_id = ? AND a.edition_id = ? AND e.edition_id = ?
         ORDER BY t.slot_number ASC
     ");
-    $stmt->execute([$_SESSION['user_id']]);
+    $stmt->execute([$_SESSION['user_id'], $activeEditionId, $activeEditionId]);
     $myAttendance = $stmt->fetchAll();
     ?>
     

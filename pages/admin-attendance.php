@@ -11,7 +11,7 @@ if (!isAdmin() && !hasPermission('qr_codes_sehen') && !hasPermission('qr_codes_e
 $db = getDB();
 
 // Alle Schüler mit ihren Einschreibungen (Slots 1, 3, 5) und Anwesenheitsstatus laden
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT
         u.id        AS user_id,
         u.firstname,
@@ -28,15 +28,19 @@ $stmt = $db->query("
         IF(a.id IS NOT NULL, 1, 0) AS is_present
     FROM users u
     LEFT JOIN registrations r  ON r.user_id      = u.id
+                               AND r.edition_id   = ?
     LEFT JOIN exhibitors e     ON e.id            = r.exhibitor_id
+                               AND e.edition_id   = ?
     LEFT JOIN timeslots t      ON t.id            = r.timeslot_id
-                               AND t.slot_number IN (1, 3, 5)
+                               AND t.slot_number " . getManagedSlotsSqlIn() . "
     LEFT JOIN attendance a     ON a.user_id       = u.id
                                AND a.exhibitor_id = r.exhibitor_id
                                AND a.timeslot_id  = r.timeslot_id
+                               AND a.edition_id   = ?
     WHERE u.role = 'student'
     ORDER BY u.class ASC, u.lastname ASC, u.firstname ASC, t.slot_number ASC
 ");
+$stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId]);
 
 // Daten nach Schüler gruppieren
 $studentsRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -69,9 +73,11 @@ foreach ($studentsRaw as $row) {
 
 // Statistiken
 $totalStudents   = count($students);
-$stmt = $db->query("SELECT COUNT(DISTINCT user_id) FROM attendance");
+$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $presentStudents = $stmt->fetchColumn();
-$stmt = $db->query("SELECT COUNT(*) FROM attendance");
+$stmt = $db->prepare("SELECT COUNT(*) FROM attendance WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $totalCheckins   = $stmt->fetchColumn();
 ?>
 

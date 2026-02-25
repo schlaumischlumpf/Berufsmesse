@@ -13,7 +13,10 @@ if (!isLoggedIn()) {
     exit;
 }
 
+requireCsrf();
+
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 $data = json_decode(file_get_contents('php://input'), true);
 $token = $data['token'] ?? $_GET['token'] ?? '';
 
@@ -31,8 +34,9 @@ try {
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
         WHERE qt.token = ? AND (qt.expires_at IS NULL OR qt.expires_at > NOW())
+        AND qt.edition_id = ? AND e.edition_id = ? AND t.edition_id = ?
     ");
-    $stmt->execute([$token]);
+    $stmt->execute([$token, $activeEditionId, $activeEditionId, $activeEditionId]);
     $qrToken = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$qrToken) {
@@ -73,8 +77,8 @@ try {
     $isFreeSlot = in_array($slotNumber, [2, 4]);
 
     // Prüfen ob registriert
-    $stmt = $db->prepare("SELECT id FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?");
-    $stmt->execute([$userId, $exhibitorId, $timeslotId]);
+    $stmt = $db->prepare("SELECT id FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?");
+    $stmt->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
     $registration = $stmt->fetch();
 
     if (!$registration && !$isFreeSlot) {
@@ -88,13 +92,13 @@ try {
 
     if (!$registration && $isFreeSlot) {
         // Freie Wahl: Automatisch einschreiben falls Kapazität
-        $stmt2 = $db->prepare("SELECT room_id FROM exhibitors WHERE id = ?");
-        $stmt2->execute([$exhibitorId]);
+        $stmt2 = $db->prepare("SELECT room_id FROM exhibitors WHERE id = ? AND exhibitors.edition_id = ?");
+        $stmt2->execute([$exhibitorId, $activeEditionId]);
         $exData = $stmt2->fetch();
         $roomId = $exData ? $exData['room_id'] : null;
 
-        $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
-        $stmt2->execute([$exhibitorId, $timeslotId]);
+        $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?");
+        $stmt2->execute([$exhibitorId, $timeslotId, $activeEditionId]);
         $currentCount = $stmt2->fetchColumn();
 
         $slotCapacity = $roomId ? getRoomSlotCapacity($roomId, $timeslotId) : 0;
@@ -105,13 +109,13 @@ try {
         }
 
         // Registrierung anlegen
-        $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'qr_checkin')");
-        $stmt2->execute([$userId, $exhibitorId, $timeslotId]);
+        $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, edition_id) VALUES (?, ?, ?, 'qr_checkin', ?)");
+        $stmt2->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
     }
 
     // Prüfen ob bereits eingecheckt
-    $stmt = $db->prepare("SELECT id FROM attendance WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?");
-    $stmt->execute([$userId, $exhibitorId, $timeslotId]);
+    $stmt = $db->prepare("SELECT id FROM attendance WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ? AND attendance.edition_id = ?");
+    $stmt->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
 
     if ($stmt->fetch()) {
         echo json_encode([
@@ -123,8 +127,8 @@ try {
     }
 
     // Anwesenheit eintragen
-    $stmt = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token) VALUES (?, ?, ?, ?)");
-    $stmt->execute([$userId, $exhibitorId, $timeslotId, $token]);
+    $stmt = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token, edition_id) VALUES (?, ?, ?, ?, ?)");
+    $stmt->execute([$userId, $exhibitorId, $timeslotId, $token, $activeEditionId]);
 
     echo json_encode([
         'success' => true,
@@ -135,5 +139,6 @@ try {
     
 } catch (Exception $e) {
     logErrorToAudit($e, 'API-QRCheckin');
-    echo json_encode(['success' => false, 'message' => 'Fehler: ' . $e->getMessage()]);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

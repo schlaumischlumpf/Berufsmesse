@@ -12,6 +12,7 @@ if (!isAdmin() && !hasPermission('benutzer_sehen')) {
 
 try {
     $db = getDB();
+    $activeEditionId = getActiveEditionId();
     
     // Parameter abrufen
     $name = $_GET['name'] ?? '';
@@ -30,11 +31,11 @@ try {
             u.role,
             COUNT(r.id) as registration_count
         FROM users u
-        LEFT JOIN registrations r ON u.id = r.user_id
-        WHERE 1=1
+        LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = ?
+        WHERE (u.role = 'admin' OR u.edition_id = ?)
     ";
     
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     
     // Name filtern
     if (!empty($name)) {
@@ -97,8 +98,6 @@ try {
     
 } catch (Exception $e) {
     logErrorToAudit($e, 'API-Benutzersuche');
-    echo json_encode([
-        'success' => false,
-        'message' => 'Fehler beim Laden der Benutzer: ' . $e->getMessage()
-    ]);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

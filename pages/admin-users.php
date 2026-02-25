@@ -12,6 +12,7 @@ $db = getDB();
 // Handle CSV Import
 $csvImportResult = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('benutzer_importieren')) die('Keine Berechtigung');
     if (!empty($_FILES['csv_file']['name'])) {
         $file = $_FILES['csv_file'];
@@ -62,9 +63,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                         continue;
                     }
                     
-                    // Prüfe ob Username bereits existiert
-                    $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
-                    $stmt->execute([$username]);
+                    // Prüfe ob Username in dieser Edition bereits existiert
+                    $csvUserEditionId = ($role === 'admin') ? null : $activeEditionId;
+                    if ($csvUserEditionId !== null) {
+                        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id = ?");
+                        $stmt->execute([$username, $csvUserEditionId]);
+                    } else {
+                        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id IS NULL");
+                        $stmt->execute([$username]);
+                    }
                     if ($stmt->fetch()) {
                         $importResult['skipped']++;
                         $rowNumber++;
@@ -90,11 +97,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
                     // Force password change for all admin-created/imported accounts
                     $force_password_change = 1;
+                    $csvUserEditionId = ($role === 'admin') ? null : $activeEditionId;
                     
                     try {
-                        $stmt = $db->prepare("INSERT INTO users (firstname, lastname, username, email, password, role, class, must_change_password) 
-                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                        if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change])) {
+                        $stmt = $db->prepare("INSERT INTO users (firstname, lastname, username, email, password, role, class, must_change_password, edition_id) 
+                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change, $csvUserEditionId])) {
                             $importResult['imported']++;
                             // Speichere generiertes Passwort für Export
                             if ($generatePassword) {
@@ -136,6 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
 
 // Handle User Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     if (isset($_POST['create_user'])) {
         if (!isAdmin() && !hasPermission('benutzer_erstellen')) die('Keine Berechtigung');
         // Neuen Benutzer erstellen
@@ -151,9 +160,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($role === 'admin' && !isAdmin()) {
             $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts erstellen'];
         } else {
-            // Prüfen ob Username bereits existiert
-            $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
-            $stmt->execute([$username]);
+            // Prüfen ob Username in dieser Edition bereits existiert
+            $userEditionId = ($role === 'admin') ? null : $activeEditionId;
+            if ($userEditionId !== null) {
+                $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id = ?");
+                $stmt->execute([$username, $userEditionId]);
+            } else {
+                $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id IS NULL");
+                $stmt->execute([$username]);
+            }
             if ($stmt->fetch()) {
                 $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
             } else {
@@ -165,11 +180,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                $userEditionId = ($role === 'admin') ? null : $activeEditionId;
                 // Force password change on first login for admin-created accounts
-                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password) 
-                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password, edition_id) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 try {
-                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1])) {
+                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1, $userEditionId])) {
                         logAuditAction('benutzer_erstellt', "Benutzer '$username' ($firstname $lastname, Rolle: $role) erstellt");
                         $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
                     } else {
@@ -245,10 +261,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($newRole === 'admin' && !isAdmin()) {
                     $message = ['type' => 'error', 'text' => 'Nur Administratoren können die Admin-Rolle vergeben'];
                 } else {
-                    // Prüfen ob neuer Benutzername schon vergeben ist (wenn geändert)
+                    // Prüfen ob neuer Benutzername in der gleichen Edition schon vergeben ist (wenn geändert)
                     if ($newUsername !== $targetUser['username']) {
-                        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND id != ?");
-                        $stmt->execute([$newUsername, $userId]);
+                        $editEditionId = ($newRole === 'admin') ? null : $activeEditionId;
+                        if ($editEditionId !== null) {
+                            $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id = ? AND id != ?");
+                            $stmt->execute([$newUsername, $editEditionId, $userId]);
+                        } else {
+                            $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id IS NULL AND id != ?");
+                            $stmt->execute([$newUsername, $userId]);
+                        }
                         if ($stmt->fetch()) {
                             $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
                         }
@@ -307,23 +329,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Alle Benutzer laden
-$stmt = $db->query("
+// Alle Benutzer laden (Admins + Benutzer der aktiven Edition)
+$stmt = $db->prepare("
     SELECT u.*, COUNT(DISTINCT r.id) as registration_count
     FROM users u
     LEFT JOIN registrations r ON u.id = r.user_id
+    WHERE u.role = 'admin' OR u.edition_id = ?
     GROUP BY u.id
     ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
 ");
+$stmt->execute([$activeEditionId]);
 $users = $stmt->fetchAll();
 
-// Statistiken
+// Statistiken (für aktive Edition)
 $stats = [];
 $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
 $stats['admins'] = $stmt->fetch()['count'];
-$stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['students'] = $stmt->fetch()['count'];
-$stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'teacher'");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['teachers'] = $stmt->fetch()['count'];
 ?>
 
@@ -535,6 +561,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p class="text-sm text-blue-900">
                     <i class="fas fa-info-circle mr-2"></i>
@@ -629,6 +656,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Vorname *</label>
@@ -698,6 +726,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="resetUserId">
             
             <p class="text-gray-700">
@@ -730,6 +759,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="deleteUserId">
             
             <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
@@ -762,6 +792,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
 
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="editUserId">
 
             <div class="grid grid-cols-2 gap-4">

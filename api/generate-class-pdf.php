@@ -15,12 +15,14 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
 try {
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Filter
 $filterClass = $_GET['class'] ?? '';
 
-// Timeslots laden (für Spaltenüberschriften) - nur Slots 1, 3, 5
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");
+// Timeslots laden (für Spaltenüberschriften) - nur Managed-Slots
+$stmt = $db->prepare("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = ? ORDER BY start_time ASC, slot_number ASC");
+$stmt->execute([$activeEditionId]);
 $timeslots = $stmt->fetchAll();
 
 // Daten laden
@@ -34,11 +36,12 @@ $query = "
     JOIN users u ON reg.user_id = u.id
     JOIN exhibitors e ON reg.exhibitor_id = e.id
     JOIN timeslots t ON reg.timeslot_id = t.id
-    LEFT JOIN rooms r ON e.room_id = r.id
+    LEFT JOIN rooms r ON e.room_id = r.id AND r.edition_id = ?
     WHERE u.role = 'student'
+    AND reg.edition_id = ? AND e.edition_id = ? AND t.edition_id = ?
 ";
 
-$params = [];
+$params = [$activeEditionId, $activeEditionId, $activeEditionId, $activeEditionId];
 if ($filterClass) {
     $query .= " AND u.class = ?";
     $params[] = $filterClass;
@@ -168,7 +171,7 @@ class ClassPDF extends FPDF {
             
             // Zeile 1: Slot-Nummer
             $this->SetXY($xPos, $startY + 2);
-            $this->Cell($slotW, 4, 'Slot ' . $slotNum, 0, 0, 'C', false);
+            $this->Cell($slotW, 4, conv($ts['slot_name']), 0, 0, 'C', false);
             
             // Zeile 2: Zeiten
             $this->SetXY($xPos, $startY + 6);

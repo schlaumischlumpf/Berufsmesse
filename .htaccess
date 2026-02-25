@@ -17,6 +17,26 @@ php_value max_execution_time 300
     Deny from all
 </Files>
 
+<Files "berufsmesse.sql">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+<Files "migration.sql">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+<Files "update_schema.sql">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
+<Files "compose.yaml">
+    Order Allow,Deny
+    Deny from all
+</Files>
+
 # Schutz für .htaccess selbst
 <Files ".htaccess">
     Order Allow,Deny

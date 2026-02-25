@@ -10,6 +10,7 @@ require_once '../functions.php';
 
 // Ensure DB connection is available when opened directly
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Session prüfen
 if (!isLoggedIn() || (!isAdmin() && !isTeacher())) {
@@ -36,9 +37,10 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN timeslots t ON reg.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
         WHERE u.role = 'student'
+        AND reg.edition_id = ? AND e.edition_id = ?
     ";
     
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     if ($filterClass) {
         $query .= " AND u.class = ?";
         $params[] = $filterClass;
@@ -62,11 +64,12 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN exhibitors e ON reg.exhibitor_id = e.id
         JOIN timeslots t ON reg.timeslot_id = t.id
         JOIN rooms r ON e.room_id = r.id
+        WHERE reg.edition_id = ? AND e.edition_id = ?
     ";
     
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     if ($filterRoom) {
-        $query .= " WHERE r.id = ?";
+        $query .= " AND r.id = ?";
         $params[] = intval($filterRoom);
     }
     
@@ -77,8 +80,14 @@ if ($printType === 'all' || $printType === 'class') {
     $registrations = $stmt->fetchAll();
 }
 
+// Pausen-Slots laden (für Tagesplan in Druckansicht)
+$stmtBreaks = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? AND is_break = 1 ORDER BY start_time ASC, slot_number ASC");
+$stmtBreaks->execute([$activeEditionId]);
+$breakSlots = $stmtBreaks->fetchAll();
+
 // Räume für Titel
-$stmt = $db->query("SELECT id, room_number FROM rooms ORDER BY room_number");
+$stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE edition_id = ? ORDER BY room_number");
+$stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
 // Titel bestimmen
@@ -360,6 +369,11 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
             color: #065f46;
         }
         
+        .slot-badge.break-badge {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
         /* Slot Section (for rooms view) */
         .slot-section {
             margin-bottom: 1.5rem;
@@ -503,7 +517,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                     <?php 
                     ksort($students);
                     foreach ($students as $studentName => $regs): 
-                        usort($regs, fn($a, $b) => $a['slot_number'] <=> $b['slot_number']);
+                        usort($regs, fn($a, $b) => strcmp($a['start_time'], $b['start_time']));
                     ?>
                         <div class="student-card">
                             <div class="student-name"><?php echo htmlspecialchars($studentName); ?></div>
@@ -517,7 +531,28 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($regs as $reg): ?>
+                                    <?php 
+                                    // Merge registrations with break slots and sort by start_time
+                                    $fullSchedule = [];
+                                    foreach ($regs as $reg) {
+                                        $fullSchedule[] = ['type' => 'reg', 'start_time' => $reg['start_time'], 'data' => $reg];
+                                    }
+                                    foreach ($breakSlots as $brk) {
+                                        $fullSchedule[] = ['type' => 'break', 'start_time' => $brk['start_time'], 'data' => $brk];
+                                    }
+                                    usort($fullSchedule, fn($a, $b) => strcmp($a['start_time'] ?? '', $b['start_time'] ?? ''));
+                                    foreach ($fullSchedule as $entry): 
+                                        if ($entry['type'] === 'break'): $brk = $entry['data']; ?>
+                                    <tr style="background: #fffbeb;">
+                                        <td>
+                                            <span class="slot-badge break-badge">
+                                                ☕ <?php echo htmlspecialchars($brk['slot_name']); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo substr($brk['start_time'], 0, 5) . ' - ' . substr($brk['end_time'], 0, 5); ?></td>
+                                        <td colspan="2" style="color: #92400e; font-style: italic;">Pause</td>
+                                    </tr>
+                                    <?php else: $reg = $entry['data']; ?>
                                     <tr>
                                         <td>
                                             <span class="slot-badge assigned">
@@ -528,7 +563,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                                         <td><strong><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></strong></td>
                                         <td><?php echo htmlspecialchars($reg['room_number'] ?? '—'); ?></td>
                                     </tr>
-                                    <?php endforeach; ?>
+                                    <?php endif; endforeach; ?>
                                 </tbody>
                             </table>
                         </div>
