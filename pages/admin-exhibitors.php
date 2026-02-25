@@ -44,8 +44,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $logoPath = handleLogoUpload($_FILES['logo']);
         }
         
-        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields, logo, offer_types, jobs, features, equipment) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields, logo, offer_types, jobs, features, equipment, edition_id) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, $activeEditionId)");
         if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $equipment])) {
             logAuditAction('aussteller_erstellt', "Aussteller '$name' erstellt");
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich hinzugefuegt'];
@@ -131,7 +131,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             SELECT r.id, r.user_id, r.timeslot_id, t.slot_number
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
-            WHERE r.exhibitor_id = ? AND r.timeslot_id IS NOT NULL
+            WHERE r.exhibitor_id = ? AND r.timeslot_id IS NOT NULL AND r.edition_id = $activeEditionId
         ");
         $stmt->execute([$id]);
         $affectedRegistrations = $stmt->fetchAll();
@@ -149,8 +149,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        COUNT(DISTINCT r2.user_id) as current_count
                 FROM exhibitors e
                 LEFT JOIN registrations r2 ON e.id = r2.exhibitor_id AND r2.timeslot_id = ?
-                WHERE e.active = 1 AND e.id != ? AND e.room_id IS NOT NULL
-                  AND e.id NOT IN (SELECT exhibitor_id FROM registrations WHERE user_id = ?)
+                WHERE e.active = 1 AND e.id != ? AND e.room_id IS NOT NULL AND e.edition_id = $activeEditionId
+                  AND e.id NOT IN (SELECT exhibitor_id FROM registrations WHERE user_id = ? AND edition_id = $activeEditionId)
                 GROUP BY e.id, e.name, e.room_id
                 ORDER BY current_count ASC, RAND()
                 LIMIT 1
@@ -409,7 +409,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
     $userId = intval($_POST['user_id']);
     if ($exhibitorId && $userId) {
         try {
-            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga_team (exhibitor_id, user_id) VALUES (?, ?)");
+            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga_team (exhibitor_id, user_id, edition_id) VALUES (?, ?, $activeEditionId)");
             $stmt->execute([$exhibitorId, $userId]);
             logAuditAction('orga_zugewiesen', "Orga-Mitglied #$userId Aussteller #$exhibitorId zugewiesen");
             $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich zugewiesen'];
@@ -475,6 +475,7 @@ if (isAdmin() || hasPermission('orga_team_sehen')) {
                    u.firstname, u.lastname, u.username
             FROM exhibitor_orga_team eo
             JOIN users u ON eo.user_id = u.id
+            WHERE eo.edition_id = $activeEditionId
             ORDER BY eo.exhibitor_id, u.lastname
         ");
         foreach ($stmtOA->fetchAll() as $row) {
@@ -495,6 +496,7 @@ $stmt = $db->query("
     SELECT e.*, r.capacity as room_capacity
     FROM exhibitors e
     LEFT JOIN rooms r ON e.room_id = r.id
+    WHERE e.edition_id = $activeEditionId
     ORDER BY e.name ASC
 ");
 $allExhibitors = $stmt->fetchAll();
@@ -581,12 +583,12 @@ $orgaUsers = $stmt->fetchAll();
             $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
             
             // Registrierungen zaehlen
-            $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ?");
+            $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
             $stmt->execute([$exhibitor['id']]);
             $regCount = $stmt->fetch()['count'];
             
             // Dokumente laden
-            $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ?");
+            $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND exhibitor_documents.edition_id = $activeEditionId");
             $stmt->execute([$exhibitor['id']]);
             $documents = $stmt->fetchAll();
         ?>
