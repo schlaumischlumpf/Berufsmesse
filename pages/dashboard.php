@@ -31,7 +31,7 @@ $stmt = $db->prepare("
     SELECT COUNT(*) as count
     FROM registrations r
     JOIN timeslots t ON r.timeslot_id = t.id
-    WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+    WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
 ");
 $stmt->execute([$_SESSION['user_id']]);
 $totalRegistrations = $stmt->fetch()['count'];

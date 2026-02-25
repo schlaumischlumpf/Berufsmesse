@@ -9,7 +9,7 @@ $regEnd = getSetting('registration_end');
 $canModify = ($regStatus === 'open') || isAdmin();
 
 // Nur verwaltete Timeslots laden (Slots 1, 3, 5) - Slots 2 und 4 sind freie Wahl vor Ort
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " ORDER BY slot_number ASC");
 $timeslots = $stmt->fetchAll();
 
 // Prüfen ob Benutzer bereits für alle Slots registriert ist

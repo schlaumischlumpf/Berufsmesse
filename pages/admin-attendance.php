@@ -30,7 +30,7 @@ $stmt = $db->query("
     LEFT JOIN registrations r  ON r.user_id      = u.id
     LEFT JOIN exhibitors e     ON e.id            = r.exhibitor_id
     LEFT JOIN timeslots t      ON t.id            = r.timeslot_id
-                               AND t.slot_number IN (1, 3, 5)
+                               AND t.slot_number " . getManagedSlotsSqlIn() . "
     LEFT JOIN attendance a     ON a.user_id       = u.id
                                AND a.exhibitor_id = r.exhibitor_id
                                AND a.timeslot_id  = r.timeslot_id

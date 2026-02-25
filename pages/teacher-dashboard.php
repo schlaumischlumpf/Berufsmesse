@@ -20,9 +20,9 @@ $stmt = $db->query("
         FROM registrations r
         JOIN timeslots t ON r.timeslot_id = t.id
         JOIN users u ON r.user_id = u.id
-        WHERE t.slot_number IN (1, 3, 5) AND u.role = 'student'
+        WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student'
         GROUP BY r.user_id
-        HAVING slot_count = 3
+        HAVING slot_count = " . getManagedSlotCount() . "
     ) as complete_registrations
 ");
 $stats['complete_students'] = $stmt->fetch()['count'];
@@ -133,9 +133,9 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
                             FROM registrations r
                             JOIN timeslots t ON r.timeslot_id = t.id
                             JOIN users u ON r.user_id = u.id
-                            WHERE t.slot_number IN (1, 3, 5) AND u.role = 'student' AND u.class = ?
+                            WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND u.class = ?
                             GROUP BY r.user_id
-                            HAVING slot_count = 3
+                            HAVING slot_count = " . getManagedSlotCount() . "
                         ) as complete
                     ");
                     $stmt->execute([$class]);

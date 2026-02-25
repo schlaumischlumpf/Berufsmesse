@@ -20,7 +20,7 @@ $db = getDB();
 $filterClass = $_GET['class'] ?? '';
 
 // Timeslots laden (für Spaltenüberschriften) - nur Slots 1, 3, 5
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number ASC");
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " ORDER BY slot_number ASC");
 $timeslots = $stmt->fetchAll();
 
 // Daten laden

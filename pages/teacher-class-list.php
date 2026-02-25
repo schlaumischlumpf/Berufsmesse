@@ -41,8 +41,8 @@ foreach ($students as $student) {
 }
 
 // Verwaltete Slots
-$managedSlots = [1, 3, 5];
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number IN (1, 3, 5) ORDER BY slot_number");
+$managedSlots = getManagedSlotNumbers();
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " ORDER BY slot_number");
 $timeslots = $stmt->fetchAll();
 ?>
 

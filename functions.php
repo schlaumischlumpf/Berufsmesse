@@ -45,7 +45,6 @@ class Database {
 }
 
 // Konstanten für Kapazitätsberechnung
-define('MANAGED_SLOTS_COUNT', 3); // Anzahl der verwalteten Slots (1, 3, 5)
 define('DEFAULT_CAPACITY_DIVISOR', 3); // Standard-Divisor für Raumkapazität
 
 /**
@@ -392,7 +391,7 @@ function getExhibitorTotalCapacity($exhibitorId) {
     }
     
     // Alle verwalteten Zeitslots (1, 3, 5)
-    $stmt = $db->query("SELECT id FROM timeslots WHERE slot_number IN (1, 3, 5)");
+    $stmt = $db->query("SELECT id FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . "");
     $timeslots = $stmt->fetchAll(PDO::FETCH_COLUMN);
     
     $totalCapacity = 0;

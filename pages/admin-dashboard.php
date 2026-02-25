@@ -318,7 +318,7 @@ $recentRegistrations = $stmt->fetchAll();
                         <?php 
                         // Nur Slots mit festen Zuteilungen (1, 3, 5)
                         $assignedSlots = array_filter($slotStats, function($s) { 
-                            return in_array($s['slot_number'], [1, 3, 5]); 
+                            return in_array($s['slot_number'], getManagedSlotNumbers()); 
                         });
                         $totalSlotRegs = array_sum(array_column($assignedSlots, 'registrations')) ?: 1;
                         

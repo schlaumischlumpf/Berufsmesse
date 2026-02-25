@@ -22,7 +22,7 @@ $db = getDB();
 
 try {
     // Verwaltete Slots (nur 1, 3, 5)
-    $managedSlots = [1, 3, 5];
+    $managedSlots = getManagedSlotNumbers();
     
     $assignedCount = 0;
     $errors = [];
@@ -54,7 +54,7 @@ try {
             SELECT t.slot_number 
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
-            WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+            WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
         ");
         $stmt->execute([$studentId]);
         $usedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -107,13 +107,13 @@ try {
     
     $stmt = $db->query("
         SELECT u.id,
-               COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number IN (1,3,5) THEN 1 ELSE 0 END), 0) as assigned_count
+               COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number " . getManagedSlotsSqlIn() . " THEN 1 ELSE 0 END), 0) as assigned_count
         FROM users u
         LEFT JOIN registrations r ON u.id = r.user_id
         LEFT JOIN timeslots t ON r.timeslot_id = t.id
         WHERE u.role = 'student'
         GROUP BY u.id
-        HAVING assigned_count < " . MANAGED_SLOTS_COUNT . "
+        HAVING assigned_count < " . getManagedSlotCount() . "
         ORDER BY assigned_count DESC
     ");
     $studentsNeedingSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -125,7 +125,7 @@ try {
             SELECT t.slot_number 
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
-            WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+            WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
         ");
         $stmt->execute([$studentId]);
         $assignedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
