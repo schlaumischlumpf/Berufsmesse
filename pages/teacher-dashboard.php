@@ -1,6 +1,10 @@
 <?php
 // Lehrer Dashboard (Issue #8)
 
+$regStatus = getRegistrationStatus();
+$regStart  = getSetting('registration_start');
+$regEnd    = getSetting('registration_end');
+
 // Alle Klassen abrufen
 $stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND class IS NOT NULL AND class != '' ORDER BY class");
 $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -40,7 +44,26 @@ $stmt = $db->query("
 $stats['no_registrations'] = $stmt->fetch()['count'];
 ?>
 
+<script>
+const REG_START  = "<?php echo htmlspecialchars(getSetting('registration_start', '')); ?>";
+const REG_END    = "<?php echo htmlspecialchars(getSetting('registration_end', '')); ?>";
+const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
+</script>
+
 <div class="space-y-6">
+<?php if ($regStatus === 'open' || $regStatus === 'upcoming'): ?>
+<div class="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg text-sm
+            <?php echo $regStatus === 'open'
+                ? 'bg-emerald-50 border border-emerald-200'
+                : 'bg-amber-50 border border-amber-200'; ?>">
+    <i class="fas fa-clock <?php echo $regStatus === 'open' ? 'text-emerald-500' : 'text-amber-500'; ?>"></i>
+    <span class="<?php echo $regStatus === 'open' ? 'text-emerald-700' : 'text-amber-700'; ?>">
+        Einschreibung <?php echo $regStatus === 'open' ? 'endet' : 'startet'; ?>
+        in <strong id="teacherCountdownValue" class="tabular-nums">…</strong>
+    </span>
+</div>
+<?php endif; ?>
+
     <!-- Header -->
     <div class="bg-white rounded-xl p-6 border-l-4 border-green-600">
         <div class="flex items-center justify-between flex-wrap gap-4">
@@ -252,4 +275,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 500);
     }
 });
+</script>
+
+<script>
+function startCountdown(targetIsoStr, elementId) {
+    function update() {
+        const diff = new Date(targetIsoStr).getTime() - Date.now();
+        const el   = document.getElementById(elementId);
+        if (!el) return;
+        if (diff <= 0) { location.reload(); return; }
+        const days  = Math.floor(diff / 86400000);
+        const hours = Math.floor((diff % 86400000) / 3600000);
+        const mins  = Math.floor((diff % 3600000) / 60000);
+        const secs  = Math.floor((diff % 60000) / 1000);
+        const showSecs = diff < 2 * 3600 * 1000;
+        let text = '';
+        if (days > 0)    text += days + 'd ';
+        if (hours > 0)   text += hours + 'h ';
+        text += mins + 'min';
+        if (showSecs)    text += ' ' + secs + 's';
+        el.textContent = text.trim();
+    }
+    update();
+    setInterval(update, 1000);
+}
+if (REG_STATUS === 'open')          startCountdown(REG_END,   'teacherCountdownValue');
+else if (REG_STATUS === 'upcoming') startCountdown(REG_START, 'teacherCountdownValue');
 </script>

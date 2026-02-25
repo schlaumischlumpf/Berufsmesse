@@ -103,6 +103,38 @@ foreach ($stmt->fetchAll() as $row) {
 ?>
 
 <div class="max-w-4xl mx-auto space-y-6">
+<script>
+const REG_START  = "<?php echo htmlspecialchars(getSetting('registration_start', '')); ?>";
+const REG_END    = "<?php echo htmlspecialchars(getSetting('registration_end', '')); ?>";
+const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
+</script>
+
+<?php if ($regStatus === 'upcoming' || $regStatus === 'open'): ?>
+<div id="regCountdownBanner"
+     class="mb-6 flex items-center gap-4 px-5 py-4 rounded-xl border
+            <?php echo $regStatus === 'open' ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'; ?>">
+    <div class="flex-shrink-0">
+        <?php if ($regStatus === 'open'): ?>
+            <span class="relative flex h-3 w-3">
+                <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+            </span>
+        <?php else: ?>
+            <i class="fas fa-hourglass-start text-amber-500 text-lg"></i>
+        <?php endif; ?>
+    </div>
+    <div class="flex-1">
+        <p class="text-sm font-semibold <?php echo $regStatus === 'open' ? 'text-emerald-700' : 'text-amber-700'; ?>">
+            <?php echo $regStatus === 'open' ? 'Einschreibung endet in' : 'Einschreibung startet in'; ?>
+            <span id="regCountdownValue" class="font-bold tabular-nums">…</span>
+        </p>
+        <p class="text-xs mt-0.5 <?php echo $regStatus === 'open' ? 'text-emerald-600' : 'text-amber-600'; ?>">
+            <?php echo $regStatus === 'open' ? 'bis ' . formatDateTime($regEnd) : 'ab ' . formatDateTime($regStart); ?>
+        </p>
+    </div>
+</div>
+<?php endif; ?>
+
     <!-- Status Banner -->
     <?php if ($regStatus === 'open'): ?>
         <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
@@ -310,3 +342,28 @@ foreach ($stmt->fetchAll() as $row) {
     </div>
 </div>
 
+<script>
+function startCountdown(targetIsoStr, elementId) {
+    function update() {
+        const diff = new Date(targetIsoStr).getTime() - Date.now();
+        const el   = document.getElementById(elementId);
+        if (!el) return;
+        if (diff <= 0) { location.reload(); return; }
+        const days  = Math.floor(diff / 86400000);
+        const hours = Math.floor((diff % 86400000) / 3600000);
+        const mins  = Math.floor((diff % 3600000) / 60000);
+        const secs  = Math.floor((diff % 60000) / 1000);
+        const showSecs = diff < 2 * 3600 * 1000;
+        let text = '';
+        if (days > 0)    text += days + 'd ';
+        if (hours > 0)   text += hours + 'h ';
+        text += mins + 'min';
+        if (showSecs)    text += ' ' + secs + 's';
+        el.textContent = text.trim();
+    }
+    update();
+    setInterval(update, 1000);
+}
+if (REG_STATUS === 'open')          startCountdown(REG_END,   'regCountdownValue');
+else if (REG_STATUS === 'upcoming') startCountdown(REG_START, 'regCountdownValue');
+</script>
