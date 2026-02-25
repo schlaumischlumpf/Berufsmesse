@@ -14,7 +14,7 @@ $stmt = $db->query("SELECT id, username, firstname, lastname, class FROM users W
 $students = $stmt->fetchAll();
 
 // Alle aktiven Aussteller laden
-$stmt = $db->query("SELECT id, name FROM exhibitors WHERE active = 1 ORDER BY name");
+$stmt = $db->query("SELECT id, name FROM exhibitors WHERE active = 1 AND exhibitors.edition_id = $activeEditionId ORDER BY name");
 $exhibitors = $stmt->fetchAll();
 
 $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
@@ -27,13 +27,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
     $priority = max(1, min(3, intval($_POST['priority'] ?? 2)));
     
     // Prüfen ob bereits registriert
-    $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+    $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
     $stmt->execute([$studentId, $exhibitorId]);
     if ($stmt->fetchColumn() > 0) {
         $message = ['type' => 'error', 'text' => 'Schüler ist bereits für diesen Aussteller registriert.'];
     } else {
         // Prüfen ob max. Registrierungen erreicht
-        $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ?");
+        $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
         $stmt->execute([$studentId]);
         $regCount = $stmt->fetchColumn();
         
@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
             $message = ['type' => 'error', 'text' => 'Schüler hat bereits die maximale Anzahl an Anmeldungen erreicht (' . $maxRegistrations . ').'];
         } else {
             // Prüfen ob diese Priorität bereits verwendet wird
-            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ?");
+            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
             $stmt->execute([$studentId]);
             $usedPriorities = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
                 $availableLabels = array_map(function($p) use ($priorityLabels) { return $priorityLabels[$p]; }, $availablePriorities);
                 $message = ['type' => 'error', 'text' => 'Diese Priorität wurde bereits verwendet. Verfügbare Prioritäten: ' . implode(', ', $availableLabels)];
             } else {
-                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority) VALUES (?, ?, NULL, 'admin', ?)");
+                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority, edition_id) VALUES (?, ?, NULL, 'admin', ?, $activeEditionId)");
                 $stmt->execute([$studentId, $exhibitorId, $priority]);
                 // Für Audit-Log Namen lesen
                 $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM users u, exhibitors e WHERE u.id = ? AND e.id = ?");
@@ -70,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_unregister'])) 
     if (!isAdmin() && !hasPermission('anmeldungen_loeschen')) die('Keine Berechtigung');
     $registrationId = intval($_POST['registration_id']);
     // Für Audit-Log vor dem Löschen lesen
-    $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM registrations r JOIN users u ON r.user_id = u.id JOIN exhibitors e ON r.exhibitor_id = e.id WHERE r.id = ?");
+    $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM registrations r JOIN users u ON r.user_id = u.id JOIN exhibitors e ON r.exhibitor_id = e.id WHERE r.id = ? AND r.edition_id = $activeEditionId");
     $stmtN->execute([$registrationId]);
     $logR = $stmtN->fetch();
     $stmt = $db->prepare("DELETE FROM registrations WHERE id = ?");
@@ -95,7 +95,7 @@ $query = "
     JOIN users u ON r.user_id = u.id
     JOIN exhibitors e ON r.exhibitor_id = e.id
     LEFT JOIN timeslots t ON r.timeslot_id = t.id
-    WHERE u.role = 'student'
+    WHERE u.role = 'student' AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
 ";
 $params = [];
 
