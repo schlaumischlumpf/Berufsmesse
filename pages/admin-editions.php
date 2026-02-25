@@ -9,14 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'activ
     $db->exec("UPDATE messe_editions SET status = 'archived'");
     $db->prepare("UPDATE messe_editions SET status = 'active' WHERE id = ?")->execute([$edId]);
     invalidateEditionCache();
-
-    // Alle Nicht-Admin-Benutzer (Schüler, Lehrer) löschen – nur Admins bleiben erhalten
-    $deletedUsers = 0;
-    $stmtDel = $db->prepare("DELETE FROM users WHERE role != 'admin'");
-    $stmtDel->execute();
-    $deletedUsers = $stmtDel->rowCount();
-
-    logAuditAction('edition_aktiviert', "Edition #$edId aktiviert, $deletedUsers Nicht-Admin-Benutzer entfernt", 'warning');
+    logAuditAction('edition_aktiviert', "Edition #$edId aktiviert", 'warning');
     header('Location: ?page=admin-editions'); exit();
 }
 
@@ -99,9 +92,9 @@ $editions = $db->query("
     <div class="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
         <i class="fas fa-exclamation-triangle mr-2"></i>
         <strong>Achtung:</strong> Das Aktivieren einer Edition wechselt die <strong>gesamte Anwendung</strong>
-        in diesen Datenbereich. <strong>Alle Schüler- und Lehrer-Konten werden dabei gelöscht</strong> –
-        nur Admin-Konten bleiben erhalten. Aussteller und Zeitslots können beim Erstellen einer
-        neuen Edition übernommen werden.
+        in diesen Datenbereich. Anmeldungen, Check-ins und andere Daten sind editionsspezifisch.
+        Benutzerkonten (Admins, Schüler, Lehrer) bleiben erhalten, haben aber in der neuen Edition
+        keine Anmeldungen. Aussteller und Zeitslots können beim Erstellen übernommen werden.
     </div>
 
     <?php if ($message): ?>
@@ -142,7 +135,7 @@ $editions = $db->query("
                     <td class="px-4 py-3">
                         <div class="flex gap-2 justify-end">
                             <?php if ($ed['status'] !== 'active'): ?>
-                            <form method="POST" onsubmit="return confirm('Achtung: Alle Ansichten wechseln zur Edition &quot;<?php echo htmlspecialchars($ed['name'], ENT_QUOTES); ?>&quot;.\n\nAlle Schüler- und Lehrer-Konten werden gelöscht!\nNur Admin-Konten bleiben erhalten.\n\nFortfahren?')">
+                            <form method="POST" onsubmit="return confirm('Achtung: Alle Ansichten wechseln zur Edition &quot;<?php echo htmlspecialchars($ed['name'], ENT_QUOTES); ?>&quot;.\n\nAnmeldungen und Check-ins sind editionsspezifisch.\nBenutzerkonten bleiben erhalten.\n\nFortfahren?')">
                                 <input type="hidden" name="action" value="activate">
                                 <input type="hidden" name="edition_id" value="<?php echo $ed['id']; ?>">
                                 <button type="submit" class="px-3 py-1 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition font-medium">
