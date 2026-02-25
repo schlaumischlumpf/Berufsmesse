@@ -1291,8 +1291,11 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                     <span>Ankündigungen</span>
                     <?php
                     try {
-                        $annCount = $db->query("SELECT COUNT(*) FROM announcements
-                            WHERE is_active = 1 AND (expires_at IS NULL OR expires_at > NOW())")->fetchColumn();
+                        $annNow = date('Y-m-d H:i:s');
+                        $annStmt = $db->prepare("SELECT COUNT(*) FROM announcements
+                            WHERE is_active = 1 AND (expires_at IS NULL OR expires_at > ?)");
+                        $annStmt->execute([$annNow]);
+                        $annCount = $annStmt->fetchColumn();
                         if ($annCount > 0): ?>
                         <span class="ml-auto w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
                     <?php endif;

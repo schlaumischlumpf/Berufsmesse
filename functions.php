@@ -777,15 +777,16 @@ function logAuditAction($action, $details = '', $severity = 'info') {
 function getActiveAnnouncements(string $role): array {
     try {
         $db   = getDB();
+        $now  = date('Y-m-d H:i:s');
         $stmt = $db->prepare("
             SELECT id, title, body, type, target_role
             FROM   announcements
             WHERE  is_active   = 1
-              AND  (expires_at IS NULL OR expires_at > NOW())
+              AND  (expires_at IS NULL OR expires_at > ?)
               AND  (target_role = 'all' OR target_role = ?)
             ORDER BY created_at DESC
         ");
-        $stmt->execute([$role]);
+        $stmt->execute([$now, $role]);
         return $stmt->fetchAll();
     } catch (Exception $e) {
         return [];
