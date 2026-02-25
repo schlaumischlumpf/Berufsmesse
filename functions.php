@@ -57,7 +57,7 @@ function getManagedSlotNumbers(): array {
     if ($cache !== null) return $cache;
     try {
         $db    = getDB();
-        $stmt  = $db->query("SELECT slot_number FROM timeslots WHERE is_managed = 1 ORDER BY slot_number ASC");
+        $stmt  = $db->query("SELECT slot_number FROM timeslots WHERE is_managed = 1 AND (is_break = 0 OR is_break IS NULL) ORDER BY slot_number ASC");
         $cache = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
         if (!empty($cache)) return $cache;
     } catch (Exception $e) { /* Spalte noch nicht vorhanden */ }

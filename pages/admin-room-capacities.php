@@ -11,7 +11,7 @@ $stmt = $db->query("SELECT * FROM rooms WHERE edition_id = $activeEditionId ORDE
 $rooms = $stmt->fetchAll();
 
 // Alle Timeslots laden
-$stmt = $db->query("SELECT * FROM timeslots WHERE edition_id = $activeEditionId ORDER BY start_time ASC, slot_number ASC");
+$stmt = $db->query("SELECT * FROM timeslots WHERE edition_id = $activeEditionId AND is_break = 0 ORDER BY start_time ASC, slot_number ASC");
 $timeslots = $stmt->fetchAll();
 
 // Handle Form Submission

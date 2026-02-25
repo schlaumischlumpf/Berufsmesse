@@ -57,7 +57,7 @@ try {
             $stmt = $db->query("SELECT id FROM exhibitors WHERE active = 1 AND exhibitors.edition_id = $activeEditionId");
             $exhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
-            $stmt = $db->query("SELECT id, end_time FROM timeslots WHERE timeslots.edition_id = $activeEditionId ORDER BY slot_number ASC");
+            $stmt = $db->query("SELECT id, end_time FROM timeslots WHERE timeslots.edition_id = $activeEditionId AND is_break = 0 ORDER BY slot_number ASC");
             $timeslots = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             $generated = 0;
