@@ -22,7 +22,7 @@ try {
             SELECT e.*, r.room_number
             FROM exhibitors e
             LEFT JOIN rooms r ON e.room_id = r.id
-            WHERE e.active = 1
+            WHERE e.active = 1 AND e.edition_id = $activeEditionId
             ORDER BY e.name
         ");
         $exhibitors = $stmt->fetchAll();
@@ -33,7 +33,7 @@ try {
             FROM exhibitors e
             LEFT JOIN rooms r ON e.room_id = r.id
             INNER JOIN exhibitor_orga_team eot ON e.id = eot.exhibitor_id
-            WHERE e.active = 1 AND eot.user_id = ?
+            WHERE e.active = 1 AND eot.user_id = ? AND e.edition_id = $activeEditionId AND eot.edition_id = $activeEditionId
             ORDER BY e.name
         ");
         $stmt->execute([$_SESSION['user_id']]);
@@ -47,7 +47,7 @@ try {
 
 // Alle Timeslots laden (inkl. Slots 2 und 4 für freie Wahl)
 try {
-    $stmt = $db->query("SELECT * FROM timeslots ORDER BY slot_number ASC");
+    $stmt = $db->query("SELECT * FROM timeslots WHERE edition_id = $activeEditionId ORDER BY slot_number ASC");
     $timeslots = $stmt->fetchAll();
 } catch (Exception $e) {
     $timeslots = [];
@@ -64,7 +64,7 @@ try {
     }
     
     // Zuerst prüfen: Sind überhaupt Tokens in der DB?
-    $stmtCheck = $db->query("SELECT COUNT(*) as total, MIN(expires_at) as earliest, MAX(expires_at) as latest FROM qr_tokens");
+    $stmtCheck = $db->query("SELECT COUNT(*) as total, MIN(expires_at) as earliest, MAX(expires_at) as latest FROM qr_tokens WHERE edition_id = $activeEditionId");
     $tokenCheck = $stmtCheck->fetch();
     $tokenCheck['current_time'] = date('Y-m-d H:i:s');
     
@@ -73,7 +73,7 @@ try {
         FROM qr_tokens qt
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
-        WHERE qt.expires_at > NOW()
+        WHERE qt.expires_at > NOW() AND qt.edition_id = $activeEditionId
         ORDER BY e.name, t.slot_number
     ");
     $existingTokens = $stmt->fetchAll();
@@ -108,6 +108,7 @@ try {
     $stmt = $db->query("
         SELECT a.exhibitor_id, a.timeslot_id, COUNT(*) as present_count
         FROM attendance a
+        WHERE a.edition_id = $activeEditionId
         GROUP BY a.exhibitor_id, a.timeslot_id
     ");
     $attendanceStats = [];
@@ -128,7 +129,7 @@ try {
         FROM registrations r
         JOIN users u ON r.user_id = u.id
         LEFT JOIN attendance a ON a.user_id = r.user_id AND a.exhibitor_id = r.exhibitor_id AND a.timeslot_id = r.timeslot_id
-        WHERE r.timeslot_id IS NOT NULL
+        WHERE r.timeslot_id IS NOT NULL AND r.edition_id = $activeEditionId
         ORDER BY r.exhibitor_id, r.timeslot_id, u.lastname, u.firstname
     ");
     $attendanceDetails = [];
@@ -147,9 +148,9 @@ try {
 
 // Gesamt-Statistik
 try {
-    $stmt = $db->query("SELECT COUNT(DISTINCT user_id) as total FROM attendance");
+    $stmt = $db->query("SELECT COUNT(DISTINCT user_id) as total FROM attendance WHERE edition_id = $activeEditionId");
     $totalAttendees = $stmt->fetchColumn();
-    $stmt = $db->query("SELECT COUNT(*) as total FROM attendance");
+    $stmt = $db->query("SELECT COUNT(*) as total FROM attendance WHERE edition_id = $activeEditionId");
     $totalCheckins = $stmt->fetchColumn();
 } catch (Exception $e) {
     $totalAttendees = 0;
@@ -318,7 +319,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                 $presentCount = $attendanceStats[$key] ?? 0;
                 
                 // Registrierungen für diesen Slot zählen
-                $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
+                $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = $activeEditionId");
                 $stmt->execute([$exhibitor['id'], $timeslot['id']]);
                 $regCount = $stmt->fetchColumn();
             ?>
