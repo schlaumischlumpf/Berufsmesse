@@ -201,7 +201,7 @@ try {
     
 } catch (Exception $e) {
     logErrorToAudit($e, 'API-AutoZuweisung');
-    $_SESSION['auto_assign_error'] = $e->getMessage();
+    $_SESSION['auto_assign_error'] = 'Ein interner Fehler ist aufgetreten.';
 }
 
 // Zurück zum Dashboard

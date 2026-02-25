@@ -98,8 +98,6 @@ try {
     
 } catch (Exception $e) {
     logErrorToAudit($e, 'API-Benutzersuche');
-    echo json_encode([
-        'success' => false,
-        'message' => 'Fehler beim Laden der Benutzer: ' . $e->getMessage()
-    ]);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

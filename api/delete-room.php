@@ -87,8 +87,6 @@ try {
     
 } catch (Exception $e) {
     logErrorToAudit($e, 'API-RaumLöschen');
-    echo json_encode([
-        'success' => false,
-        'message' => 'Fehler beim Löschen: ' . $e->getMessage()
-    ]);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

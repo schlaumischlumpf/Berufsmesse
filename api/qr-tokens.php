@@ -28,8 +28,8 @@ try {
         $validityAfter = intval(getSetting('qr_validity_after', 15));
 
         if ($exhibitorId && $timeslotId) {
-            // Einzelnen Token generieren (6 Zeichen)
-            $token = bin2hex(random_bytes(3));
+            // Einzelnen Token generieren (32 Zeichen)
+            $token = bin2hex(random_bytes(16));
 
             $tsStmt = $db->prepare("SELECT end_time FROM timeslots WHERE id = ? AND timeslots.edition_id = $activeEditionId");
             $tsStmt->execute([$timeslotId]);
@@ -63,7 +63,7 @@ try {
             $generated = 0;
             foreach ($exhibitors as $exId) {
                 foreach ($timeslots as $ts) {
-                    $token = bin2hex(random_bytes(3)); // 6 Zeichen
+                    $token = bin2hex(random_bytes(16)); // 32 Zeichen
                     if ($eventDate && !empty($ts['end_time'])) {
                         $tsEnd = strtotime("$eventDate " . $ts['end_time']);
                         $expiresAt = $tsEnd !== false
@@ -104,5 +104,6 @@ try {
     }
 } catch (Exception $e) {
     logErrorToAudit($e, 'API-QRTokens');
-    echo json_encode(['success' => false, 'message' => $e->getMessage()]);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

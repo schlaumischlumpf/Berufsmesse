@@ -213,9 +213,7 @@ try {
     ]);
     
 } catch (Exception $e) {
-    logErrorToAudit($e, 'API-AutoZuweisung');
-    echo json_encode([
-        'success' => false,
-        'message' => 'Fehler bei der automatischen Zuweisung: ' . $e->getMessage()
-    ]);
+    logErrorToAudit($e, 'API-AutoZuweisungUnvollstaendig');
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

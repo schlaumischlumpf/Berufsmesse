@@ -137,5 +137,6 @@ try {
     
 } catch (Exception $e) {
     logErrorToAudit($e, 'API-QRCheckin');
-    echo json_encode(['success' => false, 'message' => 'Fehler: ' . $e->getMessage()]);
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

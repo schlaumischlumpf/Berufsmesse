@@ -68,8 +68,8 @@ try {
         'message' => 'Raum erfolgreich aktualisiert'
     ]);
 
-} catch (PDOException $e) {
+} catch (Exception $e) {
     logErrorToAudit($e, 'API-RaumBearbeiten');
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Datenbankfehler: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

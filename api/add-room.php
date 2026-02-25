@@ -58,8 +58,8 @@ try {
     ]);
     logAuditAction('raum_erstellt', "Raum '{$data['room_number']}' erstellt (Kap.: {$data['capacity']})");
     
-} catch (PDOException $e) {
+} catch (Exception $e) {
     logErrorToAudit($e, 'API-RaumHinzufügen');
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Datenbankfehler: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }
