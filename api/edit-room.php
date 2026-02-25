@@ -11,6 +11,8 @@ if (!isAdmin() && !hasPermission('raeume_bearbeiten')) {
     exit;
 }
 
+requireCsrf();
+
 $db = getDB();
 $activeEditionId = getActiveEditionId();
 $data = json_decode(file_get_contents('php://input'), true);
@@ -32,8 +34,8 @@ if (empty($data['capacity']) || $data['capacity'] < 1) {
 
 try {
     // Prüfen ob Raum existiert
-    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = $activeEditionId");
-    $stmt->execute([$data['room_id']]);
+    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = ?");
+    $stmt->execute([$data['room_id'], $activeEditionId]);
     $existingRoom = $stmt->fetch();
 
     if (!$existingRoom) {
@@ -42,8 +44,8 @@ try {
     }
 
     // Prüfen ob Raumnummer bereits durch anderen Raum verwendet wird
-    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ? AND id != ? AND rooms.edition_id = $activeEditionId");
-    $stmt->execute([$data['room_number'], $data['room_id']]);
+    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ? AND id != ? AND rooms.edition_id = ?");
+    $stmt->execute([$data['room_number'], $data['room_id'], $activeEditionId]);
     if ($stmt->fetch()) {
         echo json_encode(['success' => false, 'message' => 'Ein anderer Raum mit dieser Nummer existiert bereits']);
         exit;
@@ -51,14 +53,15 @@ try {
 
     // Raum aktualisieren
     $stmt = $db->prepare("
-        UPDATE rooms SET room_number = ?, floor = ?, capacity = ?, equipment = ? WHERE id = ? AND edition_id = $activeEditionId
+        UPDATE rooms SET room_number = ?, floor = ?, capacity = ?, equipment = ? WHERE id = ? AND edition_id = ?
     ");
     $stmt->execute([
         $data['room_number'],
         !empty($data['floor']) ? $data['floor'] : null,
         intval($data['capacity']),
         !empty($data['equipment']) ? $data['equipment'] : null,
-        $data['room_id']
+        $data['room_id'],
+        $activeEditionId
     ]);
 
     logAuditAction('raum_bearbeitet', "Raum '{$data['room_number']}' (ID: {$data['room_id']}) aktualisiert (Kap.: {$data['capacity']}, Equipment: {$data['equipment']})");

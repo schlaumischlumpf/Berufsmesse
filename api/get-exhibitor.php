@@ -21,8 +21,8 @@ if (!$exhibitorId) {
 }
 
 $db = getDB();
-$stmt = $db->prepare("SELECT * FROM exhibitors WHERE id = ? AND exhibitors.edition_id = $activeEditionId");
-$stmt->execute([$exhibitorId]);
+$stmt = $db->prepare("SELECT * FROM exhibitors WHERE id = ? AND exhibitors.edition_id = ?");
+$stmt->execute([$exhibitorId, $activeEditionId]);
 $exhibitor = $stmt->fetch();
 
 if (!$exhibitor) {
@@ -35,17 +35,17 @@ $stmt = $db->prepare("
     SELECT r.capacity 
     FROM exhibitors e 
     LEFT JOIN rooms r ON e.room_id = r.id 
-    WHERE e.id = ? AND e.edition_id = $activeEditionId
+    WHERE e.id = ? AND e.edition_id = ?
 ");
-$stmt->execute([$exhibitorId]);
+$stmt->execute([$exhibitorId, $activeEditionId]);
 $roomData = $stmt->fetch();
 
 $roomCapacity = $roomData && $roomData['capacity'] ? intval($roomData['capacity']) : 0;
 $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
 
 // Registrierungsstatistik
-$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
-$stmt->execute([$exhibitorId]);
+$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ? AND registrations.edition_id = ?");
+$stmt->execute([$exhibitorId, $activeEditionId]);
 $registeredCount = $stmt->fetch()['count'];
 
 $content = '';
@@ -223,8 +223,8 @@ function generateDetailsTab($exhibitor) {
         // Dokumente für Schüler anzeigen (nur visible_for_students = 1)
         $db = getDB();
         $activeEditionId = getActiveEditionId();
-        $stmtDocs = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 AND exhibitor_documents.edition_id = $activeEditionId ORDER BY uploaded_at DESC");
-        $stmtDocs->execute([$exhibitor['id']]);
+        $stmtDocs = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 AND exhibitor_documents.edition_id = ? ORDER BY uploaded_at DESC");
+        $stmtDocs->execute([$exhibitor['id'], $activeEditionId]);
         $visibleDocuments = $stmtDocs->fetchAll();
         if (!empty($visibleDocuments)):
         ?>
@@ -378,8 +378,8 @@ function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
 function generateDocumentsTab($exhibitorId) {
     $db = getDB();
     $activeEditionId = getActiveEditionId();
-    $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 AND exhibitor_documents.edition_id = $activeEditionId ORDER BY uploaded_at DESC");
-    $stmt->execute([$exhibitorId]);
+    $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 AND exhibitor_documents.edition_id = ? ORDER BY uploaded_at DESC");
+    $stmt->execute([$exhibitorId, $activeEditionId]);
     $documents = $stmt->fetchAll();
     
     ob_start();

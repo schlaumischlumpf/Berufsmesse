@@ -10,13 +10,15 @@ if (!isAdmin() && !hasPermission('raeume_bearbeiten')) {
     exit;
 }
 
+requireCsrf();
+
 try {
     $db = getDB();
     $activeEditionId = getActiveEditionId();
     
     // Alle Raum-Zuordnungen entfernen
-    $stmt = $db->prepare("UPDATE exhibitors SET room_id = NULL WHERE edition_id = $activeEditionId");
-    $stmt->execute();
+    $stmt = $db->prepare("UPDATE exhibitors SET room_id = NULL WHERE edition_id = ?");
+    $stmt->execute([$activeEditionId]);
     
     $affectedRows = $stmt->rowCount();
     logAuditAction('raumzuordnungen_geleert', "Alle $affectedRows Raum-Zuordnungen der Aussteller entfernt");

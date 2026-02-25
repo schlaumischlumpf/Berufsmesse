@@ -39,12 +39,12 @@ $stmt = $db->prepare("
     FROM registrations r
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
-    LEFT JOIN rooms rm ON e.room_id = rm.id AND rm.edition_id = $activeEditionId
+    LEFT JOIN rooms rm ON e.room_id = rm.id AND rm.edition_id = ?
     WHERE r.user_id = ?
-    AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
+    AND r.edition_id = ? AND e.edition_id = ? AND t.edition_id = ?
     ORDER BY t.slot_number ASC
 ");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$activeEditionId, $_SESSION['user_id'], $activeEditionId, $activeEditionId, $activeEditionId]);
 $registrations = $stmt->fetchAll();
 
 // Nach Slot gruppieren

@@ -24,11 +24,11 @@ try {
                        r.room_number, reg.registration_type, reg.registered_at
                 FROM registrations reg
                 JOIN users u      ON reg.user_id      = u.id
-                JOIN exhibitors e ON reg.exhibitor_id = e.id  AND e.edition_id = $activeEditionId
-                JOIN timeslots t  ON reg.timeslot_id  = t.id  AND t.edition_id = $activeEditionId
+                JOIN exhibitors e ON reg.exhibitor_id = e.id  AND e.edition_id = ?
+                JOIN timeslots t  ON reg.timeslot_id  = t.id  AND t.edition_id = ?
                 LEFT JOIN rooms r ON e.room_id         = r.id
-                WHERE u.role = 'student' AND reg.edition_id = $activeEditionId";
-        $params = [];
+                WHERE u.role = 'student' AND reg.edition_id = ?";
+        $params = [$activeEditionId, $activeEditionId, $activeEditionId];
         if ($filterClass) { $sql .= " AND u.class = ?"; $params[] = $filterClass; }
         if ($filterEid)   { $sql .= " AND reg.exhibitor_id = ?"; $params[] = $filterEid; }
         if ($filterTid)   { $sql .= " AND reg.timeslot_id  = ?"; $params[] = $filterTid; }
@@ -47,10 +47,10 @@ try {
                        e.name AS exhibitor_name, t.slot_name, a.checked_in_at
                 FROM attendance a
                 JOIN users u      ON a.user_id      = u.id
-                JOIN exhibitors e ON a.exhibitor_id = e.id AND e.edition_id = $activeEditionId
-                JOIN timeslots t  ON a.timeslot_id  = t.id AND t.edition_id = $activeEditionId
-                WHERE u.role = 'student' AND a.edition_id = $activeEditionId";
-        $params = [];
+                JOIN exhibitors e ON a.exhibitor_id = e.id AND e.edition_id = ?
+                JOIN timeslots t  ON a.timeslot_id  = t.id AND t.edition_id = ?
+                WHERE u.role = 'student' AND a.edition_id = ?";
+        $params = [$activeEditionId, $activeEditionId, $activeEditionId];
         if ($filterClass) { $sql .= " AND u.class = ?"; $params[] = $filterClass; }
         if ($filterEid)   { $sql .= " AND a.exhibitor_id = ?"; $params[] = $filterEid; }
         if ($filterTid)   { $sql .= " AND a.timeslot_id  = ?"; $params[] = $filterTid; }
@@ -62,10 +62,10 @@ try {
     } else { // unregistered
         $sql = "SELECT u.lastname, u.firstname, u.class, u.username
                 FROM users u
-                LEFT JOIN registrations reg ON reg.user_id = u.id AND reg.edition_id = $activeEditionId
+                LEFT JOIN registrations reg ON reg.user_id = u.id AND reg.edition_id = ?
                 WHERE u.role = 'student' AND reg.id IS NULL
                 ORDER BY u.class, u.lastname, u.firstname";
-        $stmt = $db->prepare($sql); $stmt->execute();
+        $stmt = $db->prepare($sql); $stmt->execute([$activeEditionId]);
         $rows    = $stmt->fetchAll();
         $headers = ['Nachname','Vorname','Klasse','Benutzername'];
     }

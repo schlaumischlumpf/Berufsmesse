@@ -11,6 +11,8 @@ if (!isAdmin() && !hasPermission('raeume_erstellen')) {
     exit;
 }
 
+requireCsrf();
+
 $db = getDB();
 $activeEditionId = getActiveEditionId();
 
@@ -30,8 +32,8 @@ if (empty($data['capacity']) || $data['capacity'] < 1) {
 
 try {
     // Check if room number already exists
-    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ? AND rooms.edition_id = $activeEditionId");
-    $stmt->execute([$data['room_number']]);
+    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ? AND rooms.edition_id = ?");
+    $stmt->execute([$data['room_number'], $activeEditionId]);
     
     if ($stmt->fetch()) {
         echo json_encode(['success' => false, 'message' => 'Ein Raum mit dieser Nummer existiert bereits']);
@@ -41,14 +43,15 @@ try {
     // Insert new room (with equipment - Issue #17)
     $stmt = $db->prepare("
         INSERT INTO rooms (room_number, floor, capacity, equipment, edition_id) 
-        VALUES (?, ?, ?, ?, $activeEditionId)
+        VALUES (?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
         $data['room_number'],
         $data['floor'] ?: null,
         $data['capacity'],
-        $data['equipment'] ?? null
+        $data['equipment'] ?? null,
+        $activeEditionId
     ]);
     
     echo json_encode([

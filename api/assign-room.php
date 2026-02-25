@@ -10,6 +10,8 @@ if (!isAdmin() && !hasPermission('raeume_bearbeiten')) {
     exit;
 }
 
+requireCsrf();
+
 try {
     // JSON Input abrufen
     $input = json_decode(file_get_contents('php://input'), true);
@@ -26,8 +28,8 @@ try {
     $activeEditionId = getActiveEditionId();
     
     // Aussteller existiert?
-    $stmt = $db->prepare("SELECT id, name FROM exhibitors WHERE id = ? AND exhibitors.edition_id = $activeEditionId");
-    $stmt->execute([$exhibitorId]);
+    $stmt = $db->prepare("SELECT id, name FROM exhibitors WHERE id = ? AND exhibitors.edition_id = ?");
+    $stmt->execute([$exhibitorId, $activeEditionId]);
     $exhibitor = $stmt->fetch();
     
     if (!$exhibitor) {
@@ -37,8 +39,8 @@ try {
     
     // Wenn room_id gesetzt ist, prüfen ob Raum existiert
     if ($roomId !== null) {
-        $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = $activeEditionId");
-        $stmt->execute([$roomId]);
+        $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = ?");
+        $stmt->execute([$roomId, $activeEditionId]);
         $room = $stmt->fetch();
         
         if (!$room) {
@@ -48,8 +50,8 @@ try {
     }
     
     // Zuordnung aktualisieren
-    $stmt = $db->prepare("UPDATE exhibitors SET room_id = ? WHERE id = ? AND edition_id = $activeEditionId");
-    $stmt->execute([$roomId, $exhibitorId]);
+    $stmt = $db->prepare("UPDATE exhibitors SET room_id = ? WHERE id = ? AND edition_id = ?");
+    $stmt->execute([$roomId, $exhibitorId, $activeEditionId]);
     
     if ($roomId === null) {
         $logMsg = "Raum-Zuordnung für Aussteller '{$exhibitor['name']}' entfernt";

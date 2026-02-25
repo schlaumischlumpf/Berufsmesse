@@ -10,6 +10,8 @@ if (!isAdmin() && !hasPermission('raeume_loeschen')) {
     exit;
 }
 
+requireCsrf();
+
 try {
     // JSON Input abrufen
     $input = json_decode(file_get_contents('php://input'), true);
@@ -25,8 +27,8 @@ try {
     $activeEditionId = getActiveEditionId();
     
     // Raum existiert?
-    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = $activeEditionId");
-    $stmt->execute([$roomId]);
+    $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE id = ? AND rooms.edition_id = ?");
+    $stmt->execute([$roomId, $activeEditionId]);
     $room = $stmt->fetch();
     
     if (!$room) {
@@ -35,8 +37,8 @@ try {
     }
     
     // Prüfen ob Raum ungenutzt ist (keine Aussteller zugeordnet)
-    $stmt = $db->prepare("SELECT COUNT(*) as count FROM exhibitors WHERE room_id = ? AND exhibitors.edition_id = $activeEditionId");
-    $stmt->execute([$roomId]);
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM exhibitors WHERE room_id = ? AND exhibitors.edition_id = ?");
+    $stmt->execute([$roomId, $activeEditionId]);
     $exhibitorCount = $stmt->fetch()['count'];
     
     if ($exhibitorCount > 0) {
@@ -48,8 +50,8 @@ try {
     }
     
     // Prüfen ob Raum in room_slot_capacities verwendet wird
-    $stmt = $db->prepare("SELECT COUNT(*) as count FROM room_slot_capacities WHERE room_id = ? AND room_slot_capacities.edition_id = $activeEditionId");
-    $stmt->execute([$roomId]);
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM room_slot_capacities WHERE room_id = ? AND room_slot_capacities.edition_id = ?");
+    $stmt->execute([$roomId, $activeEditionId]);
     $capacityCount = $stmt->fetch()['count'];
     
     // Transaktion starten für konsistente Löschung
@@ -58,13 +60,13 @@ try {
     try {
         // Erst room_slot_capacities löschen (falls vorhanden)
         if ($capacityCount > 0) {
-            $stmt = $db->prepare("DELETE FROM room_slot_capacities WHERE room_id = ? AND edition_id = $activeEditionId");
-            $stmt->execute([$roomId]);
+            $stmt = $db->prepare("DELETE FROM room_slot_capacities WHERE room_id = ? AND edition_id = ?");
+            $stmt->execute([$roomId, $activeEditionId]);
         }
         
         // Dann den Raum löschen
-        $stmt = $db->prepare("DELETE FROM rooms WHERE id = ? AND edition_id = $activeEditionId");
-        $stmt->execute([$roomId]);
+        $stmt = $db->prepare("DELETE FROM rooms WHERE id = ? AND edition_id = ?");
+        $stmt->execute([$roomId, $activeEditionId]);
         
         // Transaktion bestätigen
         $db->commit();

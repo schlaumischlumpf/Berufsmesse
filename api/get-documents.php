@@ -15,8 +15,8 @@ if (!$exhibitorId) {
 }
 
 $db = getDB();
-$stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND exhibitor_documents.edition_id = $activeEditionId ORDER BY uploaded_at DESC");
-$stmt->execute([$exhibitorId]);
+$stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND exhibitor_documents.edition_id = ? ORDER BY uploaded_at DESC");
+$stmt->execute([$exhibitorId, $activeEditionId]);
 $documents = $stmt->fetchAll();
 
 echo json_encode(['documents' => $documents]);

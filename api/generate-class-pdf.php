@@ -21,7 +21,8 @@ $activeEditionId = getActiveEditionId();
 $filterClass = $_GET['class'] ?? '';
 
 // Timeslots laden (für Spaltenüberschriften) - nur Managed-Slots
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY start_time ASC, slot_number ASC");
+$stmt = $db->prepare("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = ? ORDER BY start_time ASC, slot_number ASC");
+$stmt->execute([$activeEditionId]);
 $timeslots = $stmt->fetchAll();
 
 // Daten laden
@@ -35,12 +36,12 @@ $query = "
     JOIN users u ON reg.user_id = u.id
     JOIN exhibitors e ON reg.exhibitor_id = e.id
     JOIN timeslots t ON reg.timeslot_id = t.id
-    LEFT JOIN rooms r ON e.room_id = r.id AND r.edition_id = $activeEditionId
+    LEFT JOIN rooms r ON e.room_id = r.id AND r.edition_id = ?
     WHERE u.role = 'student'
-    AND reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId
+    AND reg.edition_id = ? AND e.edition_id = ? AND t.edition_id = ?
 ";
 
-$params = [];
+$params = [$activeEditionId, $activeEditionId, $activeEditionId, $activeEditionId];
 if ($filterClass) {
     $query .= " AND u.class = ?";
     $params[] = $filterClass;

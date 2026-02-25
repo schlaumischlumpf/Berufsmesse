@@ -17,14 +17,15 @@ try {
 $db = getDB();
 $activeEditionId = getActiveEditionId();
 
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT r.room_number, e.name as exhibitor_name
     FROM exhibitors e
     JOIN rooms r ON e.room_id = r.id
     WHERE e.active = 1
-    AND e.edition_id = $activeEditionId AND r.edition_id = $activeEditionId
+    AND e.edition_id = ? AND r.edition_id = ?
     ORDER BY r.room_number, e.name
 ");
+$stmt->execute([$activeEditionId, $activeEditionId]);
 $data = $stmt->fetchAll();
 
 $eventDate = getSetting('event_date') ?? date('Y-m-d');

@@ -32,10 +32,10 @@ $query = "
     JOIN exhibitors e ON reg.exhibitor_id = e.id
     JOIN timeslots t ON reg.timeslot_id = t.id
     JOIN rooms r ON e.room_id = r.id
-    WHERE reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId AND t.edition_id = $activeEditionId AND r.edition_id = $activeEditionId
+    WHERE reg.edition_id = ? AND e.edition_id = ? AND t.edition_id = ? AND r.edition_id = ?
 ";
 
-$params = [];
+$params = [$activeEditionId, $activeEditionId, $activeEditionId, $activeEditionId];
 if ($filterRoom) {
     $query .= " AND r.id = ?";
     $params[] = intval($filterRoom);
@@ -48,7 +48,8 @@ $stmt->execute($params);
 $registrations = $stmt->fetchAll();
 
 // Räume für Titel
-$stmt = $db->query("SELECT id, room_number FROM rooms WHERE rooms.edition_id = $activeEditionId ORDER BY room_number");
+$stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE rooms.edition_id = ? ORDER BY room_number");
+$stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
 // Nach Raum und Slot gruppieren

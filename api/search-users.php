@@ -31,11 +31,11 @@ try {
             u.role,
             COUNT(r.id) as registration_count
         FROM users u
-        LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = $activeEditionId
-        WHERE (u.role = 'admin' OR u.edition_id = $activeEditionId)
+        LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = ?
+        WHERE (u.role = 'admin' OR u.edition_id = ?)
     ";
     
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     
     // Name filtern
     if (!empty($name)) {
