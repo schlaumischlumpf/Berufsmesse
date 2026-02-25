@@ -412,6 +412,76 @@ ALTER TABLE exhibitors MODIFY COLUMN category TEXT;
 -- Schema Update erfolgreich abgeschlossen
 -- ============================================================================
 
+-- ============================================================================
+-- Migration 12: Mehrjährigkeit
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS `messe_editions` (
+  `id`                            INT(11)       NOT NULL AUTO_INCREMENT,
+  `name`                          VARCHAR(150)  NOT NULL,
+  `year`                          INT(4)        NOT NULL,
+  `status`                        ENUM('active','archived') NOT NULL DEFAULT 'archived',
+  `registration_start`            DATETIME      DEFAULT NULL,
+  `registration_end`              DATETIME      DEFAULT NULL,
+  `event_date`                    DATE          DEFAULT NULL,
+  `max_registrations_per_student` INT(11)       NOT NULL DEFAULT 3,
+  `created_at`                    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `messe_editions` (name, year, status, registration_start, registration_end, event_date, max_registrations_per_student)
+SELECT
+  CONCAT('Berufsmesse ', YEAR(COALESCE((SELECT setting_value FROM settings WHERE setting_key='event_date' LIMIT 1), NOW()))),
+  YEAR(COALESCE((SELECT setting_value FROM settings WHERE setting_key='event_date' LIMIT 1), NOW())),
+  'active',
+  (SELECT setting_value FROM settings WHERE setting_key='registration_start' LIMIT 1),
+  (SELECT setting_value FROM settings WHERE setting_key='registration_end' LIMIT 1),
+  (SELECT setting_value FROM settings WHERE setting_key='event_date' LIMIT 1),
+  COALESCE((SELECT setting_value FROM settings WHERE setting_key='max_registrations_per_student' LIMIT 1), 3)
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM messe_editions LIMIT 1);
+
+DROP PROCEDURE IF EXISTS add_edition_id;
+DELIMITER //
+CREATE PROCEDURE add_edition_id(IN p_table VARCHAR(64))
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=p_table AND COLUMN_NAME='edition_id') THEN
+        SET @s = CONCAT('ALTER TABLE `',p_table,'` ADD COLUMN `edition_id` INT(11) NOT NULL DEFAULT 1, ADD KEY `idx_edition_id` (`edition_id`)');
+        PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+    END IF;
+END //
+DELIMITER ;
+
+CALL add_edition_id('registrations'); CALL add_edition_id('exhibitors');
+CALL add_edition_id('timeslots');     CALL add_edition_id('rooms');
+CALL add_edition_id('room_slot_capacities'); CALL add_edition_id('attendance');
+CALL add_edition_id('qr_tokens');    CALL add_edition_id('exhibitor_documents');
+CALL add_edition_id('exhibitor_orga_team');
+DROP PROCEDURE IF EXISTS add_edition_id;
+
+-- Migration 13: announcements
+CREATE TABLE IF NOT EXISTS `announcements` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT, `title` VARCHAR(200) NOT NULL,
+  `body` TEXT NOT NULL, `type` ENUM('info','warning','success','error') NOT NULL DEFAULT 'info',
+  `target_role` ENUM('all','student','teacher','admin') NOT NULL DEFAULT 'all',
+  `expires_at` DATETIME DEFAULT NULL, `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_by` INT(11) NOT NULL, `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`), KEY `idx_active_role` (`is_active`,`target_role`), KEY `idx_expires_at` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Migration 14: timeslots.is_managed
+CALL add_column_if_not_exists('timeslots', 'is_managed',
+    "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = fester Zuteilungs-Slot'");
+UPDATE `timeslots` SET is_managed = 1 WHERE slot_number IN (1,3,5) AND is_managed = 0;
+
+-- Migration 15: login_attempts
+CREATE TABLE IF NOT EXISTS `login_attempts` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT, `username` VARCHAR(100) NOT NULL,
+  `ip_address` VARCHAR(45) NOT NULL, `attempted_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`), KEY `idx_username` (`username`), KEY `idx_ip` (`ip_address`), KEY `idx_attempted` (`attempted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

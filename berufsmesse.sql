@@ -33,8 +33,30 @@ CREATE TABLE IF NOT EXISTS `attendance` (
   `exhibitor_id` int(11) NOT NULL,
   `timeslot_id` int(11) NOT NULL,
   `qr_token` varchar(12) DEFAULT NULL,
-  `checked_in_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `checked_in_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Anwesenheit von Schülern bei Ausstellern (QR-Check-In)';
+
+-- --------------------------------------------------------
+
+--
+-- Tabellenstruktur für Tabelle `announcements`
+--
+
+CREATE TABLE IF NOT EXISTS `announcements` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `title` varchar(200) NOT NULL,
+  `body` text NOT NULL,
+  `type` enum('info','warning','success','error') NOT NULL DEFAULT 'info',
+  `target_role` enum('all','student','teacher','admin') NOT NULL DEFAULT 'all',
+  `expires_at` datetime DEFAULT NULL,
+  `is_active` tinyint(1) NOT NULL DEFAULT 1,
+  `created_by` int(11) NOT NULL,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_active_role` (`is_active`,`target_role`),
+  KEY `idx_expires_at` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -79,7 +101,8 @@ CREATE TABLE IF NOT EXISTS `exhibitors` (
   `jobs` text DEFAULT NULL COMMENT 'Typische Berufe/Tätigkeiten im Unternehmen',
   `features` text DEFAULT NULL COMMENT 'Besonderheiten des Unternehmens',
   `offer_types` text DEFAULT NULL COMMENT 'JSON: {selected: [...], custom: "..."}',
-  `equipment` varchar(500) DEFAULT NULL COMMENT 'Benötigte Ausstattung (z.B. Beamer, WLAN)'
+  `equipment` varchar(500) DEFAULT NULL COMMENT 'Benötigte Ausstattung (z.B. Beamer, WLAN)',
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -108,7 +131,8 @@ CREATE TABLE IF NOT EXISTS `exhibitor_documents` (
   `file_type` varchar(50) DEFAULT NULL,
   `file_size` int(11) DEFAULT NULL,
   `visible_for_students` tinyint(1) DEFAULT 0 COMMENT 'Gibt an ob das Dokument für Schüler sichtbar ist',
-  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `uploaded_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 -- --------------------------------------------------------
@@ -143,6 +167,43 @@ INSERT INTO `industries` (`id`, `name`, `sort_order`, `created_at`) VALUES
 -- --------------------------------------------------------
 
 --
+-- Tabellenstruktur für Tabelle `login_attempts`
+--
+
+CREATE TABLE IF NOT EXISTS `login_attempts` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `username` varchar(100) NOT NULL,
+  `ip_address` varchar(45) NOT NULL,
+  `attempted_at` datetime NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_username` (`username`),
+  KEY `idx_ip` (`ip_address`),
+  KEY `idx_attempted` (`attempted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
+-- Tabellenstruktur für Tabelle `messe_editions`
+--
+
+CREATE TABLE IF NOT EXISTS `messe_editions` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(150) NOT NULL,
+  `year` int(4) NOT NULL,
+  `status` enum('active','archived') NOT NULL DEFAULT 'archived',
+  `registration_start` datetime DEFAULT NULL,
+  `registration_end` datetime DEFAULT NULL,
+  `event_date` date DEFAULT NULL,
+  `max_registrations_per_student` int(11) NOT NULL DEFAULT 3,
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  PRIMARY KEY (`id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- --------------------------------------------------------
+
+--
 -- Tabellenstruktur für Tabelle `qr_tokens`
 --
 
@@ -152,7 +213,8 @@ CREATE TABLE IF NOT EXISTS `qr_tokens` (
   `timeslot_id` int(11) NOT NULL,
   `token` varchar(12) NOT NULL,
   `expires_at` datetime DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='QR-Code Tokens für Aussteller-Check-In';
 
 -- --------------------------------------------------------
@@ -194,7 +256,8 @@ CREATE TABLE IF NOT EXISTS `registrations` (
   `timeslot_id` int(11) DEFAULT NULL,
   `registration_type` enum('manual','automatic','qr_checkin') DEFAULT 'manual',
   `priority` int(11) DEFAULT NULL COMMENT 'Priorität der Anmeldung (1 = höchste Priorität)',
-  `registered_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `registered_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -232,7 +295,8 @@ CREATE TABLE IF NOT EXISTS `rooms` (
   `capacity` int(11) DEFAULT 30,
   `equipment` varchar(500) DEFAULT NULL COMMENT 'Raumausstattung (z.B. Beamer, Smartboard)',
   `floor` int(11) DEFAULT NULL,
-  `created_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -261,7 +325,8 @@ CREATE TABLE IF NOT EXISTS `room_slot_capacities` (
   `timeslot_id` int(11) NOT NULL,
   `capacity` int(11) NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp()
+  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Slot-spezifische Raumkapazitäten';
 
 -- --------------------------------------------------------
@@ -298,19 +363,21 @@ CREATE TABLE IF NOT EXISTS `timeslots` (
   `slot_number` int(11) NOT NULL,
   `slot_name` varchar(100) NOT NULL,
   `start_time` time DEFAULT NULL,
-  `end_time` time DEFAULT NULL
+  `end_time` time DEFAULT NULL,
+  `is_managed` tinyint(1) NOT NULL DEFAULT 0,
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Daten für Tabelle `timeslots`
 --
 
-INSERT INTO `timeslots` (`id`, `slot_number`, `slot_name`, `start_time`, `end_time`) VALUES
-(1, 1, 'Slot 1 (Feste Zuteilung)', '09:00:00', '09:30:00'),
-(2, 2, 'Slot 2 (Freie Wahl)', '09:40:00', '10:10:00'),
-(3, 3, 'Slot 3 (Feste Zuteilung)', '10:40:00', '11:10:00'),
-(4, 4, 'Slot 4 (Freie Wahl)', '11:20:00', '11:50:00'),
-(5, 5, 'Slot 5 (Feste Zuteilung)', '12:20:00', '12:50:00');
+INSERT INTO `timeslots` (`id`, `slot_number`, `slot_name`, `start_time`, `end_time`, `is_managed`) VALUES
+(1, 1, 'Slot 1 (Feste Zuteilung)', '09:00:00', '09:30:00', 1),
+(2, 2, 'Slot 2 (Freie Wahl)', '09:40:00', '10:10:00', 0),
+(3, 3, 'Slot 3 (Feste Zuteilung)', '10:40:00', '11:10:00', 1),
+(4, 4, 'Slot 4 (Freie Wahl)', '11:20:00', '11:50:00', 0),
+(5, 5, 'Slot 5 (Feste Zuteilung)', '12:20:00', '12:50:00', 1);
 
 -- --------------------------------------------------------
 
@@ -381,7 +448,8 @@ CREATE TABLE IF NOT EXISTS `exhibitor_orga_team` (
   `id` int(11) NOT NULL,
   `user_id` int(11) NOT NULL,
   `exhibitor_id` int(11) NOT NULL,
-  `assigned_at` timestamp NOT NULL DEFAULT current_timestamp()
+  `assigned_at` timestamp NOT NULL DEFAULT current_timestamp(),
+  `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Orga-Team Zuordnung zu einzelnen Ausstellern';
 
 --
@@ -397,7 +465,8 @@ ALTER TABLE `attendance`
   ADD KEY `idx_user_id` (`user_id`),
   ADD KEY `idx_exhibitor_id` (`exhibitor_id`),
   ADD KEY `idx_timeslot_id` (`timeslot_id`),
-  ADD KEY `idx_checked_in_at` (`checked_in_at`);
+  ADD KEY `idx_checked_in_at` (`checked_in_at`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- Indizes für die Tabelle `audit_logs`
@@ -414,14 +483,16 @@ ALTER TABLE `audit_logs`
 --
 ALTER TABLE `exhibitors`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `fk_exhibitor_room` (`room_id`);
+  ADD KEY `fk_exhibitor_room` (`room_id`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- Indizes für die Tabelle `exhibitor_documents`
 --
 ALTER TABLE `exhibitor_documents`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `exhibitor_id` (`exhibitor_id`);
+  ADD KEY `exhibitor_id` (`exhibitor_id`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- Indizes für die Tabelle `industries`
@@ -439,7 +510,8 @@ ALTER TABLE `qr_tokens`
   ADD UNIQUE KEY `unique_token` (`token`),
   ADD KEY `idx_token` (`token`),
   ADD KEY `idx_exhibitor_id` (`exhibitor_id`),
-  ADD KEY `idx_timeslot_id` (`timeslot_id`);
+  ADD KEY `idx_timeslot_id` (`timeslot_id`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- Indizes für die Tabelle `permission_groups`
@@ -466,13 +538,15 @@ ALTER TABLE `registrations`
   ADD KEY `timeslot_id` (`timeslot_id`),
   ADD KEY `idx_timeslot_only` (`timeslot_id`),
   ADD KEY `idx_user_only` (`user_id`),
-  ADD KEY `idx_user_timeslot` (`user_id`,`timeslot_id`);
+  ADD KEY `idx_user_timeslot` (`user_id`,`timeslot_id`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- Indizes für die Tabelle `rooms`
 --
 ALTER TABLE `rooms`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- Indizes für die Tabelle `room_slot_capacities`
@@ -481,7 +555,8 @@ ALTER TABLE `room_slot_capacities`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `unique_room_slot` (`room_id`,`timeslot_id`),
   ADD KEY `idx_room_id` (`room_id`),
-  ADD KEY `idx_timeslot_id` (`timeslot_id`);
+  ADD KEY `idx_timeslot_id` (`timeslot_id`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- Indizes für die Tabelle `settings`
@@ -494,7 +569,8 @@ ALTER TABLE `settings`
 -- Indizes für die Tabelle `timeslots`
 --
 ALTER TABLE `timeslots`
-  ADD PRIMARY KEY (`id`);
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- Indizes für die Tabelle `users`
@@ -529,7 +605,8 @@ ALTER TABLE `exhibitor_orga_team`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `unique_user_exhibitor` (`user_id`,`exhibitor_id`),
   ADD KEY `idx_user_id` (`user_id`),
-  ADD KEY `idx_exhibitor_id` (`exhibitor_id`);
+  ADD KEY `idx_exhibitor_id` (`exhibitor_id`),
+  ADD KEY `idx_edition_id` (`edition_id`);
 
 --
 -- AUTO_INCREMENT für exportierte Tabellen
