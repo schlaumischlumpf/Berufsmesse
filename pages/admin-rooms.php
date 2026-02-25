@@ -7,7 +7,7 @@ if (!isAdmin() && !hasPermission('raeume_sehen')) {
 }
 
 // Alle Räume abrufen  
-$stmt = $db->query("SELECT * FROM rooms ORDER BY room_number");
+$stmt = $db->query("SELECT * FROM rooms WHERE edition_id = $activeEditionId ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Alle Aussteller abrufen
@@ -18,7 +18,7 @@ $stmt = $db->query("
         r.equipment as room_equipment
     FROM exhibitors e
     LEFT JOIN rooms r ON e.room_id = r.id
-    WHERE e.active = 1
+    WHERE e.active = 1 AND e.edition_id = $activeEditionId
     ORDER BY e.name
 ");
 $exhibitors = $stmt->fetchAll();

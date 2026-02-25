@@ -13,6 +13,7 @@ checkSitePassword();
 requireLogin();
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Handle page redirects BEFORE any HTML output
 $currentPage = $_GET['page'] ?? 'dashboard';
@@ -46,6 +47,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
             WHERE r.timeslot_id IS NULL
             AND e.active = 1
             AND e.room_id IS NOT NULL
+            AND r.edition_id = $activeEditionId
+            AND e.edition_id = $activeEditionId
             ORDER BY COALESCE(r.priority, 2) ASC, r.registered_at ASC
         ");
         $pendingRegistrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -61,7 +64,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 SELECT t.slot_number 
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
+                WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND t.slot_number " . getManagedSlotsSqlIn() . "
             ");
             $stmt->execute([$studentId]);
             $usedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -82,7 +85,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
             $lowestCount = PHP_INT_MAX;
             
             foreach ($availableSlots as $slotNumber) {
-                $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
+                $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ? AND edition_id = $activeEditionId");
                 $stmt->execute([$slotNumber]);
                 $timeslotId = $stmt->fetchColumn();
                 
@@ -91,7 +94,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 // Aktuelle Belegung bei diesem Aussteller in diesem Slot
                 $stmt = $db->prepare("
                     SELECT COUNT(*) as cnt FROM registrations 
-                    WHERE exhibitor_id = ? AND timeslot_id = ?
+                    WHERE exhibitor_id = ? AND timeslot_id = ? AND edition_id = $activeEditionId
                 ");
                 $stmt->execute([$exhibitorId, $timeslotId]);
                 $currentCount = $stmt->fetchColumn();
@@ -131,7 +134,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                    COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number " . getManagedSlotsSqlIn() . " THEN 1 ELSE 0 END), 0) as assigned_count,
                    COUNT(r.id) as total_registrations
             FROM users u
-            LEFT JOIN registrations r ON u.id = r.user_id
+            LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = $activeEditionId
             LEFT JOIN timeslots t ON r.timeslot_id = t.id
             WHERE u.role = 'student'
             GROUP BY u.id
@@ -148,13 +151,13 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 SELECT t.slot_number 
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
+                WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND t.slot_number " . getManagedSlotsSqlIn() . "
             ");
             $stmt->execute([$studentId]);
             $assignedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
             // Bei welchen Ausstellern ist der Schüler bereits (mit oder ohne Slot)?
-            $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ?");
+            $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ? AND edition_id = $activeEditionId");
             $stmt->execute([$studentId]);
             $existingExhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
@@ -163,7 +166,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
             
             foreach ($missingSlots as $slotNumber) {
                 // Timeslot ID ermitteln
-                $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
+                $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ? AND edition_id = $activeEditionId");
                 $stmt->execute([$slotNumber]);
                 $timeslotId = $stmt->fetchColumn();
                 
@@ -178,8 +181,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                            COUNT(DISTINCT reg.user_id) as current_count
                     FROM exhibitors e
                     LEFT JOIN rooms r ON e.room_id = r.id
-                    LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
-                    WHERE e.active = 1 AND e.room_id IS NOT NULL
+                    LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ? AND reg.edition_id = $activeEditionId
+                    WHERE e.active = 1 AND e.room_id IS NOT NULL AND e.edition_id = $activeEditionId
                     GROUP BY e.id, e.name, e.room_id
                     ORDER BY current_count ASC, RAND()
                 ");
@@ -205,8 +208,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 if ($selectedExhibitor) {
                     // Neue Registrierung erstellen
                     $stmt = $db->prepare("
-                        INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type)
-                        VALUES (?, ?, ?, 'automatic')
+                        INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, edition_id)
+                        VALUES (?, ?, ?, 'automatic', $activeEditionId)
                     ");
                     
                     if ($stmt->execute([$studentId, $selectedExhibitor['id'], $timeslotId])) {
@@ -230,7 +233,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 SELECT COUNT(DISTINCT t.slot_number)
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE r.user_id = u.id AND t.slot_number " . getManagedSlotsSqlIn() . "
+                WHERE r.user_id = u.id AND r.edition_id = $activeEditionId AND t.slot_number " . getManagedSlotsSqlIn() . "
             ) < " . getManagedSlotCount() . "
         ");
         $incompleteStudents = $stmt->fetchColumn();
@@ -267,10 +270,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (i
     $generated = 0;
     $errorMsg = '';
     try {
-        $stmt = $db->query("SELECT id FROM exhibitors WHERE active = 1");
+        $stmt = $db->prepare("SELECT id FROM exhibitors WHERE active = 1 AND edition_id = ?");
+        $stmt->execute([$activeEditionId]);
         $exhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        $stmt = $db->query("SELECT id, end_time FROM timeslots ORDER BY slot_number ASC");
+        $stmt = $db->prepare("SELECT id, end_time FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+        $stmt->execute([$activeEditionId]);
         $timeslots = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($exhibitors)) {
@@ -296,8 +301,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (i
                     $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
                 }
                 $stmt = $db->prepare("
-                    INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at, edition_id)
+                    VALUES (?, ?, ?, ?, $activeEditionId)
                     ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at)
                 ");
                 $stmt->execute([$exId, $tsId, $token, $expiresAt]);
@@ -329,7 +334,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) &&
         $eventDate     = getSetting('event_date');
         $validityAfter = intval(getSetting('qr_validity_after', 15));
 
-        $tsStmt = $db->prepare("SELECT end_time FROM timeslots WHERE id = ?");
+        $tsStmt = $db->prepare("SELECT end_time FROM timeslots WHERE id = ? AND edition_id = $activeEditionId");
         $tsStmt->execute([$timeslotId]);
         $tsData = $tsStmt->fetch(PDO::FETCH_ASSOC);
 
@@ -343,8 +348,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) &&
         }
 
         $stmt = $db->prepare("
-            INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at, edition_id)
+            VALUES (?, ?, ?, ?, $activeEditionId)
             ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at)
         ");
         $stmt->execute([$exhibitorId, $timeslotId, $token, $expiresAt]);
@@ -356,7 +361,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) &&
 }
 
 // Aussteller laden
-$stmt = $db->query("SELECT * FROM exhibitors WHERE active = 1 ORDER BY name ASC");
+$stmt = $db->prepare("SELECT * FROM exhibitors WHERE active = 1 AND edition_id = ? ORDER BY name ASC");
+$stmt->execute([$activeEditionId]);
 $exhibitors = $stmt->fetchAll();
 
 // Einschreibungen des Benutzers laden (LEFT JOIN für NULL timeslot_id - Issue #6)
@@ -364,8 +370,8 @@ $stmt = $db->prepare("SELECT r.*, e.name as exhibitor_name, t.slot_name
                       FROM registrations r 
                       JOIN exhibitors e ON r.exhibitor_id = e.id 
                       LEFT JOIN timeslots t ON r.timeslot_id = t.id 
-                      WHERE r.user_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
+                      WHERE r.user_id = ? AND r.edition_id = ?");
+$stmt->execute([$_SESSION['user_id'], $activeEditionId]);
 $userRegistrations = $stmt->fetchAll();
 
 // Registrierungsstatus prüfen
