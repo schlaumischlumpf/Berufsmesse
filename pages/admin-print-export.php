@@ -80,6 +80,11 @@ if ($printType === 'all' || $printType === 'class') {
     $registrations = $stmt->fetchAll();
 }
 
+// Pausen-Slots laden (für Tagesplan in Druckansicht)
+$stmtBreaks = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? AND is_break = 1 ORDER BY slot_number ASC");
+$stmtBreaks->execute([$activeEditionId]);
+$breakSlots = $stmtBreaks->fetchAll();
+
 // Räume für Titel
 $stmt = $db->query("SELECT id, room_number FROM rooms WHERE edition_id = $activeEditionId ORDER BY room_number");
 $rooms = $stmt->fetchAll();
@@ -363,6 +368,11 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
             color: #065f46;
         }
         
+        .slot-badge.break-badge {
+            background: #fef3c7;
+            color: #92400e;
+        }
+        
         /* Slot Section (for rooms view) */
         .slot-section {
             margin-bottom: 1.5rem;
@@ -520,7 +530,28 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    <?php foreach ($regs as $reg): ?>
+                                    <?php 
+                                    // Merge registrations with break slots and sort by slot_number
+                                    $fullSchedule = [];
+                                    foreach ($regs as $reg) {
+                                        $fullSchedule[] = ['type' => 'reg', 'slot_number' => $reg['slot_number'], 'data' => $reg];
+                                    }
+                                    foreach ($breakSlots as $brk) {
+                                        $fullSchedule[] = ['type' => 'break', 'slot_number' => $brk['slot_number'], 'data' => $brk];
+                                    }
+                                    usort($fullSchedule, fn($a, $b) => $a['slot_number'] <=> $b['slot_number']);
+                                    foreach ($fullSchedule as $entry): 
+                                        if ($entry['type'] === 'break'): $brk = $entry['data']; ?>
+                                    <tr style="background: #fffbeb;">
+                                        <td>
+                                            <span class="slot-badge break-badge">
+                                                ☕ <?php echo htmlspecialchars($brk['slot_name']); ?>
+                                            </span>
+                                        </td>
+                                        <td><?php echo substr($brk['start_time'], 0, 5) . ' - ' . substr($brk['end_time'], 0, 5); ?></td>
+                                        <td colspan="2" style="color: #92400e; font-style: italic;">Pause</td>
+                                    </tr>
+                                    <?php else: $reg = $entry['data']; ?>
                                     <tr>
                                         <td>
                                             <span class="slot-badge assigned">
@@ -531,7 +562,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                                         <td><strong><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></strong></td>
                                         <td><?php echo htmlspecialchars($reg['room_number'] ?? '—'); ?></td>
                                     </tr>
-                                    <?php endforeach; ?>
+                                    <?php endif; endforeach; ?>
                                 </tbody>
                             </table>
                         </div>
