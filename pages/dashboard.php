@@ -52,14 +52,19 @@ foreach ($userRegistrations as $reg) {
     }
 }
 
-// Timeline für heute
-$timeline = [
-    ['time' => '09:00', 'end' => '09:30', 'slot_number' => 1, 'type' => 'assigned'],
-    ['time' => '09:40', 'end' => '10:10', 'slot_number' => 2, 'type' => 'free'],
-    ['time' => '10:40', 'end' => '11:10', 'slot_number' => 3, 'type' => 'assigned'],
-    ['time' => '11:20', 'end' => '11:50', 'slot_number' => 4, 'type' => 'free'],
-    ['time' => '12:20', 'end' => '12:50', 'slot_number' => 5, 'type' => 'assigned'],
-];
+// Timeline für heute – dynamisch aus Datenbank laden
+$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+$stmtSlots->execute([$activeEditionId]);
+$dbSlots = $stmtSlots->fetchAll();
+$timeline = [];
+foreach ($dbSlots as $slot) {
+    $timeline[] = [
+        'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
+        'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
+        'slot_number' => $slot['slot_number'],
+        'type' => $slot['is_managed'] ? 'assigned' : 'free',
+    ];
+}
 
 // Registrierungen nach Slot
 $regBySlot = [];

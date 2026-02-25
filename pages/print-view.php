@@ -51,18 +51,22 @@ foreach ($registrations as $reg) {
     $regBySlot[$reg['slot_number']] = $reg;
 }
 
-// Tagesablauf
-$schedule = [
-    ['time' => '09:00', 'end' => '09:30', 'label' => 'Slot 1', 'type' => 'assigned', 'slot' => 1, 'icon' => '📋'],
-    ['time' => '09:30', 'end' => '09:40', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => '☕'],
-    ['time' => '09:40', 'end' => '10:10', 'label' => 'Slot 2', 'type' => 'free', 'slot' => 2, 'icon' => '👆'],
-    ['time' => '10:10', 'end' => '10:40', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => '🍽️'],
-    ['time' => '10:40', 'end' => '11:10', 'label' => 'Slot 3', 'type' => 'assigned', 'slot' => 3, 'icon' => '📋'],
-    ['time' => '11:10', 'end' => '11:20', 'label' => 'Pause', 'type' => 'break', 'slot' => null, 'icon' => '☕'],
-    ['time' => '11:20', 'end' => '11:50', 'label' => 'Slot 4', 'type' => 'free', 'slot' => 4, 'icon' => '👆'],
-    ['time' => '11:50', 'end' => '12:20', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null, 'icon' => '🍽️'],
-    ['time' => '12:20', 'end' => '12:50', 'label' => 'Slot 5', 'type' => 'assigned', 'slot' => 5, 'icon' => '📋'],
-];
+// Tagesablauf dynamisch aus Datenbank laden
+$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+$stmtSlots->execute([$activeEditionId]);
+$dbSlots = $stmtSlots->fetchAll();
+$schedule = [];
+foreach ($dbSlots as $slot) {
+    $isManaged = (bool)$slot['is_managed'];
+    $schedule[] = [
+        'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
+        'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
+        'label' => $slot['slot_name'],
+        'type' => $isManaged ? 'assigned' : 'free',
+        'slot' => $slot['slot_number'],
+        'icon' => $isManaged ? '📋' : '👆',
+    ];
+}
 
 // Messedatum (kann über Einstellungen gesetzt werden)
 $eventDate = getSetting('event_date') ?? date('Y-m-d');

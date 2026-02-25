@@ -24,18 +24,24 @@ $stmt = $db->prepare("
 $stmt->execute([$_SESSION['user_id']]);
 $registrations = $stmt->fetchAll();
 
-// Tagesablauf definieren
-$timeline = [
-    ['time' => '09:00', 'end' => '09:30', 'type' => 'slot', 'slot_number' => 1, 'label' => 'Slot 1 (Feste Zuteilung)', 'icon' => 'fa-clipboard-check', 'color' => 'blue', 'assigned' => true],
-    ['time' => '09:30', 'end' => '09:40', 'type' => 'break', 'label' => 'Kurze Pause', 'icon' => 'fa-coffee', 'color' => 'green', 'description' => 'Austausch & Ausstellersuche'],
-    ['time' => '09:40', 'end' => '10:10', 'type' => 'slot', 'slot_number' => 2, 'label' => 'Slot 2 (Freie Wahl)', 'icon' => 'fa-hand-pointer', 'color' => 'purple', 'assigned' => false],
-    ['time' => '10:10', 'end' => '10:40', 'type' => 'break', 'label' => 'Essenspause', 'icon' => 'fa-utensils', 'color' => 'orange', 'description' => 'Zeit für Speisen & Getränke'],
-    ['time' => '10:40', 'end' => '11:10', 'type' => 'slot', 'slot_number' => 3, 'label' => 'Slot 3 (Feste Zuteilung)', 'icon' => 'fa-clipboard-check', 'color' => 'blue', 'assigned' => true],
-    ['time' => '11:10', 'end' => '11:20', 'type' => 'break', 'label' => 'Kurze Pause', 'icon' => 'fa-coffee', 'color' => 'green', 'description' => 'Austausch & Ausstellersuche'],
-    ['time' => '11:20', 'end' => '11:50', 'type' => 'slot', 'slot_number' => 4, 'label' => 'Slot 4 (Freie Wahl)', 'icon' => 'fa-hand-pointer', 'color' => 'purple', 'assigned' => false],
-    ['time' => '11:50', 'end' => '12:20', 'type' => 'break', 'label' => 'Essenspause', 'icon' => 'fa-utensils', 'color' => 'orange', 'description' => 'Zeit für Speisen & Getränke'],
-    ['time' => '12:20', 'end' => '12:50', 'type' => 'slot', 'slot_number' => 5, 'label' => 'Slot 5 (Feste Zuteilung)', 'icon' => 'fa-clipboard-check', 'color' => 'blue', 'assigned' => true]
-];
+// Tagesablauf dynamisch aus Datenbank laden
+$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+$stmtSlots->execute([$activeEditionId]);
+$dbSlots = $stmtSlots->fetchAll();
+$timeline = [];
+foreach ($dbSlots as $slot) {
+    $isManaged = (bool)$slot['is_managed'];
+    $timeline[] = [
+        'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
+        'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
+        'type' => 'slot',
+        'slot_number' => $slot['slot_number'],
+        'label' => $slot['slot_name'] . ($isManaged ? ' (Feste Zuteilung)' : ' (Freie Wahl)'),
+        'icon' => $isManaged ? 'fa-clipboard-check' : 'fa-hand-pointer',
+        'color' => $isManaged ? 'blue' : 'purple',
+        'assigned' => $isManaged,
+    ];
+}
 
 // Helper function for pastel colors
 function getPastelColorClass($color) {
