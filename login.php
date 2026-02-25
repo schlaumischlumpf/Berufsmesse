@@ -21,11 +21,11 @@ $error = '';
 function checkLoginAttempts(string $username, string $ip): bool {
     try {
         $db = getDB();
-        $db->exec("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 15 MINUTE)");
+        $db->exec("DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 5 MINUTE)");
         $stmt = $db->prepare(
             "SELECT COUNT(*) FROM login_attempts
              WHERE (username = ? OR ip_address = ?)
-               AND attempted_at > DATE_SUB(NOW(), INTERVAL 15 MINUTE)"
+               AND attempted_at > DATE_SUB(NOW(), INTERVAL 5 MINUTE)"
         );
         $stmt->execute([$username, $ip]);
         return (int)$stmt->fetchColumn() < 10;
@@ -51,7 +51,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     $clientIp = getClientIp();
     if (!checkLoginAttempts($username, $clientIp)) {
-        $error = 'Zu viele fehlgeschlagene Anmeldeversuche. Bitte 15 Minuten warten.';
+        $error = 'Zu viele fehlgeschlagene Anmeldeversuche. Bitte 5 Minuten warten.';
     } else {
         $db = getDB();
         $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role FROM users WHERE username = ?");
