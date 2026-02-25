@@ -10,6 +10,7 @@ require_once '../functions.php';
 
 // Ensure DB connection is available when opened directly
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Session prüfen
 if (!isLoggedIn() || (!isAdmin() && !isTeacher())) {
@@ -36,6 +37,7 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN timeslots t ON reg.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
         WHERE u.role = 'student'
+        AND reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
     ";
     
     $params = [];
@@ -62,11 +64,12 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN exhibitors e ON reg.exhibitor_id = e.id
         JOIN timeslots t ON reg.timeslot_id = t.id
         JOIN rooms r ON e.room_id = r.id
+        WHERE reg.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
     ";
     
     $params = [];
     if ($filterRoom) {
-        $query .= " WHERE r.id = ?";
+        $query .= " AND r.id = ?";
         $params[] = intval($filterRoom);
     }
     
@@ -78,7 +81,7 @@ if ($printType === 'all' || $printType === 'class') {
 }
 
 // Räume für Titel
-$stmt = $db->query("SELECT id, room_number FROM rooms ORDER BY room_number");
+$stmt = $db->query("SELECT id, room_number FROM rooms WHERE edition_id = $activeEditionId ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Titel bestimmen
