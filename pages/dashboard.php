@@ -15,7 +15,7 @@ $stmt = $db->prepare("
     JOIN exhibitors e ON r.exhibitor_id = e.id 
     JOIN timeslots t ON r.timeslot_id = t.id 
     LEFT JOIN rooms rm ON e.room_id = rm.id
-    WHERE r.user_id = ?
+    WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
     ORDER BY t.slot_number ASC
 ");
 $stmt->execute([$_SESSION['user_id']]);
@@ -31,14 +31,14 @@ $stmt = $db->prepare("
     SELECT COUNT(*) as count
     FROM registrations r
     JOIN timeslots t ON r.timeslot_id = t.id
-    WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
+    WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND t.slot_number " . getManagedSlotsSqlIn() . "
 ");
 $stmt->execute([$_SESSION['user_id']]);
 $totalRegistrations = $stmt->fetch()['count'];
 $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
 
 // Aussteller mit freien Plätzen
-$stmt = $db->query("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1");
+$stmt = $db->query("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1 AND edition_id = $activeEditionId");
 $totalExhibitors = $stmt->fetch()['count'];
 
 // Nächster Termin ermitteln
