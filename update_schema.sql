@@ -302,9 +302,6 @@ CALL add_column_if_not_exists('rooms', 'equipment', 'varchar(500) DEFAULT NULL C
 CALL add_column_if_not_exists('exhibitor_documents', 'visible_for_students', 'tinyint(1) DEFAULT 0 COMMENT \'Gibt an ob das Dokument für Schüler sichtbar ist\'');
 CALL add_column_if_not_exists('audit_logs', 'severity', "ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info' COMMENT 'Schweregrad des Log-Eintrags'");
 
--- Stored Procedure entfernen
-DROP PROCEDURE IF EXISTS add_column_if_not_exists;
-
 -- Index für severity hinzufügen (nur wenn nicht vorhanden)
 DROP PROCEDURE IF EXISTS add_index_if_not_exists;
 DELIMITER //
@@ -487,6 +484,9 @@ CALL add_column_if_not_exists('users', 'edition_id',
     "INT(11) DEFAULT NULL COMMENT 'NULL = globaler Admin, sonst editionsspezifischer Benutzer'");
 UPDATE users SET edition_id = (SELECT id FROM messe_editions WHERE status='active' LIMIT 1)
     WHERE role != 'admin' AND edition_id IS NULL;
+
+-- Alle Hilfsprozeduren entfernen
+DROP PROCEDURE IF EXISTS add_column_if_not_exists;
 
 -- UNIQUE-Constraint ändern: username + edition_id statt nur username
 SET @idx_exists = (SELECT COUNT(*) FROM information_schema.STATISTICS
