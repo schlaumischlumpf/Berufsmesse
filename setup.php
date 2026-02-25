@@ -415,6 +415,32 @@ try {
     $errors[] = "Fehler Migration 15 (login_attempts): " . $e->getMessage();
 }
 
+// Migration 16: edition_id zu users hinzufügen (Schüler/Lehrer/Orga sind editionsspezifisch)
+try {
+    $cols = $db->query("SHOW COLUMNS FROM `users` LIKE 'edition_id'")->fetchAll();
+    if (empty($cols)) {
+        $db->exec("ALTER TABLE `users`
+            ADD COLUMN `edition_id` INT(11) DEFAULT NULL
+                COMMENT 'NULL = globaler Admin, sonst editionsspezifischer Benutzer'");
+        // Bestehende Nicht-Admin-Benutzer der aktiven Edition zuordnen
+        $activeEid = $db->query("SELECT id FROM messe_editions WHERE status='active' LIMIT 1")->fetchColumn();
+        if ($activeEid) {
+            $db->prepare("UPDATE users SET edition_id = ? WHERE role != 'admin' AND edition_id IS NULL")
+               ->execute([$activeEid]);
+        }
+        // UNIQUE-Constraint ändern: username + edition_id statt nur username
+        try {
+            $db->exec("ALTER TABLE `users` DROP INDEX `username`");
+        } catch (Exception $e) { /* Index existiert evtl. nicht */ }
+        $db->exec("ALTER TABLE `users` ADD UNIQUE KEY `unique_username_edition` (`username`, `edition_id`)");
+        $success[] = "edition_id zu users hinzugefügt, UNIQUE-Constraint auf (username, edition_id) geändert";
+    } else {
+        $success[] = "edition_id in users bereits vorhanden";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 16 (users.edition_id): " . $e->getMessage();
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="de">

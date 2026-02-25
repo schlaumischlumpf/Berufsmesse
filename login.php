@@ -54,8 +54,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Zu viele fehlgeschlagene Anmeldeversuche. Bitte 5 Minuten warten.';
     } else {
         $db = getDB();
-        $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role FROM users WHERE username = ?");
-        $stmt->execute([$username]);
+        $activeEditionId = getActiveEditionId();
+        // Admins (edition_id IS NULL) können immer einloggen;
+        // Andere Benutzer nur wenn sie zur aktiven Edition gehören
+        $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role FROM users WHERE username = ? AND (role = 'admin' OR edition_id = ?)");
+        $stmt->execute([$username, $activeEditionId]);
         $user = $stmt->fetch();
         
         if ($user && password_verify($password, $user['password'])) {

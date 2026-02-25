@@ -30,20 +30,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $message = 'Passwort muss mindestens 6 Zeichen lang sein';
         $messageType = 'error';
     } else {
-        // Prüfen ob Benutzername bereits existiert
+        // Prüfen ob Benutzername in aktueller Edition bereits existiert
         $db = getDB();
-        $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
-        $stmt->execute([$username]);
+        $activeEditionId = getActiveEditionId();
+        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id = ?");
+        $stmt->execute([$username, $activeEditionId]);
         
         if ($stmt->fetch()) {
             $message = 'Benutzername bereits vergeben';
             $messageType = 'error';
         } else {
-            // Benutzer anlegen
+            // Benutzer anlegen (mit edition_id)
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $db->prepare("INSERT INTO users (username, password, firstname, lastname, class, role) VALUES (?, ?, ?, ?, ?, ?)");
+            $stmt = $db->prepare("INSERT INTO users (username, password, firstname, lastname, class, role, edition_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
             
-            if ($stmt->execute([$username, $hashedPassword, $firstname, $lastname, $class, $role])) {
+            if ($stmt->execute([$username, $hashedPassword, $firstname, $lastname, $class, $role, $activeEditionId])) {
                 $message = "Benutzer erfolgreich angelegt! Du kannst dich jetzt mit '$username' anmelden.";
                 $messageType = 'success';
                 

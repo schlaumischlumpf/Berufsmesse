@@ -482,6 +482,25 @@ CREATE TABLE IF NOT EXISTS `login_attempts` (
   PRIMARY KEY (`id`), KEY `idx_username` (`username`), KEY `idx_ip` (`ip_address`), KEY `idx_attempted` (`attempted_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Migration 16: edition_id zu users (Schüler/Lehrer/Orga sind editionsspezifisch)
+CALL add_column_if_not_exists('users', 'edition_id',
+    "INT(11) DEFAULT NULL COMMENT 'NULL = globaler Admin, sonst editionsspezifischer Benutzer'");
+UPDATE users SET edition_id = (SELECT id FROM messe_editions WHERE status='active' LIMIT 1)
+    WHERE role != 'admin' AND edition_id IS NULL;
+
+-- UNIQUE-Constraint ändern: username + edition_id statt nur username
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND INDEX_NAME='username');
+SET @s = IF(@idx_exists > 0, 'ALTER TABLE `users` DROP INDEX `username`', 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @uidx_exists = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND INDEX_NAME='unique_username_edition');
+SET @s = IF(@uidx_exists = 0,
+    'ALTER TABLE `users` ADD UNIQUE KEY `unique_username_edition` (`username`, `edition_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

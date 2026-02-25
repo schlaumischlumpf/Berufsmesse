@@ -32,7 +32,7 @@ try {
             COUNT(r.id) as registration_count
         FROM users u
         LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = $activeEditionId
-        WHERE 1=1
+        WHERE (u.role = 'admin' OR u.edition_id = $activeEditionId)
     ";
     
     $params = [];

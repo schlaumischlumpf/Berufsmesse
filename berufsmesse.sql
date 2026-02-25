@@ -395,21 +395,22 @@ CREATE TABLE IF NOT EXISTS `users` (
   `class` varchar(50) DEFAULT NULL,
   `role` varchar(50) NOT NULL DEFAULT 'student',
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-  `must_change_password` tinyint(1) DEFAULT 0 COMMENT 'Erzwingt Passwortänderung beim nächsten Login'
+  `must_change_password` tinyint(1) DEFAULT 0 COMMENT 'Erzwingt Passwortänderung beim nächsten Login',
+  `edition_id` int(11) DEFAULT NULL COMMENT 'NULL = globaler Admin, sonst editionsspezifischer Benutzer'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
 -- Daten für Tabelle `users`
 --
 
-INSERT INTO `users` (`id`, `username`, `email`, `password`, `firstname`, `lastname`, `class`, `role`, `created_at`, `must_change_password`) VALUES
-(1, 'admin', NULL, 'test\r\n', 'Admin', 'User', NULL, 'admin', '2025-10-18 12:00:22', 0),
-(2, 'max.mueller', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Max', 'Müller', NULL, 'student', '2025-10-18 12:00:22', 0),
-(3, 'anna.schmidt', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Anna', 'Schmidt', NULL, 'student', '2025-10-18 12:00:22', 0),
-(4, 'tom.weber', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Tom', 'Weber', NULL, 'student', '2025-10-18 12:00:22', 0),
-(5, 'admin1', NULL, '$2y$10$n7FZIDZAcMouE63CEwipQeXKwvaWD0Zdlb.X1rV/2R9YSbfZQJS.i', 'Admin', 'Admin', NULL, 'admin', '2025-10-18 12:03:59', 0),
-(6, 'lennart.kassal', NULL, '$2y$10$gbQyrtio7DxbQUdd.Sy7Oex5Gy0SBDlWTO6ksvbJZ825FUpFW6wiy', 'Lennart', 'Kassal', NULL, 'student', '2025-10-18 12:09:49', 0),
-(19, 'moritz.lingens', NULL, '$2y$10$dPtWNVu6NtiTsNuRCEFH1eR03FSikwdb0gNoCvJLFVDOU4kkkioEG', 'Moritz', 'Lingens', 'Q1', 'student', '2025-10-22 21:23:49', 0);
+INSERT INTO `users` (`id`, `username`, `email`, `password`, `firstname`, `lastname`, `class`, `role`, `created_at`, `must_change_password`, `edition_id`) VALUES
+(1, 'admin', NULL, 'test\r\n', 'Admin', 'User', NULL, 'admin', '2025-10-18 12:00:22', 0, NULL),
+(2, 'max.mueller', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Max', 'Müller', NULL, 'student', '2025-10-18 12:00:22', 0, 1),
+(3, 'anna.schmidt', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Anna', 'Schmidt', NULL, 'student', '2025-10-18 12:00:22', 0, 1),
+(4, 'tom.weber', NULL, '$2y$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi', 'Tom', 'Weber', NULL, 'student', '2025-10-18 12:00:22', 0, 1),
+(5, 'admin1', NULL, '$2y$10$n7FZIDZAcMouE63CEwipQeXKwvaWD0Zdlb.X1rV/2R9YSbfZQJS.i', 'Admin', 'Admin', NULL, 'admin', '2025-10-18 12:03:59', 0, NULL),
+(6, 'lennart.kassal', NULL, '$2y$10$gbQyrtio7DxbQUdd.Sy7Oex5Gy0SBDlWTO6ksvbJZ825FUpFW6wiy', 'Lennart', 'Kassal', NULL, 'student', '2025-10-18 12:09:49', 0, 1),
+(19, 'moritz.lingens', NULL, '$2y$10$dPtWNVu6NtiTsNuRCEFH1eR03FSikwdb0gNoCvJLFVDOU4kkkioEG', 'Moritz', 'Lingens', 'Q1', 'student', '2025-10-22 21:23:49', 0, 1);
 
 -- --------------------------------------------------------
 
@@ -577,7 +578,7 @@ ALTER TABLE `timeslots`
 --
 ALTER TABLE `users`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `username` (`username`);
+  ADD UNIQUE KEY `unique_username_edition` (`username`, `edition_id`);
 
 --
 -- Indizes für die Tabelle `user_permissions`
