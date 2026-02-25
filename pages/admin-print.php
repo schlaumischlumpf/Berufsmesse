@@ -234,6 +234,36 @@ $totalRegistrations = $stmt->fetch()['total'];
         </div>
     </div>
     
+    <!-- Export Section -->
+    <?php if (isAdmin() || hasPermission('berichte_sehen')): ?>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <h2 class="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <i class="fas fa-download text-gray-400"></i> Datenexport
+        </h2>
+        <p class="text-xs text-gray-500 mb-4">
+            Exportiert die aktuellen Daten. Klassenfilter wird automatisch übernommen.
+        </p>
+        <div class="flex flex-wrap gap-3">
+            <a href="<?php echo BASE_URL; ?>api/export-registrations.php?format=csv&type=registrations&class=<?php echo urlencode($filterClass ?? ''); ?>"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 font-medium text-sm rounded-lg hover:bg-blue-100 transition">
+                <i class="fas fa-file-csv"></i> Anmeldungen (CSV)
+            </a>
+            <a href="<?php echo BASE_URL; ?>api/export-registrations.php?format=xlsx&type=registrations&class=<?php echo urlencode($filterClass ?? ''); ?>"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-green-50 border border-green-200 text-green-700 font-medium text-sm rounded-lg hover:bg-green-100 transition">
+                <i class="fas fa-file-excel"></i> Anmeldungen (Excel)
+            </a>
+            <a href="<?php echo BASE_URL; ?>api/export-registrations.php?format=csv&type=attendance&class=<?php echo urlencode($filterClass ?? ''); ?>"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-purple-200 text-purple-700 font-medium text-sm rounded-lg hover:bg-purple-100 transition">
+                <i class="fas fa-user-check"></i> Check-ins (CSV)
+            </a>
+            <a href="<?php echo BASE_URL; ?>api/export-registrations.php?format=csv&type=unregistered"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-700 font-medium text-sm rounded-lg hover:bg-red-100 transition">
+                <i class="fas fa-user-times"></i> Ohne Anmeldung (CSV)
+            </a>
+        </div>
+    </div>
+    <?php endif; ?>
+    
     <!-- Preview Section -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
