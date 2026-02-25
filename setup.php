@@ -441,6 +441,21 @@ try {
     $errors[] = "Fehler Migration 16 (users.edition_id): " . $e->getMessage();
 }
 
+// Migration 17: timeslots.is_break Spalte (Pausen im Tagesplan)
+try {
+    $cols = $db->query("SHOW COLUMNS FROM `timeslots` LIKE 'is_break'")->fetchAll();
+    if (empty($cols)) {
+        $db->exec("ALTER TABLE `timeslots`
+            ADD COLUMN `is_break` TINYINT(1) NOT NULL DEFAULT 0
+                COMMENT '1 = Pause, 0 = normaler Slot'");
+        $success[] = "is_break zu timeslots hinzugefügt";
+    } else {
+        $success[] = "is_break in timeslots bereits vorhanden";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 17 (timeslots.is_break): " . $e->getMessage();
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="de">

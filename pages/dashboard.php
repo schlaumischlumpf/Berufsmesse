@@ -58,11 +58,12 @@ $stmtSlots->execute([$activeEditionId]);
 $dbSlots = $stmtSlots->fetchAll();
 $timeline = [];
 foreach ($dbSlots as $slot) {
+    $isBreak = !empty($slot['is_break']);
     $timeline[] = [
         'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
         'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
         'slot_number' => $slot['slot_number'],
-        'type' => $slot['is_managed'] ? 'assigned' : 'free',
+        'type' => $isBreak ? 'break' : ($slot['is_managed'] ? 'assigned' : 'free'),
     ];
 }
 

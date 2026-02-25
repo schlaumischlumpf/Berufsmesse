@@ -97,9 +97,15 @@ $roleLabel = ['all' => 'Alle', 'student' => 'Schüler', 'teacher' => 'Lehrer', '
                     <td class="px-4 py-3 text-gray-600"><?php echo $roleLabel[$ann['target_role']] ?? $ann['target_role']; ?></td>
                     <td class="px-4 py-3 text-gray-500 text-xs"><?php echo $ann['expires_at'] ? formatDateTime($ann['expires_at']) : '–'; ?></td>
                     <td class="px-4 py-3">
-                        <span class="px-2 py-0.5 rounded-full text-xs font-medium <?php echo $ann['is_active'] ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-500'; ?>">
-                            <?php echo $ann['is_active'] ? 'Aktiv' : 'Inaktiv'; ?>
-                        </span>
+                        <?php
+                        $isExpired = $ann['expires_at'] && strtotime($ann['expires_at']) < time();
+                        if ($isExpired): ?>
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Abgelaufen</span>
+                        <?php elseif ($ann['is_active']): ?>
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-700">Aktiv</span>
+                        <?php else: ?>
+                        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500">Inaktiv</span>
+                        <?php endif; ?>
                     </td>
                     <td class="px-4 py-3 text-gray-500 text-xs"><?php echo htmlspecialchars(($ann['firstname'] ?? '') . ' ' . ($ann['lastname'] ?? '')); ?></td>
                     <td class="px-4 py-3">

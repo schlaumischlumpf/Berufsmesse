@@ -57,14 +57,15 @@ $stmtSlots->execute([$activeEditionId]);
 $dbSlots = $stmtSlots->fetchAll();
 $schedule = [];
 foreach ($dbSlots as $slot) {
+    $isBreak   = !empty($slot['is_break']);
     $isManaged = (bool)$slot['is_managed'];
     $schedule[] = [
         'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
         'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
         'label' => $slot['slot_name'],
-        'type' => $isManaged ? 'assigned' : 'free',
-        'slot' => $slot['slot_number'],
-        'icon' => $isManaged ? '📋' : '👆',
+        'type' => $isBreak ? 'break' : ($isManaged ? 'assigned' : 'free'),
+        'slot' => $isBreak ? null : $slot['slot_number'],
+        'icon' => $isBreak ? '☕' : ($isManaged ? '📋' : '👆'),
     ];
 }
 

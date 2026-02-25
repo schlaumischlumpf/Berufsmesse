@@ -30,17 +30,32 @@ $stmtSlots->execute([$activeEditionId]);
 $dbSlots = $stmtSlots->fetchAll();
 $timeline = [];
 foreach ($dbSlots as $slot) {
+    $isBreak   = !empty($slot['is_break']);
     $isManaged = (bool)$slot['is_managed'];
-    $timeline[] = [
-        'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
-        'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
-        'type' => 'slot',
-        'slot_number' => $slot['slot_number'],
-        'label' => $slot['slot_name'] . ($isManaged ? ' (Feste Zuteilung)' : ' (Freie Wahl)'),
-        'icon' => $isManaged ? 'fa-clipboard-check' : 'fa-hand-pointer',
-        'color' => $isManaged ? 'blue' : 'purple',
-        'assigned' => $isManaged,
-    ];
+    if ($isBreak) {
+        $timeline[] = [
+            'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
+            'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
+            'type' => 'break',
+            'slot_number' => $slot['slot_number'],
+            'label' => $slot['slot_name'],
+            'icon' => 'fa-coffee',
+            'color' => $slot['slot_name'] === 'Essenspause' ? 'orange' : 'green',
+            'assigned' => false,
+            'description' => 'Austausch & Verpflegung',
+        ];
+    } else {
+        $timeline[] = [
+            'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
+            'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
+            'type' => 'slot',
+            'slot_number' => $slot['slot_number'],
+            'label' => $slot['slot_name'] . ($isManaged ? ' (Feste Zuteilung)' : ' (Freie Wahl)'),
+            'icon' => $isManaged ? 'fa-clipboard-check' : 'fa-hand-pointer',
+            'color' => $isManaged ? 'blue' : 'purple',
+            'assigned' => $isManaged,
+        ];
+    }
 }
 
 // Helper function for pastel colors

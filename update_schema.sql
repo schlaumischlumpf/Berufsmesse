@@ -501,6 +501,14 @@ SET @s = IF(@uidx_exists = 0,
     'SELECT 1');
 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- Migration 17: timeslots.is_break
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='timeslots' AND COLUMN_NAME='is_break');
+SET @s = IF(@col_exists = 0,
+    "ALTER TABLE `timeslots` ADD COLUMN `is_break` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = Pause, 0 = normaler Slot'",
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

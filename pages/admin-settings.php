@@ -109,12 +109,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_timeslot'])) {
     $startTime = trim($_POST['start_time']);
     $endTime   = trim($_POST['end_time']);
     $isManaged = isset($_POST['is_managed']) ? 1 : 0;
+    $isBreak   = isset($_POST['is_break']) ? 1 : 0;
+    if ($isBreak) $isManaged = 0;
     if (empty($slotName)) {
         $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
     } else {
-        $db->prepare("UPDATE timeslots SET slot_name=?, start_time=?, end_time=?, is_managed=? WHERE id=?")
-           ->execute([$slotName, $startTime ?: null, $endTime ?: null, $isManaged, $slotId]);
-        logAuditAction('timeslot_bearbeitet', "Slot #$slotId: '$slotName', managed=$isManaged", 'warning');
+        $db->prepare("UPDATE timeslots SET slot_name=?, start_time=?, end_time=?, is_managed=?, is_break=? WHERE id=?")
+           ->execute([$slotName, $startTime ?: null, $endTime ?: null, $isManaged, $isBreak, $slotId]);
+        logAuditAction('timeslot_bearbeitet', "Slot #$slotId: '$slotName', managed=$isManaged, break=$isBreak", 'warning');
         $message = ['type' => 'success', 'text' => 'Zeitslot gespeichert.'];
     }
 }
@@ -126,14 +128,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
     $startTime = trim($_POST['new_start_time']);
     $endTime   = trim($_POST['new_end_time']);
     $isManaged = isset($_POST['new_is_managed']) ? 1 : 0;
+    $isBreak   = isset($_POST['new_is_break']) ? 1 : 0;
+    if ($isBreak) $isManaged = 0;
     if (empty($slotName)) {
         $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
     } else {
         $stmt = $db->prepare("SELECT COALESCE(MAX(slot_number),0) FROM timeslots WHERE edition_id = ?");
         $stmt->execute([$activeEditionId]);
         $maxNum = (int)$stmt->fetchColumn();
-        $db->prepare("INSERT INTO timeslots (slot_number,slot_name,start_time,end_time,is_managed,edition_id) VALUES (?,?,?,?,?,?)")
-           ->execute([$maxNum + 1, $slotName, $startTime ?: null, $endTime ?: null, $isManaged, $activeEditionId]);
+        $db->prepare("INSERT INTO timeslots (slot_number,slot_name,start_time,end_time,is_managed,is_break,edition_id) VALUES (?,?,?,?,?,?,?)")
+           ->execute([$maxNum + 1, $slotName, $startTime ?: null, $endTime ?: null, $isManaged, $isBreak, $activeEditionId]);
         logAuditAction('timeslot_erstellt', "Neuer Slot '$slotName'");
         $message = ['type' => 'success', 'text' => 'Zeitslot hinzugefügt.'];
     }
@@ -594,12 +598,20 @@ $allTimeslots = $stmt->fetchAll();
                                    class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white">
                         </div>
                         <div class="sm:col-span-2">
-                            <label class="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" name="is_managed" value="1"
-                                       <?php echo $slot['is_managed'] ? 'checked' : ''; ?>
-                                       class="w-4 h-4 text-emerald-500 rounded">
-                                <span class="text-xs text-gray-700 font-medium">Feste Zuteilung (Managed)</span>
-                            </label>
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="is_managed" value="1"
+                                           <?php echo $slot['is_managed'] ? 'checked' : ''; ?>
+                                           class="w-4 h-4 text-emerald-500 rounded">
+                                    <span class="text-xs text-gray-700 font-medium">Feste Zuteilung (Managed)</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="is_break" value="1"
+                                           <?php echo (!empty($slot['is_break'])) ? 'checked' : ''; ?>
+                                           class="w-4 h-4 text-amber-500 rounded">
+                                    <span class="text-xs text-gray-700 font-medium"><i class="fas fa-coffee mr-1"></i>Pause</span>
+                                </label>
+                            </div>
                         </div>
                         <div class="flex gap-2 sm:col-span-2 justify-end">
                             <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
@@ -639,10 +651,16 @@ $allTimeslots = $stmt->fetchAll();
                         <input type="time" name="new_end_time" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white">
                     </div>
                     <div class="sm:col-span-3">
-                        <label class="flex items-center gap-2 cursor-pointer">
-                            <input type="checkbox" name="new_is_managed" value="1" class="w-4 h-4 text-blue-500 rounded">
-                            <span class="text-xs text-gray-700 font-medium">Feste Zuteilung</span>
-                        </label>
+                        <div class="flex items-center gap-4">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="new_is_managed" value="1" class="w-4 h-4 text-blue-500 rounded">
+                                <span class="text-xs text-gray-700 font-medium">Feste Zuteilung</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="new_is_break" value="1" class="w-4 h-4 text-amber-500 rounded">
+                                <span class="text-xs text-gray-700 font-medium"><i class="fas fa-coffee mr-1"></i>Pause</span>
+                            </label>
+                        </div>
                     </div>
                     <div>
                         <button type="submit" name="add_timeslot"

@@ -365,6 +365,7 @@ CREATE TABLE IF NOT EXISTS `timeslots` (
   `start_time` time DEFAULT NULL,
   `end_time` time DEFAULT NULL,
   `is_managed` tinyint(1) NOT NULL DEFAULT 0,
+  `is_break` tinyint(1) NOT NULL DEFAULT 0,
   `edition_id` int(11) NOT NULL DEFAULT 1
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
