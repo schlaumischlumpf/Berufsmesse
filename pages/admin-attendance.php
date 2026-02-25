@@ -28,12 +28,15 @@ $stmt = $db->query("
         IF(a.id IS NOT NULL, 1, 0) AS is_present
     FROM users u
     LEFT JOIN registrations r  ON r.user_id      = u.id
+                               AND r.edition_id   = $activeEditionId
     LEFT JOIN exhibitors e     ON e.id            = r.exhibitor_id
+                               AND e.edition_id   = $activeEditionId
     LEFT JOIN timeslots t      ON t.id            = r.timeslot_id
                                AND t.slot_number " . getManagedSlotsSqlIn() . "
     LEFT JOIN attendance a     ON a.user_id       = u.id
                                AND a.exhibitor_id = r.exhibitor_id
                                AND a.timeslot_id  = r.timeslot_id
+                               AND a.edition_id   = $activeEditionId
     WHERE u.role = 'student'
     ORDER BY u.class ASC, u.lastname ASC, u.firstname ASC, t.slot_number ASC
 ");
@@ -69,9 +72,9 @@ foreach ($studentsRaw as $row) {
 
 // Statistiken
 $totalStudents   = count($students);
-$stmt = $db->query("SELECT COUNT(DISTINCT user_id) FROM attendance");
+$stmt = $db->query("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE edition_id = $activeEditionId");
 $presentStudents = $stmt->fetchColumn();
-$stmt = $db->query("SELECT COUNT(*) FROM attendance");
+$stmt = $db->query("SELECT COUNT(*) FROM attendance WHERE edition_id = $activeEditionId");
 $totalCheckins   = $stmt->fetchColumn();
 ?>
 
