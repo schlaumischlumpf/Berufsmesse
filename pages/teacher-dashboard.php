@@ -20,7 +20,7 @@ $stmt = $db->query("
         FROM registrations r
         JOIN timeslots t ON r.timeslot_id = t.id
         JOIN users u ON r.user_id = u.id
-        WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student'
+        WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND r.edition_id = $activeEditionId
         GROUP BY r.user_id
         HAVING slot_count = " . getManagedSlotCount() . "
     ) as complete_registrations
@@ -35,7 +35,7 @@ $stmt = $db->query("
     SELECT COUNT(*) as count 
     FROM users u
     WHERE u.role = 'student' 
-    AND u.id NOT IN (SELECT DISTINCT user_id FROM registrations)
+    AND u.id NOT IN (SELECT DISTINCT user_id FROM registrations WHERE edition_id = $activeEditionId)
 ");
 $stats['no_registrations'] = $stmt->fetch()['count'];
 ?>
@@ -133,7 +133,7 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
                             FROM registrations r
                             JOIN timeslots t ON r.timeslot_id = t.id
                             JOIN users u ON r.user_id = u.id
-                            WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND u.class = ?
+                            WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND u.class = ? AND r.edition_id = $activeEditionId
                             GROUP BY r.user_id
                             HAVING slot_count = " . getManagedSlotCount() . "
                         ) as complete
