@@ -81,7 +81,7 @@ if ($printType === 'all' || $printType === 'class') {
 }
 
 // Pausen-Slots laden (für Tagesplan in Druckansicht)
-$stmtBreaks = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? AND is_break = 1 ORDER BY slot_number ASC");
+$stmtBreaks = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? AND is_break = 1 ORDER BY start_time ASC, slot_number ASC");
 $stmtBreaks->execute([$activeEditionId]);
 $breakSlots = $stmtBreaks->fetchAll();
 
@@ -516,7 +516,7 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                     <?php 
                     ksort($students);
                     foreach ($students as $studentName => $regs): 
-                        usort($regs, fn($a, $b) => $a['slot_number'] <=> $b['slot_number']);
+                        usort($regs, fn($a, $b) => strcmp($a['start_time'], $b['start_time']));
                     ?>
                         <div class="student-card">
                             <div class="student-name"><?php echo htmlspecialchars($studentName); ?></div>
@@ -531,15 +531,15 @@ $eventDate = getSetting('event_date') ?? date('Y-m-d');
                                 </thead>
                                 <tbody>
                                     <?php 
-                                    // Merge registrations with break slots and sort by slot_number
+                                    // Merge registrations with break slots and sort by start_time
                                     $fullSchedule = [];
                                     foreach ($regs as $reg) {
-                                        $fullSchedule[] = ['type' => 'reg', 'slot_number' => $reg['slot_number'], 'data' => $reg];
+                                        $fullSchedule[] = ['type' => 'reg', 'start_time' => $reg['start_time'], 'data' => $reg];
                                     }
                                     foreach ($breakSlots as $brk) {
-                                        $fullSchedule[] = ['type' => 'break', 'slot_number' => $brk['slot_number'], 'data' => $brk];
+                                        $fullSchedule[] = ['type' => 'break', 'start_time' => $brk['start_time'], 'data' => $brk];
                                     }
-                                    usort($fullSchedule, fn($a, $b) => $a['slot_number'] <=> $b['slot_number']);
+                                    usort($fullSchedule, fn($a, $b) => strcmp($a['start_time'] ?? '', $b['start_time'] ?? ''));
                                     foreach ($fullSchedule as $entry): 
                                         if ($entry['type'] === 'break'): $brk = $entry['data']; ?>
                                     <tr style="background: #fffbeb;">

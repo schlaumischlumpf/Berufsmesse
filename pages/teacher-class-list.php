@@ -42,7 +42,7 @@ foreach ($students as $student) {
 
 // Verwaltete Slots
 $managedSlots = getManagedSlotNumbers();
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY slot_number");
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY start_time ASC, slot_number ASC");;
 $timeslots = $stmt->fetchAll();
 ?>
 

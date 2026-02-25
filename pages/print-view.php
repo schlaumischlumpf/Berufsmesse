@@ -52,7 +52,7 @@ foreach ($registrations as $reg) {
 }
 
 // Tagesablauf dynamisch aus Datenbank laden
-$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY start_time ASC, slot_number ASC");
 $stmtSlots->execute([$activeEditionId]);
 $dbSlots = $stmtSlots->fetchAll();
 $schedule = [];
@@ -678,7 +678,7 @@ function getPrintColor($type) {
                     <div class="stat-label">Anmeldungen</div>
                 </div>
                 <div class="stat-item">
-                    <div class="stat-value">5</div>
+                    <div class="stat-value"><?php echo count($schedule); ?></div>
                     <div class="stat-label">Zeitslots</div>
                 </div>
             </div>

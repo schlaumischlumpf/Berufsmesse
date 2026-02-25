@@ -21,7 +21,7 @@ $activeEditionId = getActiveEditionId();
 $filterClass = $_GET['class'] ?? '';
 
 // Timeslots laden (für Spaltenüberschriften) - nur Managed-Slots
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY slot_number ASC");
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY start_time ASC, slot_number ASC");
 $timeslots = $stmt->fetchAll();
 
 // Daten laden

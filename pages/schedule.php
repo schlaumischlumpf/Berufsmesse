@@ -25,7 +25,7 @@ $stmt->execute([$_SESSION['user_id']]);
 $registrations = $stmt->fetchAll();
 
 // Tagesablauf dynamisch aus Datenbank laden
-$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY start_time ASC, slot_number ASC");
 $stmtSlots->execute([$activeEditionId]);
 $dbSlots = $stmtSlots->fetchAll();
 $timeline = [];
