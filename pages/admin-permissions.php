@@ -935,6 +935,8 @@ function doAutoSave() {
         savedGroupIds.push(parseInt(cb.value, 10));
     });
 
+    formData.append('csrf_token', '<?php echo generateCsrfToken(); ?>');
+
     const indicator = document.getElementById('autoSaveIndicator');
     if (indicator) {
         indicator.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Speichern...';

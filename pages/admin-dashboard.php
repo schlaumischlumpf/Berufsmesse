@@ -257,10 +257,12 @@ $recentRegistrations = $stmt->fetchAll();
                     </div>
                     <?php if (isAdmin() || hasPermission('zuteilung_ausfuehren')): ?>
                     <div class="flex-shrink-0">
-                        <button onclick="runAutoAssign()" id="autoAssignBtn" 
-                                class="bg-amber-500 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-amber-600 transition">
-                            <i class="fas fa-play-circle mr-2"></i>Ausführen
-                        </button>
+                        <form method="POST" action="api/auto-assign.php" style="display:inline" onsubmit="return confirm('Automatische Zuteilung wirklich starten?')">
+                            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                            <button type="submit" class="bg-amber-500 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-amber-600 transition">
+                                <i class="fas fa-play-circle mr-2"></i>Ausführen
+                            </button>
+                        </form>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -577,18 +579,4 @@ function switchTab(tabName) {
     }
 }
 
-// Auto-Assignment Function
-function runAutoAssign() {
-    if (!confirm('Möchtest Du die automatische Zuteilung wirklich durchführen?\n\nDies wird alle Schüler, die noch nicht für alle 3 Slots registriert sind, automatisch auf Aussteller verteilen.')) {
-        return;
-    }
-    
-    const btn = document.getElementById('autoAssignBtn');
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Verarbeite...';
-    
-    // Redirect zur Verarbeitung
-    window.location.href = '?page=admin-dashboard&auto_assign=run';
-}
 </script>
