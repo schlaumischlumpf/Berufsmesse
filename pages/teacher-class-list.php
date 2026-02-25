@@ -21,7 +21,7 @@ foreach ($students as $student) {
         FROM registrations r
         JOIN exhibitors e ON r.exhibitor_id = e.id
         JOIN timeslots t ON r.timeslot_id = t.id
-        WHERE r.user_id = ?
+        WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
         ORDER BY t.slot_number
     ");
     $stmt->execute([$student['id']]);
@@ -42,7 +42,7 @@ foreach ($students as $student) {
 
 // Verwaltete Slots
 $managedSlots = getManagedSlotNumbers();
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " ORDER BY slot_number");
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY slot_number");
 $timeslots = $stmt->fetchAll();
 ?>
 
