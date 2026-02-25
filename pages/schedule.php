@@ -18,7 +18,7 @@ $stmt = $db->prepare("
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
     LEFT JOIN rooms rm ON e.room_id = rm.id
-    WHERE r.user_id = ?
+    WHERE r.user_id = ? AND r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
     ORDER BY t.slot_number ASC
 ");
 $stmt->execute([$_SESSION['user_id']]);
