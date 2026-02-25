@@ -34,15 +34,15 @@ $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")
 $stats['total_students'] = $stmt->fetch()['count'];
 
 // Gesamtzahl Aussteller
-$stmt = $db->query("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1");
+$stmt = $db->query("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1 AND edition_id = $activeEditionId");
 $stats['total_exhibitors'] = $stmt->fetch()['count'];
 
 // Gesamtzahl Anmeldungen
-$stmt = $db->query("SELECT COUNT(*) as count FROM registrations");
+$stmt = $db->query("SELECT COUNT(*) as count FROM registrations WHERE edition_id = $activeEditionId");
 $stats['total_registrations'] = $stmt->fetch()['count'];
 
 // Schüler mit Anmeldungen (nur role='student', nicht Lehrer/Admins - Issue #14)
-$stmt = $db->query("SELECT COUNT(DISTINCT r.user_id) as count FROM registrations r JOIN users u ON r.user_id = u.id WHERE u.role = 'student'");
+$stmt = $db->query("SELECT COUNT(DISTINCT r.user_id) as count FROM registrations r JOIN users u ON r.user_id = u.id WHERE u.role = 'student' AND r.edition_id = $activeEditionId");
 $stats['students_registered'] = $stmt->fetch()['count'];
 
 // Schüler ohne Anmeldungen
@@ -52,8 +52,8 @@ $stats['students_not_registered'] = $stats['total_students'] - $stats['students_
 $stmt = $db->query("
     SELECT e.name, COUNT(r.id) as registrations
     FROM exhibitors e
-    LEFT JOIN registrations r ON e.id = r.exhibitor_id
-    WHERE e.active = 1
+    LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.edition_id = $activeEditionId
+    WHERE e.active = 1 AND e.edition_id = $activeEditionId
     GROUP BY e.id
     ORDER BY registrations DESC
     LIMIT 5
@@ -69,7 +69,8 @@ $stmt = $db->query("
         t.end_time,
         COUNT(r.id) as registrations
     FROM timeslots t
-    LEFT JOIN registrations r ON t.id = r.timeslot_id
+    LEFT JOIN registrations r ON t.id = r.timeslot_id AND r.edition_id = $activeEditionId
+    WHERE t.edition_id = $activeEditionId
     GROUP BY t.id, t.slot_name, t.slot_number, t.start_time, t.end_time
     ORDER BY t.slot_number ASC
 ");
@@ -82,6 +83,7 @@ $stmt = $db->query("
     JOIN users u ON r.user_id = u.id
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
+    WHERE r.edition_id = $activeEditionId AND e.edition_id = $activeEditionId
     ORDER BY r.registered_at DESC
     LIMIT 10
 ");
