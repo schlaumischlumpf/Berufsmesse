@@ -7,11 +7,11 @@ if (!isAdmin() && !hasPermission('kapazitaeten_sehen')) {
 }
 
 // Alle Räume laden
-$stmt = $db->query("SELECT * FROM rooms ORDER BY room_number");
+$stmt = $db->query("SELECT * FROM rooms WHERE edition_id = $activeEditionId ORDER BY room_number");
 $rooms = $stmt->fetchAll();
 
 // Alle Timeslots laden
-$stmt = $db->query("SELECT * FROM timeslots ORDER BY slot_number");
+$stmt = $db->query("SELECT * FROM timeslots WHERE edition_id = $activeEditionId ORDER BY slot_number");
 $timeslots = $stmt->fetchAll();
 
 // Handle Form Submission
@@ -19,10 +19,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_capacities'])) {
     $db->beginTransaction();
     try {
         // Alle vorhandenen Einträge löschen
-        $db->exec("DELETE FROM room_slot_capacities");
+        $db->exec("DELETE FROM room_slot_capacities WHERE edition_id = $activeEditionId");
         
         // Neue Kapazitäten speichern
-        $stmt = $db->prepare("INSERT INTO room_slot_capacities (room_id, timeslot_id, capacity) VALUES (?, ?, ?)");
+        $stmt = $db->prepare("INSERT INTO room_slot_capacities (room_id, timeslot_id, capacity, edition_id) VALUES (?, ?, ?, $activeEditionId)");
         
         foreach ($_POST['capacity'] as $roomId => $timeslotData) {
             foreach ($timeslotData as $timeslotId => $capacity) {
@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_capacities'])) {
 
 // Aktuelle Kapazitäten laden
 $capacities = [];
-$stmt = $db->query("SELECT * FROM room_slot_capacities");
+$stmt = $db->query("SELECT * FROM room_slot_capacities WHERE edition_id = $activeEditionId");
 foreach ($stmt->fetchAll() as $cap) {
     $capacities[$cap['room_id']][$cap['timeslot_id']] = $cap['capacity'];
 }
