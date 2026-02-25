@@ -9,11 +9,11 @@ $regEnd = getSetting('registration_end');
 $canModify = ($regStatus === 'open') || isAdmin();
 
 // Nur verwaltete Timeslots laden (Slots 1, 3, 5) - Slots 2 und 4 sind freie Wahl vor Ort
-$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " ORDER BY slot_number ASC");
+$stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY slot_number ASC");
 $timeslots = $stmt->fetchAll();
 
 // Prüfen ob Benutzer bereits für alle Slots registriert ist
-$stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ?");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
 $stmt->execute([$_SESSION['user_id']]);
 $userRegCount = $stmt->fetch()['count'];
 $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
         $priority = isset($_POST['priority']) ? max(1, min(3, intval($_POST['priority']))) : 2;
 
         // Prüfen ob User bereits für diesen Aussteller registriert ist
-        $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+        $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
         $stmt->execute([$_SESSION['user_id'], $exhibitorId]);
         $alreadyRegistered = $stmt->fetch()['count'] > 0;
 
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
             $message = ['type' => 'error', 'text' => 'Du bist bereits für diesen Aussteller angemeldet.'];
         } else {
             // Prüfen ob diese Priorität bereits verwendet wird
-            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ?");
+            $stmt = $db->prepare("SELECT priority FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
             $stmt->execute([$_SESSION['user_id']]);
             $usedPriorities = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
@@ -49,13 +49,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
             } else {
                 try {
                     // Registrierung OHNE Slot-Zuteilung - Slot wird später automatisch zugewiesen
-                    $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority) VALUES (?, ?, NULL, 'manual', ?)");
+                    $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, priority, edition_id) VALUES (?, ?, NULL, 'manual', ?, $activeEditionId)");
                     $stmt->execute([$_SESSION['user_id'], $exhibitorId, $priority]);
 
                     $message = ['type' => 'success', 'text' => 'Erfolgreich angemeldet! Der Zeitslot wird später automatisch zugeteilt.'];
 
                     // Counter aktualisieren
-                    $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ?");
+                    $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
                     $stmt->execute([$_SESSION['user_id']]);
                     $userRegCount = $stmt->fetch()['count'];
                 } catch (PDOException $e) {
@@ -72,17 +72,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
     $exhibitorId = intval($_POST['exhibitor_id']);
     
     // Prüfen ob die Registrierung dem User gehört
-    $stmt = $db->prepare("SELECT * FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+    $stmt = $db->prepare("SELECT * FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
     $stmt->execute([$_SESSION['user_id'], $exhibitorId]);
     $registration = $stmt->fetch();
     
     if ($registration && $canModify) {
-        $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ? AND exhibitor_id = ?");
+        $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = $activeEditionId");
         if ($stmt->execute([$_SESSION['user_id'], $exhibitorId])) {
             $message = ['type' => 'success', 'text' => 'Erfolgreich abgemeldet'];
             
             // Counter aktualisieren
-            $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ?");
+            $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
             $stmt->execute([$_SESSION['user_id']]);
             $userRegCount = $stmt->fetch()['count'];
         } else {
@@ -95,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
 
 // Prüfe für jeden Aussteller ob der User bereits registriert ist
 $userRegistrations = [];
-$stmt = $db->prepare("SELECT exhibitor_id, priority FROM registrations WHERE user_id = ?");
+$stmt = $db->prepare("SELECT exhibitor_id, priority FROM registrations WHERE user_id = ? AND registrations.edition_id = $activeEditionId");
 $stmt->execute([$_SESSION['user_id']]);
 foreach ($stmt->fetchAll() as $row) {
     $userRegistrations[$row['exhibitor_id']] = $row['priority'] ?? 2;
