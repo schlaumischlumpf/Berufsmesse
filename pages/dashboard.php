@@ -53,7 +53,7 @@ foreach ($userRegistrations as $reg) {
 }
 
 // Timeline für heute – dynamisch aus Datenbank laden
-$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY start_time ASC, slot_number ASC");
 $stmtSlots->execute([$activeEditionId]);
 $dbSlots = $stmtSlots->fetchAll();
 $timeline = [];
@@ -63,6 +63,7 @@ foreach ($dbSlots as $slot) {
         'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
         'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
         'slot_number' => $slot['slot_number'],
+        'slot_name' => $slot['slot_name'],
         'type' => $isBreak ? 'break' : ($slot['is_managed'] ? 'assigned' : 'free'),
     ];
 }
@@ -206,6 +207,23 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                         $hasReg = isset($regBySlot[$slot['slot_number']]);
                         $reg = $hasReg ? $regBySlot[$slot['slot_number']] : null;
                         
+                        // Break/Pause-Handling
+                        if ($slot['type'] === 'break'):
+                    ?>
+                    <div class="timeline-item flex items-center gap-4 p-3 rounded-xl border bg-amber-50 border-amber-200">
+                        <div class="text-center min-w-[60px]">
+                            <span class="text-sm font-bold text-amber-700"><?php echo $slot['time']; ?></span>
+                            <span class="block text-xs text-amber-400"><?php echo $slot['end']; ?></span>
+                        </div>
+                        <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-coffee text-amber-600"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h4 class="font-medium text-amber-700"><?php echo htmlspecialchars($slot['slot_name'] ?? 'Pause'); ?></h4>
+                            <p class="text-xs text-amber-500">Pause</p>
+                        </div>
+                    </div>
+                    <?php else:
                         // Status-Farben
                         if ($slot['type'] === 'free') {
                             $bgClass = 'bg-purple-50 border-purple-200';
@@ -263,6 +281,7 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                             </span>
                         </div>
                     </div>
+                    <?php endif; ?>
                     <?php endforeach; ?>
                 </div>
             </div>

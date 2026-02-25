@@ -114,10 +114,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_timeslot'])) {
     if (empty($slotName)) {
         $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
     } else {
-        $db->prepare("UPDATE timeslots SET slot_name=?, start_time=?, end_time=?, is_managed=?, is_break=? WHERE id=?")
-           ->execute([$slotName, $startTime ?: null, $endTime ?: null, $isManaged, $isBreak, $slotId]);
-        logAuditAction('timeslot_bearbeitet', "Slot #$slotId: '$slotName', managed=$isManaged, break=$isBreak", 'warning');
-        $message = ['type' => 'success', 'text' => 'Zeitslot gespeichert.'];
+        // Überschneidungsprüfung
+        $overlapStmt = $db->prepare("SELECT slot_name FROM timeslots WHERE edition_id = ? AND id != ? AND start_time < ? AND end_time > ?");
+        $overlapStmt->execute([$activeEditionId, $slotId, $endTime, $startTime]);
+        $overlap = $overlapStmt->fetch();
+        if ($overlap && $startTime && $endTime) {
+            $message = ['type' => 'error', 'text' => 'Zeitraum überschneidet sich mit "' . htmlspecialchars($overlap['slot_name']) . '".'];
+        } else {
+            $db->prepare("UPDATE timeslots SET slot_name=?, start_time=?, end_time=?, is_managed=?, is_break=? WHERE id=?")
+               ->execute([$slotName, $startTime ?: null, $endTime ?: null, $isManaged, $isBreak, $slotId]);
+            logAuditAction('timeslot_bearbeitet', "Slot #$slotId: '$slotName', managed=$isManaged, break=$isBreak", 'warning');
+            $message = ['type' => 'success', 'text' => 'Zeitslot gespeichert.'];
+        }
     }
 }
 
@@ -133,13 +141,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
     if (empty($slotName)) {
         $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
     } else {
-        $stmt = $db->prepare("SELECT COALESCE(MAX(slot_number),0) FROM timeslots WHERE edition_id = ?");
-        $stmt->execute([$activeEditionId]);
-        $maxNum = (int)$stmt->fetchColumn();
-        $db->prepare("INSERT INTO timeslots (slot_number,slot_name,start_time,end_time,is_managed,is_break,edition_id) VALUES (?,?,?,?,?,?,?)")
-           ->execute([$maxNum + 1, $slotName, $startTime ?: null, $endTime ?: null, $isManaged, $isBreak, $activeEditionId]);
-        logAuditAction('timeslot_erstellt', "Neuer Slot '$slotName'");
-        $message = ['type' => 'success', 'text' => 'Zeitslot hinzugefügt.'];
+        // Überschneidungsprüfung
+        $overlapStmt = $db->prepare("SELECT slot_name FROM timeslots WHERE edition_id = ? AND start_time < ? AND end_time > ?");
+        $overlapStmt->execute([$activeEditionId, $endTime, $startTime]);
+        $overlap = $overlapStmt->fetch();
+        if ($overlap && $startTime && $endTime) {
+            $message = ['type' => 'error', 'text' => 'Zeitraum überschneidet sich mit "' . htmlspecialchars($overlap['slot_name']) . '".'];
+        } else {
+            $stmt = $db->prepare("SELECT COALESCE(MAX(slot_number),0) FROM timeslots WHERE edition_id = ?");
+            $stmt->execute([$activeEditionId]);
+            $maxNum = (int)$stmt->fetchColumn();
+            $db->prepare("INSERT INTO timeslots (slot_number,slot_name,start_time,end_time,is_managed,is_break,edition_id) VALUES (?,?,?,?,?,?,?)")
+               ->execute([$maxNum + 1, $slotName, $startTime ?: null, $endTime ?: null, $isManaged, $isBreak, $activeEditionId]);
+            logAuditAction('timeslot_erstellt', "Neuer Slot '$slotName'");
+            $message = ['type' => 'success', 'text' => 'Zeitslot hinzugefügt.'];
+        }
     }
 }
 
@@ -163,7 +179,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_timeslot'])) {
     }
 }
 
-$stmt = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+$stmt = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY start_time ASC, slot_number ASC");
 $stmt->execute([$activeEditionId]);
 $allTimeslots = $stmt->fetchAll();
 ?>
