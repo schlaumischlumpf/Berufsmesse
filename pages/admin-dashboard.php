@@ -1,3 +1,4 @@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <?php
 // Admin Dashboard mit Statistiken
 
@@ -213,6 +214,16 @@ $recentRegistrations = $stmt->fetchAll();
                 <button onclick="switchTab('registrations')" id="tab-registrations" class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition">
                     <i class="fas fa-clipboard-list mr-2"></i>Letzte Anmeldungen
                 </button>
+                <button onclick="switchTab('timeline')" id="tab-timeline"
+                    class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent
+                           text-gray-500 hover:text-gray-700 hover:border-gray-300 transition">
+                    <i class="fas fa-chart-line mr-2"></i>Registrierungs-Timeline
+                </button>
+                <button onclick="switchTab('classes')" id="tab-classes"
+                    class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent
+                           text-gray-500 hover:text-gray-700 hover:border-gray-300 transition">
+                    <i class="fas fa-users mr-2"></i>Klassenbeteiligung
+                </button>
             </nav>
         </div>
 
@@ -423,6 +434,32 @@ $recentRegistrations = $stmt->fetchAll();
                 </table>
             </div>
         </div>
+
+        <div id="tab-content-timeline" class="tab-content p-6 hidden">
+            <h3 class="text-base font-semibold text-gray-800 mb-1 flex items-center">
+                <i class="fas fa-chart-line text-blue-500 mr-2"></i>Registrierungs-Timeline
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">Einschreibungen pro Tag – manuell vs. automatisch</p>
+            <div class="relative" style="height: 280px;">
+                <canvas id="timelineChart"></canvas>
+                <div id="timelineLoading" class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80">
+                    <i class="fas fa-spinner fa-spin text-gray-400 text-2xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-content-classes" class="tab-content p-6 hidden">
+            <h3 class="text-base font-semibold text-gray-800 mb-1 flex items-center">
+                <i class="fas fa-users text-purple-500 mr-2"></i>Klassenbeteiligung
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">Anteil angemeldeter Schüler je Klasse – sortiert nach Beteiligung</p>
+            <div class="relative" style="height: 320px;">
+                <canvas id="classesChart"></canvas>
+                <div id="classesLoading" class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80">
+                    <i class="fas fa-spinner fa-spin text-gray-400 text-2xl"></i>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -472,6 +509,50 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Tab Switching
+let statsLoaded = false;
+function loadDashboardStats() {
+    if (statsLoaded) return;
+    statsLoaded = true;
+    fetch('api/dashboard-stats.php')
+        .then(r => r.json())
+        .then(data => {
+            renderTimelineChart(data.timeline || []);
+            renderClassesChart(data.classes || []);
+        })
+        .catch(() => {
+            document.getElementById('timelineLoading').innerHTML = '<span class="text-red-400 text-sm">Fehler beim Laden</span>';
+            document.getElementById('classesLoading').innerHTML  = '<span class="text-red-400 text-sm">Fehler beim Laden</span>';
+        });
+}
+
+function renderTimelineChart(data) {
+    document.getElementById('timelineLoading').classList.add('hidden');
+    new Chart(document.getElementById('timelineChart'), {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.day),
+            datasets: [
+                { label: 'Manuell',      data: data.map(d => d.manual), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3, pointRadius: 3 },
+                { label: 'Automatisch',  data: data.map(d => d.auto),   borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)',  fill: true, tension: 0.3, pointRadius: 3 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'top' } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+}
+
+function renderClassesChart(data) {
+    document.getElementById('classesLoading').classList.add('hidden');
+    data.sort((a, b) => a.rate - b.rate);
+    new Chart(document.getElementById('classesChart'), {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.class),
+            datasets: [{ label: 'Beteiligung (%)', data: data.map(d => d.rate), backgroundColor: data.map(d => d.rate >= 80 ? '#10b981' : d.rate >= 50 ? '#f59e0b' : '#ef4444'), borderRadius: 4 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => { const d = data[ctx.dataIndex]; return ` ${d.registered} / ${d.total} Schüler (${d.rate}%)`; } } } }, scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } }, y: { grid: { display: false } } } }
+    });
+}
+
 function switchTab(tabName) {
     // Update buttons
     document.querySelectorAll('.tab-button').forEach(btn => {
@@ -488,6 +569,10 @@ function switchTab(tabName) {
     });
     
     document.getElementById('tab-content-' + tabName).classList.remove('hidden');
+
+    if (tabName === 'timeline' || tabName === 'classes') {
+        loadDashboardStats();
+    }
 }
 
 // Auto-Assignment Function
