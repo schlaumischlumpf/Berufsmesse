@@ -319,7 +319,10 @@ async function markAttendance(userId, exhibitorId, timeslotId, action, btn) {
     try {
         const resp = await fetch(BASE_API, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': '<?php echo generateCsrfToken(); ?>'
+            },
             body: JSON.stringify({
                 action:       action === 'present' ? 'mark_present' : 'mark_absent',
                 user_id:      userId,
