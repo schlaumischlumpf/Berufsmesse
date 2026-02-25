@@ -3,7 +3,7 @@
 $industryList = getIndustries();
 $categories = !empty($industryList) 
     ? array_column($industryList, 'name')
-    : $db->query("SELECT DISTINCT category FROM exhibitors WHERE active = 1 AND category IS NOT NULL AND category != '' ORDER BY category")->fetchAll(PDO::FETCH_COLUMN);
+    : $db->query("SELECT DISTINCT category FROM exhibitors WHERE active = 1 AND exhibitors.edition_id = $activeEditionId AND category IS NOT NULL AND category != '' ORDER BY category")->fetchAll(PDO::FETCH_COLUMN);
 ?>
 
 <!-- Aussteller-Übersicht -->
