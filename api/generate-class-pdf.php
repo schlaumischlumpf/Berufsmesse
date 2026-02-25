@@ -20,7 +20,7 @@ $activeEditionId = getActiveEditionId();
 // Filter
 $filterClass = $_GET['class'] ?? '';
 
-// Timeslots laden (für Spaltenüberschriften) - nur Slots 1, 3, 5
+// Timeslots laden (für Spaltenüberschriften) - nur Managed-Slots
 $stmt = $db->query("SELECT * FROM timeslots WHERE slot_number " . getManagedSlotsSqlIn() . " AND timeslots.edition_id = $activeEditionId ORDER BY slot_number ASC");
 $timeslots = $stmt->fetchAll();
 
@@ -170,7 +170,7 @@ class ClassPDF extends FPDF {
             
             // Zeile 1: Slot-Nummer
             $this->SetXY($xPos, $startY + 2);
-            $this->Cell($slotW, 4, 'Slot ' . $slotNum, 0, 0, 'C', false);
+            $this->Cell($slotW, 4, conv($ts['slot_name']), 0, 0, 'C', false);
             
             // Zeile 2: Zeiten
             $this->SetXY($xPos, $startY + 6);
