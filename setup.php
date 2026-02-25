@@ -297,6 +297,124 @@ try {
     $errors[] = "Fehler bei auto_close_registration setting: " . $e->getMessage();
 }
 
+// Migration 12a: messe_editions Tabelle erstellen
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `messe_editions` (
+        `id`                            INT(11)       NOT NULL AUTO_INCREMENT,
+        `name`                          VARCHAR(150)  NOT NULL,
+        `year`                          INT(4)        NOT NULL,
+        `status`                        ENUM('active','archived') NOT NULL DEFAULT 'archived',
+        `registration_start`            DATETIME      DEFAULT NULL,
+        `registration_end`              DATETIME      DEFAULT NULL,
+        `event_date`                    DATE          DEFAULT NULL,
+        `max_registrations_per_student` INT(11)       NOT NULL DEFAULT 3,
+        `created_at`                    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_status` (`status`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+    $count = $db->query("SELECT COUNT(*) FROM messe_editions")->fetchColumn();
+    if ($count == 0) {
+        $rs = $db->query("SELECT setting_key, setting_value FROM settings
+                          WHERE setting_key IN ('registration_start','registration_end',
+                                                'event_date','max_registrations_per_student')")
+                 ->fetchAll(PDO::FETCH_KEY_PAIR);
+        $year = !empty($rs['event_date']) ? (int)date('Y', strtotime($rs['event_date'])) : (int)date('Y');
+        $stmt = $db->prepare("INSERT INTO messe_editions
+            (name, year, status, registration_start, registration_end, event_date, max_registrations_per_student)
+            VALUES (?, ?, 'active', ?, ?, ?, ?)");
+        $stmt->execute([
+            'Berufsmesse ' . $year, $year,
+            $rs['registration_start'] ?? null,
+            $rs['registration_end']   ?? null,
+            $rs['event_date']         ?? null,
+            (int)($rs['max_registrations_per_student'] ?? 3),
+        ]);
+        $success[] = "Erste Messe-Edition aus Einstellungen erstellt";
+    } else {
+        $success[] = "messe_editions existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 12a: " . $e->getMessage();
+}
+
+// Migration 12b: edition_id zu Datentabellen hinzufügen
+$editionTables = [
+    'registrations', 'exhibitors', 'timeslots', 'rooms',
+    'room_slot_capacities', 'attendance', 'qr_tokens',
+    'exhibitor_documents', 'exhibitor_orga_team'
+];
+foreach ($editionTables as $tbl) {
+    try {
+        $cols = $db->query("SHOW COLUMNS FROM `$tbl` LIKE 'edition_id'")->fetchAll();
+        if (empty($cols)) {
+            $db->exec("ALTER TABLE `$tbl`
+                ADD COLUMN `edition_id` INT(11) NOT NULL DEFAULT 1
+                    COMMENT 'Zugehörige Messe-Edition',
+                ADD KEY `idx_edition_id` (`edition_id`)");
+            $success[] = "edition_id zu $tbl hinzugefügt";
+        } else {
+            $success[] = "edition_id in $tbl bereits vorhanden";
+        }
+    } catch (PDOException $e) {
+        $errors[] = "Fehler Migration 12b ($tbl): " . $e->getMessage();
+    }
+}
+
+// Migration 13: announcements Tabelle erstellen
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `announcements` (
+        `id`          INT(11)      NOT NULL AUTO_INCREMENT,
+        `title`       VARCHAR(200) NOT NULL,
+        `body`        TEXT         NOT NULL,
+        `type`        ENUM('info','warning','success','error') NOT NULL DEFAULT 'info',
+        `target_role` ENUM('all','student','teacher','admin')  NOT NULL DEFAULT 'all',
+        `expires_at`  DATETIME     DEFAULT NULL,
+        `is_active`   TINYINT(1)   NOT NULL DEFAULT 1,
+        `created_by`  INT(11)      NOT NULL,
+        `created_at`  TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_active_role` (`is_active`, `target_role`),
+        KEY `idx_expires_at`  (`expires_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $success[] = "Tabelle announcements OK";
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 13 (announcements): " . $e->getMessage();
+}
+
+// Migration 14: timeslots.is_managed Spalte
+try {
+    $cols = $db->query("SHOW COLUMNS FROM `timeslots` LIKE 'is_managed'")->fetchAll();
+    if (empty($cols)) {
+        $db->exec("ALTER TABLE `timeslots`
+            ADD COLUMN `is_managed` TINYINT(1) NOT NULL DEFAULT 0
+                COMMENT '1 = fester Zuteilungs-Slot, 0 = freie Wahl'");
+        $db->exec("UPDATE `timeslots` SET is_managed = 1 WHERE slot_number IN (1, 3, 5)");
+        $success[] = "is_managed zu timeslots hinzugefügt, Slots 1/3/5 markiert";
+    } else {
+        $success[] = "is_managed in timeslots bereits vorhanden";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 14 (timeslots.is_managed): " . $e->getMessage();
+}
+
+// Migration 15: login_attempts Tabelle für Rate Limiting
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `login_attempts` (
+        `id`           INT(11)      NOT NULL AUTO_INCREMENT,
+        `username`     VARCHAR(100) NOT NULL,
+        `ip_address`   VARCHAR(45)  NOT NULL,
+        `attempted_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_username`  (`username`),
+        KEY `idx_ip`        (`ip_address`),
+        KEY `idx_attempted` (`attempted_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+    $success[] = "Tabelle login_attempts OK";
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 15 (login_attempts): " . $e->getMessage();
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="de">
