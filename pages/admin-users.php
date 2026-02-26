@@ -46,14 +46,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     $role = sanitize(trim($row[4]));
                     $class = sanitize(trim($row[5] ?? ''));
                     
-                    // Generiere Passwort wenn nicht vorhanden oder leer
-                    if (isset($row[6]) && !empty(trim($row[6]))) {
+                    $passwordProvided = isset($row[6]) && !empty(trim($row[6]));
+
+                    if ($passwordProvided) {
                         $password = trim($row[6]);
-                        $generatePassword = false;
+                        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
                     } else {
-                        // Generiere sicheres Passwort
-                        $password = bin2hex(random_bytes(6)); // 12 Zeichen hexadezimal
-                        $generatePassword = true;
+                        $password = null;
+                        $hashedPassword = null; // Kein Passwort → kein Login möglich
                     }
                     
                     // Validierungen
@@ -94,9 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     }
                     
                     // Benutzer erstellen
-                    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-                    // Force password change for all admin-created/imported accounts
-                    $force_password_change = 1;
+                    $force_password_change = $passwordProvided ? 1 : 0;
                     $csvUserEditionId = ($role === 'admin') ? null : $activeEditionId;
                     
                     try {
@@ -104,18 +102,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                                               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
                         if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change, $csvUserEditionId])) {
                             $importResult['imported']++;
-                            // Speichere generiertes Passwort für Export
-                            if ($generatePassword) {
-                                if (!isset($importResult['generated_passwords'])) {
-                                    $importResult['generated_passwords'] = [];
-                                }
-                                $importResult['generated_passwords'][] = [
-                                    'username' => $username,
-                                    'firstname' => $firstname,
-                                    'lastname' => $lastname,
-                                    'password' => $password
-                                ];
-                            }
+                            // Keine generated_passwords mehr hier speichern – das macht der neue Bulk-Button
                         }
                     } catch (PDOException $e) {
                         $importResult['errors'][] = "Zeile $rowNumber: Datenbankfehler - " . $e->getMessage();
@@ -386,6 +373,24 @@ $stats['teachers'] = $stmt->fetch()['count'];
                 <i class="fas fa-file-upload"></i>
                 CSV Import
             </button>
+            <?php
+            $stmtNoPass = $db->prepare(
+                "SELECT COUNT(*) FROM users WHERE (password IS NULL OR password = '') AND edition_id = ?"
+            );
+            $stmtNoPass->execute([$activeEditionId]);
+            $countNoPass = $stmtNoPass->fetchColumn();
+            ?>
+            <?php if ($countNoPass > 0): ?>
+            <a href="/api/generate-passwords-pdf.php" 
+               class="px-5 py-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium flex items-center gap-2"
+               title="Generiert Passwörter für <?php echo $countNoPass; ?> Nutzer ohne Passwort und erstellt ein PDF">
+                <i class="fas fa-key mr-2"></i>
+                Passwörter generieren &amp; PDF
+                <span class="ml-1 bg-orange-700 text-white text-xs px-2 py-0.5 rounded-full">
+                    <?php echo $countNoPass; ?>
+                </span>
+            </a>
+            <?php endif; ?>
             <?php endif; ?>
             <?php if (isAdmin() || hasPermission('benutzer_erstellen')): ?>
             <button onclick="openCreateUserModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
@@ -571,7 +576,9 @@ $stats['teachers'] = $stmt->fetch()['count'];
                     Rollen: <code class="bg-white px-2 py-1 rounded">student</code>, <code class="bg-white px-2 py-1 rounded">teacher</code>, <code class="bg-white px-2 py-1 rounded">orga</code>, <code class="bg-white px-2 py-1 rounded">admin</code>
                 </p>
                 <p class="text-sm text-blue-700 mt-2">
-                    Wenn kein Passwort angegeben wird, wird ein automatisches generiert und zwingt eine Passwortänderung beim Login.
+                    Wenn kein Passwort angegeben wird, wird der Nutzer <strong>ohne Passwort</strong> angelegt 
+                    und kann sich noch nicht anmelden. Verwende den Button 
+                    <em>"Passwörter generieren &amp; PDF"</em>, um Passwörter in einem Schritt zu erstellen.
                 </p>
                 <p class="text-sm text-blue-700 mt-3">
                     <a href="../../example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
