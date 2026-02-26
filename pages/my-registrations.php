@@ -8,14 +8,15 @@ $stmt = $db->prepare("
     FROM registrations r 
     JOIN exhibitors e ON r.exhibitor_id = e.id 
     LEFT JOIN timeslots t ON r.timeslot_id = t.id 
-    WHERE r.user_id = ?
+    WHERE r.user_id = ? AND r.edition_id = ? AND e.edition_id = ?
     ORDER BY t.slot_number ASC
 ");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$_SESSION['user_id'], $activeEditionId, $activeEditionId]);
 $myRegistrations = $stmt->fetchAll();
 
 // Handle Abmeldung
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
+    requireCsrf();
     $registrationId = intval($_POST['registration_id']);
     
     // Prüfen ob die Registrierung dem User gehört
@@ -37,10 +38,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                     FROM registrations r 
                     JOIN exhibitors e ON r.exhibitor_id = e.id 
                     LEFT JOIN timeslots t ON r.timeslot_id = t.id 
-                    WHERE r.user_id = ?
+                    WHERE r.user_id = ? AND r.edition_id = ? AND e.edition_id = ?
                     ORDER BY t.slot_number ASC
                 ");
-                $stmt->execute([$_SESSION['user_id']]);
+                $stmt->execute([$_SESSION['user_id'], $activeEditionId, $activeEditionId]);
                 $myRegistrations = $stmt->fetchAll();
             } else {
                 $message = ['type' => 'error', 'text' => 'Fehler beim Abmelden'];
@@ -172,6 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                             
                             <?php if ($reg['registration_type'] === 'manual' && getRegistrationStatus() === 'open'): ?>
                             <form method="POST" class="inline" onsubmit="return confirm('Möchtest Du dich wirklich abmelden?')">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="registration_id" value="<?php echo $reg['id']; ?>">
                                 <button type="submit" 
                                         name="unregister"
@@ -240,6 +242,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
                             
                             <?php if ($reg['registration_type'] === 'manual' && getRegistrationStatus() === 'open'): ?>
                             <form method="POST" class="inline" onsubmit="return confirm('Möchtest Du dich wirklich abmelden?')">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="registration_id" value="<?php echo $reg['id']; ?>">
                                 <button type="submit" 
                                         name="unregister"

@@ -11,6 +11,7 @@ $db = getDB();
 
 // Handle Permission Changes (mit Gruppen-Support)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userId = intval($_POST['user_id']);
     $permissions = $_POST['permissions'] ?? [];
@@ -57,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
 
 // Handle Bulk Permission Changes (mehrere Benutzer gleichzeitig)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_save_permissions'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userIds    = array_map('intval', $_POST['user_ids'] ?? []);
     $permissions = $_POST['permissions'] ?? [];
@@ -93,6 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_save_permissions
 
 // Handle Apply Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userId = intval($_POST['user_id']);
     $groupId = intval($_POST['group_id']);
@@ -112,6 +115,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
 
 // Handle Create Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
     $groupName = trim($_POST['group_name'] ?? '');
     $groupDescription = trim($_POST['group_description'] ?? '');
@@ -141,6 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
 
 // Handle Edit Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_group'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
     $groupId = intval($_POST['edit_group_id']);
     $groupName = trim($_POST['edit_group_name'] ?? '');
@@ -179,6 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_group'])) {
 
 // Handle Delete Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
     $groupId = intval($_POST['group_id']);
     try {
@@ -477,6 +483,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                                 <i class="fas fa-edit"></i>
                             </button>
                             <form method="POST" class="inline" onsubmit="return confirm('Gruppe wirklich löschen?')">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="group_id" value="<?php echo $group['id']; ?>">
                                 <button type="submit" name="delete_group" value="1" class="text-red-400 hover:text-red-600 transition text-sm">
                                     <i class="fas fa-trash"></i>
@@ -542,6 +549,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-6" id="permissionModalForm">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="modal_user_id">
 
             <!-- Berechtigungsgruppen Sektion -->
@@ -651,6 +659,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
         </div>
 
         <form method="POST" class="p-6 space-y-6" id="bulkPermissionForm">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div id="bulkUserIdsContainer"></div>
 
             <div class="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
@@ -926,6 +935,8 @@ function doAutoSave() {
         savedGroupIds.push(parseInt(cb.value, 10));
     });
 
+    formData.append('csrf_token', '<?php echo generateCsrfToken(); ?>');
+
     const indicator = document.getElementById('autoSaveIndicator');
     if (indicator) {
         indicator.innerHTML = '<i class="fas fa-spinner fa-spin mr-1"></i>Speichern...';
@@ -1124,6 +1135,7 @@ setTimeout(function() {
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div>
                 <label class="block text-sm font-semibold text-gray-700 mb-1">Gruppenname</label>
                 <input type="text" name="group_name" required
@@ -1185,6 +1197,7 @@ setTimeout(function() {
         </div>
 
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="edit_group_id" id="edit_group_id">
 
             <div>

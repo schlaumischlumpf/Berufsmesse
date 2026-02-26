@@ -12,6 +12,7 @@ $db = getDB();
 // Handle CSV Import
 $csvImportResult = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('benutzer_importieren')) die('Keine Berechtigung');
     if (!empty($_FILES['csv_file']['name'])) {
         $file = $_FILES['csv_file'];
@@ -45,14 +46,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     $role = sanitize(trim($row[4]));
                     $class = sanitize(trim($row[5] ?? ''));
                     
-                    // Generiere Passwort wenn nicht vorhanden oder leer
-                    if (isset($row[6]) && !empty(trim($row[6]))) {
+                    $passwordProvided = isset($row[6]) && !empty(trim($row[6]));
+
+                    if ($passwordProvided) {
                         $password = trim($row[6]);
-                        $generatePassword = false;
+                        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
                     } else {
-                        // Generiere sicheres Passwort
-                        $password = bin2hex(random_bytes(6)); // 12 Zeichen hexadezimal
-                        $generatePassword = true;
+                        $password = null;
+                        $hashedPassword = null; // Kein Passwort → kein Login möglich
                     }
                     
                     // Validierungen
@@ -62,9 +63,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                         continue;
                     }
                     
-                    // Prüfe ob Username bereits existiert
-                    $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
-                    $stmt->execute([$username]);
+                    // Prüfe ob Username in dieser Edition bereits existiert
+                    $csvUserEditionId = ($role === 'admin') ? null : $activeEditionId;
+                    if ($csvUserEditionId !== null) {
+                        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id = ?");
+                        $stmt->execute([$username, $csvUserEditionId]);
+                    } else {
+                        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id IS NULL");
+                        $stmt->execute([$username]);
+                    }
                     if ($stmt->fetch()) {
                         $importResult['skipped']++;
                         $rowNumber++;
@@ -87,27 +94,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     }
                     
                     // Benutzer erstellen
-                    $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-                    // Force password change for all admin-created/imported accounts
-                    $force_password_change = 1;
+                    $force_password_change = $passwordProvided ? 1 : 0;
+                    $csvUserEditionId = ($role === 'admin') ? null : $activeEditionId;
                     
                     try {
-                        $stmt = $db->prepare("INSERT INTO users (firstname, lastname, username, email, password, role, class, must_change_password) 
-                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-                        if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change])) {
+                        $stmt = $db->prepare("INSERT INTO users (firstname, lastname, username, email, password, role, class, must_change_password, edition_id) 
+                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change, $csvUserEditionId])) {
                             $importResult['imported']++;
-                            // Speichere generiertes Passwort für Export
-                            if ($generatePassword) {
-                                if (!isset($importResult['generated_passwords'])) {
-                                    $importResult['generated_passwords'] = [];
-                                }
-                                $importResult['generated_passwords'][] = [
-                                    'username' => $username,
-                                    'firstname' => $firstname,
-                                    'lastname' => $lastname,
-                                    'password' => $password
-                                ];
-                            }
+                            // Keine generated_passwords mehr hier speichern – das macht der neue Bulk-Button
                         }
                     } catch (PDOException $e) {
                         $importResult['errors'][] = "Zeile $rowNumber: Datenbankfehler - " . $e->getMessage();
@@ -124,6 +119,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                 if ($importResult['imported'] > 0) {
                     logAuditAction('csv_import', $importResult['imported'] . " Benutzer importiert, " . $importResult['skipped'] . " übersprungen");
                     $message = ['type' => 'success', 'text' => $importResult['imported'] . ' Benutzer importiert, ' . $importResult['skipped'] . ' übersprungen'];
+                } elseif (!empty($importResult['errors'])) {
+                    $message = ['type' => 'error', 'text' => 'Import fehlgeschlagen: ' . htmlspecialchars($importResult['errors'][0], ENT_QUOTES, 'UTF-8')];
+                } elseif ($importResult['skipped'] > 0) {
+                    $message = ['type' => 'warning', 'text' => 'Alle ' . $importResult['skipped'] . ' Benutzer wurden übersprungen (bereits vorhanden).'];
                 }
             }
         } else {
@@ -136,6 +135,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
 
 // Handle User Actions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     if (isset($_POST['create_user'])) {
         if (!isAdmin() && !hasPermission('benutzer_erstellen')) die('Keine Berechtigung');
         // Neuen Benutzer erstellen
@@ -151,9 +151,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($role === 'admin' && !isAdmin()) {
             $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts erstellen'];
         } else {
-            // Prüfen ob Username bereits existiert
-            $stmt = $db->prepare("SELECT id FROM users WHERE username = ?");
-            $stmt->execute([$username]);
+            // Prüfen ob Username in dieser Edition bereits existiert
+            $userEditionId = ($role === 'admin') ? null : $activeEditionId;
+            if ($userEditionId !== null) {
+                $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id = ?");
+                $stmt->execute([$username, $userEditionId]);
+            } else {
+                $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id IS NULL");
+                $stmt->execute([$username]);
+            }
             if ($stmt->fetch()) {
                 $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
             } else {
@@ -165,11 +171,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
+                $userEditionId = ($role === 'admin') ? null : $activeEditionId;
                 // Force password change on first login for admin-created accounts
-                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password) 
-                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password, edition_id) 
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 try {
-                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1])) {
+                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1, $userEditionId])) {
                         logAuditAction('benutzer_erstellt', "Benutzer '$username' ($firstname $lastname, Rolle: $role) erstellt");
                         $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
                     } else {
@@ -245,10 +252,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($newRole === 'admin' && !isAdmin()) {
                     $message = ['type' => 'error', 'text' => 'Nur Administratoren können die Admin-Rolle vergeben'];
                 } else {
-                    // Prüfen ob neuer Benutzername schon vergeben ist (wenn geändert)
+                    // Prüfen ob neuer Benutzername in der gleichen Edition schon vergeben ist (wenn geändert)
                     if ($newUsername !== $targetUser['username']) {
-                        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND id != ?");
-                        $stmt->execute([$newUsername, $userId]);
+                        $editEditionId = ($newRole === 'admin') ? null : $activeEditionId;
+                        if ($editEditionId !== null) {
+                            $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id = ? AND id != ?");
+                            $stmt->execute([$newUsername, $editEditionId, $userId]);
+                        } else {
+                            $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND edition_id IS NULL AND id != ?");
+                            $stmt->execute([$newUsername, $userId]);
+                        }
                         if ($stmt->fetch()) {
                             $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
                         }
@@ -307,23 +320,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-// Alle Benutzer laden
-$stmt = $db->query("
+// Alle Benutzer laden (Admins + Benutzer der aktiven Edition)
+$stmt = $db->prepare("
     SELECT u.*, COUNT(DISTINCT r.id) as registration_count
     FROM users u
     LEFT JOIN registrations r ON u.id = r.user_id
+    WHERE u.role = 'admin' OR u.edition_id = ?
     GROUP BY u.id
     ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
 ");
+$stmt->execute([$activeEditionId]);
 $users = $stmt->fetchAll();
 
-// Statistiken
+// Statistiken (für aktive Edition)
 $stats = [];
 $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
 $stats['admins'] = $stmt->fetch()['count'];
-$stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['students'] = $stmt->fetch()['count'];
-$stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'teacher'");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['teachers'] = $stmt->fetch()['count'];
 ?>
 
@@ -335,6 +352,13 @@ $stats['teachers'] = $stmt->fetch()['count'];
                 <div class="flex items-center">
                     <i class="fas fa-check-circle text-emerald-500 mr-3"></i>
                     <p class="text-emerald-700"><?php echo $message['text']; ?></p>
+                </div>
+            </div>
+        <?php elseif ($message['type'] === 'warning'): ?>
+            <div class="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-triangle text-yellow-500 mr-3"></i>
+                    <p class="text-yellow-700"><?php echo $message['text']; ?></p>
                 </div>
             </div>
         <?php else: ?>
@@ -360,6 +384,24 @@ $stats['teachers'] = $stmt->fetch()['count'];
                 <i class="fas fa-file-upload"></i>
                 CSV Import
             </button>
+            <?php
+            $stmtNoPass = $db->prepare(
+                "SELECT COUNT(*) FROM users WHERE (password IS NULL OR password = '') AND edition_id = ?"
+            );
+            $stmtNoPass->execute([$activeEditionId]);
+            $countNoPass = $stmtNoPass->fetchColumn();
+            ?>
+            <?php if ($countNoPass > 0): ?>
+            <a href="/api/generate-passwords-pdf.php" 
+               class="px-5 py-2.5 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition font-medium flex items-center gap-2"
+               title="Generiert Passwörter für <?php echo $countNoPass; ?> Nutzer ohne Passwort und erstellt ein PDF">
+                <i class="fas fa-key mr-2"></i>
+                Passwörter generieren &amp; PDF
+                <span class="ml-1 bg-orange-700 text-white text-xs px-2 py-0.5 rounded-full">
+                    <?php echo $countNoPass; ?>
+                </span>
+            </a>
+            <?php endif; ?>
             <?php endif; ?>
             <?php if (isAdmin() || hasPermission('benutzer_erstellen')): ?>
             <button onclick="openCreateUserModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
@@ -535,19 +577,22 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" enctype="multipart/form-data" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p class="text-sm text-blue-900">
                     <i class="fas fa-info-circle mr-2"></i>
-                    <strong>CSV-Format:</strong> firstname, lastname, username, email, role, class, password (optional)
+                    <strong>CSV-Format (Semikolon-getrennt):</strong> <code class="bg-white px-1 rounded">firstname;lastname;username;email;role;class;password</code> (password optional)
                 </p>
                 <p class="text-sm text-blue-700 mt-2">
                     Rollen: <code class="bg-white px-2 py-1 rounded">student</code>, <code class="bg-white px-2 py-1 rounded">teacher</code>, <code class="bg-white px-2 py-1 rounded">orga</code>, <code class="bg-white px-2 py-1 rounded">admin</code>
                 </p>
                 <p class="text-sm text-blue-700 mt-2">
-                    Wenn kein Passwort angegeben wird, wird ein automatisches generiert und zwingt eine Passwortänderung beim Login.
+                    Wenn kein Passwort angegeben wird, wird der Nutzer <strong>ohne Passwort</strong> angelegt 
+                    und kann sich noch nicht anmelden. Verwende den Button 
+                    <em>"Passwörter generieren &amp; PDF"</em>, um Passwörter in einem Schritt zu erstellen.
                 </p>
                 <p class="text-sm text-blue-700 mt-3">
-                    <a href="../../example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
+                    <a href="<?php echo BASE_URL; ?>example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
                         <i class="fas fa-download mr-1"></i>Beispiel-CSV herunterladen
                     </a>
                 </p>
@@ -629,6 +674,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Vorname *</label>
@@ -698,6 +744,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="resetUserId">
             
             <p class="text-gray-700">
@@ -730,6 +777,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
         
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="deleteUserId">
             
             <div class="bg-red-50 border-l-4 border-red-500 p-4 rounded">
@@ -762,6 +810,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
         </div>
 
         <form method="POST" class="p-6 space-y-4">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="user_id" id="editUserId">
 
             <div class="grid grid-cols-2 gap-4">
@@ -895,6 +944,11 @@ function closeImportCsvModal() {
     document.getElementById('importCsvModal').classList.remove('flex');
     document.getElementById('csvFile').value = '';
 }
+
+<?php if ($csvImportResult): ?>
+// Auto-open modal to show import results
+document.addEventListener('DOMContentLoaded', function() { openImportCsvModal(); });
+<?php endif; ?>
 
 function downloadPasswordsFile(passwordsData) {
     const passwords = <?php echo json_encode($csvImportResult['generated_passwords'] ?? []); ?>;

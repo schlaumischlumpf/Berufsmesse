@@ -27,6 +27,7 @@ $error = '';
 $success = '';
 
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        requireCsrf();
         $newPassword = $_POST['new_password'] ?? '';
         $confirmPassword = $_POST['confirm_password'] ?? '';
         
@@ -259,6 +260,7 @@ $success = '';
             
             <?php if (!$success): ?>
                 <form method="POST">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <div class="form-group">
                         <label for="new_password">Neues Passwort</label>
                         <input 

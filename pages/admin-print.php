@@ -30,9 +30,10 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN timeslots t ON reg.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
         WHERE u.role = 'student'
+        AND reg.edition_id = ? AND e.edition_id = ?
     ";
     
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     if ($filterClass) {
         $query .= " AND u.class = ?";
         $params[] = $filterClass;
@@ -56,11 +57,12 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN exhibitors e ON reg.exhibitor_id = e.id
         JOIN timeslots t ON reg.timeslot_id = t.id
         JOIN rooms r ON e.room_id = r.id
+        WHERE reg.edition_id = ? AND e.edition_id = ?
     ";
 
-    $params = [];
+    $params = [$activeEditionId, $activeEditionId];
     if ($filterRoom) {
-        $query .= " WHERE r.id = ?";
+        $query .= " AND r.id = ?";
         $params[] = intval($filterRoom);
     }
 
@@ -71,17 +73,19 @@ if ($printType === 'all' || $printType === 'class') {
     $registrations = $stmt->fetchAll();
 } elseif ($printType === 'room-assignments') {
     // Raumzuteilungs-Übersicht (Schulleitung)
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT r.room_number, e.name as exhibitor_name, e.short_description
         FROM exhibitors e
         JOIN rooms r ON e.room_id = r.id
         WHERE e.active = 1
+        AND e.edition_id = ?
         ORDER BY r.room_number, e.name
     ");
+    $stmt->execute([$activeEditionId]);
     $roomAssignments = $stmt->fetchAll();
 } elseif ($printType === 'absent') {
     // Fehlende Schüler: angemeldet aber nicht gescannt (alle Slots)
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT u.firstname, u.lastname, u.class, e.name as exhibitor_name,
                t.slot_name, t.slot_number, r.room_number
         FROM registrations reg
@@ -89,10 +93,12 @@ if ($printType === 'all' || $printType === 'class') {
         JOIN exhibitors e ON reg.exhibitor_id = e.id
         JOIN timeslots t ON reg.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
-        LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id
+        LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id AND a.edition_id = ?
         WHERE reg.timeslot_id IS NOT NULL AND a.id IS NULL AND u.role = 'student'
+        AND reg.edition_id = ? AND e.edition_id = ?
         ORDER BY t.slot_number, u.class, u.lastname, u.firstname
     ");
+    $stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId]);
     $absentStudents = $stmt->fetchAll();
 }
 
@@ -101,14 +107,17 @@ $stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND 
 $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // Alle Räume für Filter
-$stmt = $db->query("SELECT id, room_number FROM rooms ORDER BY room_number");
+$stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE edition_id = ? ORDER BY room_number");
+$stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
 // Statistiken
-$stmt = $db->query("SELECT COUNT(DISTINCT user_id) as students FROM registrations");
+$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as students FROM registrations WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $totalStudents = $stmt->fetch()['students'];
 
-$stmt = $db->query("SELECT COUNT(*) as total FROM registrations");
+$stmt = $db->prepare("SELECT COUNT(*) as total FROM registrations WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $totalRegistrations = $stmt->fetch()['total'];
 ?>
 
@@ -229,6 +238,36 @@ $totalRegistrations = $stmt->fetch()['total'];
             </div>
         </div>
     </div>
+    
+    <!-- Export Section -->
+    <?php if (isAdmin() || hasPermission('berichte_sehen')): ?>
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
+        <h2 class="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+            <i class="fas fa-download text-gray-400"></i> Datenexport
+        </h2>
+        <p class="text-xs text-gray-500 mb-4">
+            Exportiert die aktuellen Daten. Klassenfilter wird automatisch übernommen.
+        </p>
+        <div class="flex flex-wrap gap-3">
+            <a href="<?php echo BASE_URL; ?>api/export-registrations.php?format=csv&type=registrations&class=<?php echo urlencode($filterClass ?? ''); ?>"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-blue-50 border border-blue-200 text-blue-700 font-medium text-sm rounded-lg hover:bg-blue-100 transition">
+                <i class="fas fa-file-csv"></i> Anmeldungen (CSV)
+            </a>
+            <a href="<?php echo BASE_URL; ?>api/export-registrations.php?format=xlsx&type=registrations&class=<?php echo urlencode($filterClass ?? ''); ?>"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-green-50 border border-green-200 text-green-700 font-medium text-sm rounded-lg hover:bg-green-100 transition">
+                <i class="fas fa-file-excel"></i> Anmeldungen (Excel)
+            </a>
+            <a href="<?php echo BASE_URL; ?>api/export-registrations.php?format=csv&type=attendance&class=<?php echo urlencode($filterClass ?? ''); ?>"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-purple-50 border border-purple-200 text-purple-700 font-medium text-sm rounded-lg hover:bg-purple-100 transition">
+                <i class="fas fa-user-check"></i> Check-ins (CSV)
+            </a>
+            <a href="<?php echo BASE_URL; ?>api/export-registrations.php?format=csv&type=unregistered"
+               class="inline-flex items-center gap-2 px-4 py-2.5 bg-red-50 border border-red-200 text-red-700 font-medium text-sm rounded-lg hover:bg-red-100 transition">
+                <i class="fas fa-user-times"></i> Ohne Anmeldung (CSV)
+            </a>
+        </div>
+    </div>
+    <?php endif; ?>
     
     <!-- Preview Section -->
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">

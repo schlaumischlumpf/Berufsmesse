@@ -7,20 +7,22 @@ if (!isAdmin() && !hasPermission('raeume_sehen')) {
 }
 
 // Alle Räume abrufen  
-$stmt = $db->query("SELECT * FROM rooms ORDER BY room_number");
+$stmt = $db->prepare("SELECT * FROM rooms WHERE edition_id = ? ORDER BY room_number");
+$stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
 // Alle Aussteller abrufen
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT 
         e.*,
         r.room_number,
         r.equipment as room_equipment
     FROM exhibitors e
     LEFT JOIN rooms r ON e.room_id = r.id
-    WHERE e.active = 1
+    WHERE e.active = 1 AND e.edition_id = ?
     ORDER BY e.name
 ");
+$stmt->execute([$activeEditionId]);
 $exhibitors = $stmt->fetchAll();
 
 // Aussteller nach Zuordnung gruppieren
@@ -536,7 +538,8 @@ document.getElementById('addRoomForm').addEventListener('submit', function(e) {
     fetch('api/add-room.php', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '<?php echo generateCsrfToken(); ?>'
         },
         body: JSON.stringify(formData)
     })
@@ -625,7 +628,8 @@ function assignExhibitorToRoom(exhibitorId, roomId, exhibitorName) {
     fetch('api/assign-room.php', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '<?php echo generateCsrfToken(); ?>'
         },
         body: JSON.stringify({
             exhibitor_id: exhibitorId,
@@ -658,7 +662,8 @@ function removeAssignment(exhibitorId) {
     fetch('api/assign-room.php', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '<?php echo generateCsrfToken(); ?>'
         },
         body: JSON.stringify({
             exhibitor_id: exhibitorId,
@@ -687,7 +692,10 @@ function clearAllAssignments() {
     }
     
     fetch('api/clear-room-assignments.php', {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+            'X-CSRF-Token': '<?php echo generateCsrfToken(); ?>'
+        }
     })
     .then(response => response.json())
     .then(data => {
@@ -713,7 +721,8 @@ function deleteRoom(roomId, roomNumber) {
     fetch('api/delete-room.php', {
         method: 'POST',
         headers: {
-            'Content-Type': 'application/json'
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '<?php echo generateCsrfToken(); ?>'
         },
         body: JSON.stringify({
             room_id: roomId
@@ -795,7 +804,10 @@ document.getElementById('editRoomForm').addEventListener('submit', function(e) {
 
     fetch('api/edit-room.php', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': '<?php echo generateCsrfToken(); ?>'
+        },
         body: JSON.stringify(formData)
     })
     .then(r => r.json())
