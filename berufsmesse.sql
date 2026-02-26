@@ -390,7 +390,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id` int(11) NOT NULL,
   `username` varchar(100) NOT NULL,
   `email` varchar(255) DEFAULT NULL,
-  `password` varchar(255) NOT NULL,
+  `password` varchar(255) DEFAULT NULL,
   `firstname` varchar(100) NOT NULL,
   `lastname` varchar(100) NOT NULL,
   `class` varchar(50) DEFAULT NULL,

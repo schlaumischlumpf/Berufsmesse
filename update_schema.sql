@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `username` varchar(100) NOT NULL,
   `email` varchar(255) DEFAULT NULL,
-  `password` varchar(255) NOT NULL,
+  `password` varchar(255) DEFAULT NULL,
   `firstname` varchar(100) NOT NULL,
   `lastname` varchar(100) NOT NULL,
   `class` varchar(50) DEFAULT NULL,
@@ -506,6 +506,14 @@ SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='timeslots' AND COLUMN_NAME='is_break');
 SET @s = IF(@col_exists = 0,
     "ALTER TABLE `timeslots` ADD COLUMN `is_break` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = Pause, 0 = normaler Slot'",
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Migration 18: password-Spalte darf NULL sein (für passwortlose Importe)
+SET @pwd_nullable = (SELECT IS_NULLABLE FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='password');
+SET @s = IF(@pwd_nullable = 'NO',
+    'ALTER TABLE `users` MODIFY COLUMN `password` varchar(255) DEFAULT NULL',
     'SELECT 1');
 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 

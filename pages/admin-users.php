@@ -119,6 +119,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                 if ($importResult['imported'] > 0) {
                     logAuditAction('csv_import', $importResult['imported'] . " Benutzer importiert, " . $importResult['skipped'] . " übersprungen");
                     $message = ['type' => 'success', 'text' => $importResult['imported'] . ' Benutzer importiert, ' . $importResult['skipped'] . ' übersprungen'];
+                } elseif (!empty($importResult['errors'])) {
+                    $message = ['type' => 'error', 'text' => 'Import fehlgeschlagen: ' . htmlspecialchars($importResult['errors'][0], ENT_QUOTES, 'UTF-8')];
+                } elseif ($importResult['skipped'] > 0) {
+                    $message = ['type' => 'warning', 'text' => 'Alle ' . $importResult['skipped'] . ' Benutzer wurden übersprungen (bereits vorhanden).'];
                 }
             }
         } else {
@@ -350,6 +354,13 @@ $stats['teachers'] = $stmt->fetch()['count'];
                     <p class="text-emerald-700"><?php echo $message['text']; ?></p>
                 </div>
             </div>
+        <?php elseif ($message['type'] === 'warning'): ?>
+            <div class="bg-yellow-50 border border-yellow-200 p-4 rounded-lg">
+                <div class="flex items-center">
+                    <i class="fas fa-exclamation-triangle text-yellow-500 mr-3"></i>
+                    <p class="text-yellow-700"><?php echo $message['text']; ?></p>
+                </div>
+            </div>
         <?php else: ?>
             <div class="bg-red-50 border border-red-200 p-4 rounded-lg">
                 <div class="flex items-center">
@@ -570,7 +581,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p class="text-sm text-blue-900">
                     <i class="fas fa-info-circle mr-2"></i>
-                    <strong>CSV-Format:</strong> firstname, lastname, username, email, role, class, password (optional)
+                    <strong>CSV-Format (Semikolon-getrennt):</strong> <code class="bg-white px-1 rounded">firstname;lastname;username;email;role;class;password</code> (password optional)
                 </p>
                 <p class="text-sm text-blue-700 mt-2">
                     Rollen: <code class="bg-white px-2 py-1 rounded">student</code>, <code class="bg-white px-2 py-1 rounded">teacher</code>, <code class="bg-white px-2 py-1 rounded">orga</code>, <code class="bg-white px-2 py-1 rounded">admin</code>
@@ -581,7 +592,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
                     <em>"Passwörter generieren &amp; PDF"</em>, um Passwörter in einem Schritt zu erstellen.
                 </p>
                 <p class="text-sm text-blue-700 mt-3">
-                    <a href="../../example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
+                    <a href="<?php echo BASE_URL; ?>example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
                         <i class="fas fa-download mr-1"></i>Beispiel-CSV herunterladen
                     </a>
                 </p>
@@ -933,6 +944,11 @@ function closeImportCsvModal() {
     document.getElementById('importCsvModal').classList.remove('flex');
     document.getElementById('csvFile').value = '';
 }
+
+<?php if ($csvImportResult): ?>
+// Auto-open modal to show import results
+document.addEventListener('DOMContentLoaded', function() { openImportCsvModal(); });
+<?php endif; ?>
 
 function downloadPasswordsFile(passwordsData) {
     const passwords = <?php echo json_encode($csvImportResult['generated_passwords'] ?? []); ?>;
