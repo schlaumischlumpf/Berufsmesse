@@ -27,15 +27,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                 ];
                 
                 // Erste Zeile überspringen (Header)
-                fgetcsv($handle, 0, ',');
+                fgetcsv($handle, 0, ';');
 
                 $rowNumber = 2;
-                while (($row = fgetcsv($handle, 0, ',')) !== false) {
-                    // Leere Zeilen überspringen
-                    if (count($row) === 1 && ($row[0] === null || trim($row[0]) === '')) {
-                        $rowNumber++;
-                        continue;
-                    }
+                while (($row = fgetcsv($handle, 0, ';')) !== false) {
                     // Spalten: firstname, lastname, username, email, role, class, password
                     if (count($row) < 6) {
                         $importResult['errors'][] = "Zeile $rowNumber: Zu wenige Spalten";
@@ -541,7 +536,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p class="text-sm text-blue-900">
                     <i class="fas fa-info-circle mr-2"></i>
-                    <strong>CSV-Format (Komma als Trennzeichen):</strong> firstname,lastname,username,email,role,class,password (optional)
+                    <strong>CSV-Format:</strong> firstname, lastname, username, email, role, class, password (optional)
                 </p>
                 <p class="text-sm text-blue-700 mt-2">
                     Rollen: <code class="bg-white px-2 py-1 rounded">student</code>, <code class="bg-white px-2 py-1 rounded">teacher</code>, <code class="bg-white px-2 py-1 rounded">orga</code>, <code class="bg-white px-2 py-1 rounded">admin</code>
@@ -549,11 +544,8 @@ $stats['teachers'] = $stmt->fetch()['count'];
                 <p class="text-sm text-blue-700 mt-2">
                     Wenn kein Passwort angegeben wird, wird ein automatisches generiert und zwingt eine Passwortänderung beim Login.
                 </p>
-                <p class="text-sm text-blue-700 mt-2">
-                    Beispielzeile: <code class="bg-white px-2 py-1 rounded">Max,Mustermann,mmustermann,max@schule.de,student,10A,</code>
-                </p>
                 <p class="text-sm text-blue-700 mt-3">
-                    <a href="<?php echo BASE_URL; ?>example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
+                    <a href="../../example-users-import.csv" download class="text-blue-600 hover:text-blue-800 font-semibold">
                         <i class="fas fa-download mr-1"></i>Beispiel-CSV herunterladen
                     </a>
                 </p>
