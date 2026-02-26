@@ -153,6 +153,68 @@ if (!empty($token)) {
 ?>
 
 <div class="max-w-lg mx-auto space-y-6">
+<style>
+/* QR Check-In – Mobile Enhancements */
+@keyframes checkinFlash {
+    0%   { opacity: 1; }
+    20%  { opacity: 0.7; }
+    40%  { opacity: 1; }
+    60%  { opacity: 0.85; }
+    100% { opacity: 1; }
+}
+.checkin-flash {
+    animation: checkinFlash 0.6s ease-out;
+}
+@media (max-width: 768px) {
+    /* Scan result: full viewport width flash */
+    .checkin-result {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        border-radius: 0 !important;
+        animation: checkinFlash 0.5s ease-out;
+    }
+    .checkin-result .result-inner {
+        background: white;
+        border-radius: 1.25rem;
+        padding: 2rem;
+        max-width: 360px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+    }
+    .checkin-result .close-btn {
+        display: block !important;
+        margin-top: 1.25rem;
+        width: 100%;
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        background: rgba(0,0,0,0.1);
+        font-weight: 600;
+        font-size: 0.9375rem;
+        cursor: pointer;
+        border: none;
+    }
+    /* Manual input enlarged */
+    input[name="token"] {
+        font-size: 1.25rem !important;
+        min-height: 56px !important;
+        text-align: center;
+        letter-spacing: 0.1em;
+    }
+    /* Submit button full width */
+    form button[type="submit"] {
+        width: 100%;
+        min-height: 52px;
+        font-size: 1rem;
+    }
+}
+</style>
     <!-- Header -->
     <div class="text-center">
         <div class="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center shadow-lg mb-4" 
@@ -174,7 +236,8 @@ if (!empty($token)) {
         $c = $colors[$checkinResult['type']] ?? $colors['info'];
         ?>
         
-        <div class="bg-<?php echo $c['bg']; ?>-50 border border-<?php echo $c['bg']; ?>-200 p-6 rounded-xl text-center">
+        <div class="checkin-result bg-<?php echo $c['bg']; ?>-50 border border-<?php echo $c['bg']; ?>-200 p-6 rounded-xl text-center">
+            <div class="result-inner">
             <div class="w-16 h-16 mx-auto bg-<?php echo $c['bg']; ?>-100 rounded-full flex items-center justify-center mb-4">
                 <i class="fas fa-<?php echo $c['icon']; ?> text-<?php echo $c['bg']; ?>-500 text-3xl"></i>
             </div>
@@ -194,6 +257,10 @@ if (!empty($token)) {
                 <?php endif; ?>
             </div>
             <?php endif; ?>
+            <button class="close-btn hidden" onclick="this.closest('.checkin-result').style.display='none'">
+                Schließen
+            </button>
+            </div>
         </div>
     <?php elseif (empty($token)): ?>
         <!-- Kein Token - manuelle Eingabe -->

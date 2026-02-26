@@ -106,6 +106,53 @@ foreach ($stmt->fetchAll() as $row) {
 ?>
 
 <div class="max-w-4xl mx-auto space-y-6">
+<style>
+/* Registration Page – Mobile Enhancements */
+@media (max-width: 768px) {
+    /* Sticky progress bar at top of screen on mobile */
+    #regProgressBar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        border-radius: 0 !important;
+        margin: 0 -1rem;
+        padding: 0.625rem 1rem !important;
+        border-left: none !important;
+        border-right: none !important;
+        border-top: none !important;
+    }
+
+    /* Priority select: larger on mobile */
+    select[name="priority"] {
+        min-height: 44px;
+        font-size: 16px !important;
+        padding: 0.5rem 0.75rem;
+    }
+
+    /* Exhibitor card: make sure buttons stack cleanly */
+    .exhibitor-reg-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        width: 100%;
+    }
+
+    .exhibitor-reg-actions form {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        width: 100%;
+    }
+
+    .exhibitor-reg-actions button[type="submit"],
+    .exhibitor-reg-actions .btn-unregister {
+        width: 100%;
+        min-height: 44px;
+        justify-content: center;
+    }
+}
+</style>
 <script>
 const REG_START  = "<?php echo htmlspecialchars(getSetting('registration_start', '')); ?>";
 const REG_END    = "<?php echo htmlspecialchars(getSetting('registration_end', '')); ?>";
@@ -178,7 +225,7 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
     <?php endif; ?>
 
     <!-- Fortschrittsanzeige -->
-    <div class="bg-white rounded-xl border border-gray-100 p-5">
+    <div id="regProgressBar" class="bg-white rounded-xl border border-gray-100 p-5">
         <h3 class="text-sm font-semibold text-gray-800 mb-3">Ihr Fortschritt</h3>
         <div class="flex items-center justify-between mb-2">
             <span class="text-xs text-gray-500">Einschreibungen</span>
@@ -256,7 +303,7 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                             <?php endif; ?>
                         </div>
                         
-                        <div class="flex flex-col sm:flex-row gap-2">
+                        <div class="exhibitor-reg-actions flex flex-col sm:flex-row gap-2">
                             <button onclick="openExhibitorModal(<?php echo $exhibitor['id']; ?>)" 
                                     class="px-3 py-1.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition text-sm">
                                 <i class="fas fa-info-circle mr-1"></i>Details

@@ -661,7 +661,7 @@ body {
    Responsive Design
    ========================================================================== */
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {
     .sidebar {
         transform: translateX(-100%);
     }
@@ -673,11 +673,15 @@ body {
     .main-content {
         margin-left: 0;
     }
-    
+}
+
+@media (max-width: 640px) {
     .toast {
         left: var(--space-md);
         right: var(--space-md);
         bottom: var(--space-md);
+        width: auto;
+        max-width: none;
     }
 }
 

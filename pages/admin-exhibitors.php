@@ -590,8 +590,15 @@ $orgaUsers = $stmt->fetchAll();
             $roomCapacity = $exhibitor['room_capacity'] ? intval($exhibitor['room_capacity']) : 0;
             $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
             
-            // Registrierungen zaehlen
-            $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ? AND registrations.edition_id = ?");
+            // Registrierungen zaehlen (alle Plaetze in verwalteten Slots)
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count 
+                FROM registrations r
+                JOIN timeslots t ON r.timeslot_id = t.id
+                WHERE r.exhibitor_id = ? 
+                AND r.edition_id = ? 
+                AND t.slot_number " . getManagedSlotsSqlIn()
+            );
             $stmt->execute([$exhibitor['id'], $activeEditionId]);
             $regCount = $stmt->fetch()['count'];
             

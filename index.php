@@ -497,6 +497,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/design-system.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/guided-tour.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/easter-eggs.css">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/mobile.css">
     
     <style>
         /* ==========================================================================
@@ -861,35 +862,23 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 padding-top: max(0.75rem, env(safe-area-inset-top, 0.75rem));
             }
 
-            /* Issue #24: Mobile - Buttons mit Text+Icon nur Icon anzeigen */
-            /* Allgemeine Regel: Alle Buttons mit Icons zeigen nur Icon auf Mobile */
-            button:has(i) span,
-            a.btn:has(i) span,
-            .btn:has(i) span,
-            a:has(i) span {
+            /* Buttons in Tabellen-Aktionsspalten: nur Icon auf Mobile */
+            /* Verwende explizite .btn-icon-only Klasse statt pauschaler :has()-Regel */
+            .btn-icon-only span {
                 display: none !important;
             }
-
-            /* Fallback für Browser ohne :has() Support */
-            .btn-mobile-icon span.btn-text,
-            .btn-mobile-icon span {
-                display: none !important;
+            .btn-icon-only {
+                padding: 0.5rem !important;
+                min-width: 44px;
+                min-height: 44px;
+                justify-content: center;
             }
 
-            /* Issue #24: Mobile - Tagesplan Buttons kompakter */
+            /* Mobile - Tagesplan Buttons kompakter */
             .schedule-actions .btn,
             .schedule-actions a {
                 padding: 0.375rem 0.5rem;
                 font-size: 0.75rem;
-            }
-
-            /* Kompakteres Padding für Buttons mit nur Icons */
-            button:has(i):not(:has(span)),
-            .btn:has(i):not(:has(span)),
-            a:has(i):not(:has(span)) {
-                padding: 0.5rem;
-                min-width: 44px;
-                justify-content: center;
             }
             
             /* Tabellen auf Mobile: horizontal scrollbar */
@@ -1102,7 +1091,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
 </head>
 <body class="bg-gray-50">
     <!-- Mobile Overlay -->
-    <div id="mobileOverlay" class="md:hidden fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300 opacity-0"></div>
+    <div id="mobileOverlay" class="lg:hidden fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300 opacity-0"></div>
 
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar sidebar-transition fixed left-0 top-0 h-full bg-white/95 backdrop-blur-lg border-r border-gray-100 w-64 z-40 flex flex-col shadow-xl">
@@ -1117,7 +1106,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
             </div>
         </div>
         <!-- Mobile Close Button (outside sidebar, right edge) - hidden by default -->
-        <button id="sidebarCloseBtn" class="md:hidden hidden absolute top-4 p-2 bg-white/90 text-gray-500 hover:text-gray-700 hover:bg-white rounded-full shadow-lg transition-all z-50" style="left: calc(100% + 12px); min-width:40px; min-height:40px;">
+        <button id="sidebarCloseBtn" class="lg:hidden hidden absolute top-4 p-2 bg-white/90 text-gray-500 hover:text-gray-700 hover:bg-white rounded-full shadow-lg transition-all z-50" style="left: calc(100% + 12px); min-width:40px; min-height:40px;" aria-label="Seitenleiste schließen">
             <i class="fas fa-times text-base"></i>
         </button>
 
@@ -1347,12 +1336,12 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     </aside>
 
     <!-- Main Content -->
-    <main class="md:ml-64 min-h-screen">
+    <main class="lg:ml-64 min-h-screen">
         <!-- Content Area with Animation -->
         <div class="page-content p-4 sm:p-6 lg:p-8">
             <!-- Mobile Burger (floats left of page title) -->
-            <div id="mobileHeader" class="md:hidden float-left mr-3 relative z-20">
-                <button id="mobileMenuBtn" class="bg-gray-50 text-gray-600 p-2.5 rounded-xl border border-gray-200 transition-all duration-200 hover:bg-gray-100" style="min-width:44px; min-height:44px;">
+            <div id="mobileHeader" class="lg:hidden inline-flex items-center mr-3 relative z-20" style="float:left;">
+                <button id="mobileMenuBtn" class="bg-gray-50 text-gray-600 p-2.5 rounded-xl border border-gray-200 transition-all duration-200 hover:bg-gray-100" style="min-width:44px; min-height:44px;" aria-label="Menü öffnen" aria-expanded="false">
                     <i class="fas fa-bars text-lg"></i>
                 </button>
             </div>
@@ -1544,6 +1533,7 @@ if (!empty($_announcements)):
 
     <!-- JavaScript Libraries -->
     <script src="<?php echo BASE_URL; ?>assets/js/animations.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/mobile-tables.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/js/guided-tour.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/js/easter-eggs.js"></script>
     
@@ -1594,12 +1584,29 @@ if (!empty($_announcements)):
 
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
-            if (window.innerWidth < 768 && sidebar.classList.contains('open')) {
+            if (window.innerWidth < 1024 && sidebar.classList.contains('open')) {
                 if (!sidebar.contains(e.target) && !(mobileOverlay && mobileOverlay.contains(e.target))) {
                     closeMobileSidebar();
                 }
             }
         });
+
+        // Close sidebar when a nav-link is clicked on mobile
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth < 1024) closeMobileSidebar();
+            });
+        });
+
+        // Update aria-expanded on hamburger button
+        function updateAriaExpanded(open) {
+            if (mobileMenuBtn) mobileMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        const _origOpen = openMobileSidebar;
+        const _origClose = closeMobileSidebar;
+        // Patch open/close to update aria
+        window.openMobileSidebar = function() { _origOpen(); updateAriaExpanded(true); };
+        window.closeMobileSidebar = function() { _origClose(); updateAriaExpanded(false); };
         
         // Start Guided Tour Function
         function startGuidedTour() {

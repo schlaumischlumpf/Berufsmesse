@@ -48,6 +48,12 @@ foreach ($exhibitors as $ex) {
             <h2 class="text-xl font-semibold text-gray-800">Raum-Zuteilung</h2>
             <p class="text-sm text-gray-500 mt-1">Ziehe Aussteller auf Räume, um sie zuzuordnen</p>
         </div>
+
+    <!-- Mobile Touch Hint (nur auf Touch-Geräten sichtbar) -->
+    <div class="dnd-mobile-hint hidden mb-2 items-center gap-2 px-4 py-3 bg-blue-50 border border-blue-200 rounded-xl text-sm text-blue-800">
+        <i class="fas fa-hand-point-up text-blue-500 flex-shrink-0"></i>
+        <span>Halte einen Aussteller gedrückt und ziehe ihn auf einen Raum. Tippen funktioniert auch!</span>
+    </div>
         <?php if (isAdmin() || hasPermission('raeume_erstellen')): ?>
         <button onclick="openAddRoomModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
             <i class="fas fa-plus"></i>
@@ -622,6 +628,107 @@ document.addEventListener('drop', (e) => {
         assignExhibitorToRoom(exhibitorId, roomId, exhibitorName);
     }
 });
+
+// =========================================================================
+// TOUCH / POINTER EVENTS DnD (für Smartphones & Tablets)
+// Implementiert dasselbe Drag-and-Drop-Verhalten über Pointer Events,
+// da HTML5 DnD auf Touch-Geräten nicht zuverlässig funktioniert.
+// =========================================================================
+(function () {
+    let touchDragging = null;
+    let ghost = null;
+    let lastDropzone = null;
+
+    function createGhost(el) {
+        const rect = el.getBoundingClientRect();
+        ghost = el.cloneNode(true);
+        ghost.style.cssText = `
+            position: fixed;
+            left: ${rect.left}px;
+            top: ${rect.top}px;
+            width: ${rect.width}px;
+            z-index: 9999;
+            opacity: 0.85;
+            pointer-events: none;
+            transform: scale(1.03);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.18);
+            border-radius: 0.5rem;
+            transition: none;
+        `;
+        document.body.appendChild(ghost);
+    }
+
+    function removeGhost() {
+        if (ghost) { ghost.remove(); ghost = null; }
+    }
+
+    function getDropzoneAt(x, y) {
+        const els = document.elementsFromPoint(x, y);
+        for (const el of els) {
+            const dz = el.closest('.room-dropzone');
+            if (dz) return dz;
+        }
+        return null;
+    }
+
+    document.addEventListener('pointerdown', (e) => {
+        // Only handle touch/pen, not mouse (mouse already handled by HTML5 DnD)
+        if (e.pointerType === 'mouse') return;
+
+        const card = e.target.closest('.exhibitor-card[draggable="true"]');
+        if (!card) return;
+
+        e.preventDefault();
+        touchDragging = card;
+        card.setPointerCapture(e.pointerId);
+        card.style.opacity = '0.4';
+        createGhost(card);
+    }, { passive: false });
+
+    document.addEventListener('pointermove', (e) => {
+        if (!touchDragging || !ghost) return;
+        e.preventDefault();
+
+        ghost.style.left = (e.clientX - ghost.offsetWidth / 2) + 'px';
+        ghost.style.top  = (e.clientY - ghost.offsetHeight / 2) + 'px';
+
+        // Highlight dropzone under touch point
+        const dz = getDropzoneAt(e.clientX, e.clientY);
+        if (dz !== lastDropzone) {
+            if (lastDropzone) lastDropzone.style.backgroundColor = '';
+            if (dz) dz.style.backgroundColor = '#bfdbfe';
+            lastDropzone = dz;
+        }
+    }, { passive: false });
+
+    document.addEventListener('pointerup', (e) => {
+        if (!touchDragging) return;
+
+        touchDragging.style.opacity = '1';
+        removeGhost();
+
+        const dz = getDropzoneAt(e.clientX, e.clientY);
+        if (dz) {
+            dz.style.backgroundColor = '';
+            const exhibitorId   = touchDragging.dataset.id;
+            const roomId        = dz.dataset.roomId;
+            const exhibitorName = touchDragging.dataset.name;
+            if (exhibitorId && roomId) {
+                assignExhibitorToRoom(exhibitorId, roomId, exhibitorName);
+            }
+        }
+
+        if (lastDropzone) { lastDropzone.style.backgroundColor = ''; lastDropzone = null; }
+        touchDragging = null;
+    });
+
+    document.addEventListener('pointercancel', () => {
+        if (touchDragging) touchDragging.style.opacity = '1';
+        removeGhost();
+        if (lastDropzone) { lastDropzone.style.backgroundColor = ''; lastDropzone = null; }
+        touchDragging = null;
+    });
+})();
 
 // Assign Exhibitor to Room
 function assignExhibitorToRoom(exhibitorId, roomId, exhibitorName) {
