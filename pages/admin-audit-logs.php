@@ -129,9 +129,9 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                 <label class="block text-xs font-semibold text-gray-600 mb-1">Schweregrad</label>
                 <select name="filter_severity" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
                     <option value="">Alle Schweregrade</option>
-                    <option value="info"    <?php echo $filterSeverity === 'info'    ? 'selected' : ''; ?>>&#x2139;&#xFE0F; Info</option>
-                    <option value="warning" <?php echo $filterSeverity === 'warning' ? 'selected' : ''; ?>>&#x26A0;&#xFE0F; Warnung</option>
-                    <option value="error"   <?php echo $filterSeverity === 'error'   ? 'selected' : ''; ?>>&#x1F534; Fehler</option>
+                    <option value="info"    <?php echo $filterSeverity === 'info'    ? 'selected' : ''; ?>>Info</option>
+                    <option value="warning" <?php echo $filterSeverity === 'warning' ? 'selected' : ''; ?>>Warnung</option>
+                    <option value="error"   <?php echo $filterSeverity === 'error'   ? 'selected' : ''; ?>>Fehler</option>
                 </select>
             </div>
             
@@ -251,9 +251,9 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                             <?php
                             $sev = $log['severity'] ?? 'info';
                             $sevConfig = [
-                                'info'    => ['bg-blue-100 text-blue-800',    '&#x2139;&#xFE0F; Info'],
-                                'warning' => ['bg-yellow-100 text-yellow-800', '&#x26A0;&#xFE0F; Warnung'],
-                                'error'   => ['bg-red-100 text-red-800',       '&#x1F534; Fehler'],
+                                'info'    => ['bg-blue-100 text-blue-800',    'Info'],
+                                'warning' => ['bg-yellow-100 text-yellow-800', 'Warnung'],
+                                'error'   => ['bg-red-100 text-red-800',       'Fehler'],
                             ];
                             [$sevClass, $sevLabel] = $sevConfig[$sev] ?? $sevConfig['info'];
                             ?>
