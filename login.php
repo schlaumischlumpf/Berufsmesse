@@ -62,38 +62,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $stmt->execute([$username, $activeEditionId]);
         $user = $stmt->fetch();
         
-        if ($user && password_verify($password, $user['password'])) {
-            // Neue Session-ID generieren (verhindert Session-Fixation) und persistenten Cookie setzen
-            session_regenerate_id(true);
+        if ($user) {
+            if (is_null($user['password']) || $user['password'] === '') {
+                // Konto existiert, aber hat kein Passwort – Login nicht möglich
+                recordLoginAttempt($username, $clientIp);
+                $error = 'Für dieses Konto wurde noch kein Passwort vergeben. Bitte wende dich an einen Administrator.';
+            } elseif (password_verify($password, $user['password'])) {
+                // Neue Session-ID generieren (verhindert Session-Fixation) und persistenten Cookie setzen
+                session_regenerate_id(true);
 
-            $_SESSION['user_id'] = $user['id'];
-            $_SESSION['username'] = $user['username'];
-            $_SESSION['firstname'] = $user['firstname'];
-            $_SESSION['lastname'] = $user['lastname'];
-            $_SESSION['role'] = $user['role'];
-            
-            logAuditAction('Login', 'Benutzer hat sich angemeldet');
-            
-            // Prüfe ob Passwort erzwungen werden muss (beim ersten Login oder nach Admin-Reset)
-            $db = getDB();
-            $stmt = $db->prepare("SELECT must_change_password FROM users WHERE id = ?");
-            $stmt->execute([$user['id']]);
-            $userData = $stmt->fetch();
-            
-            if ($userData && $userData['must_change_password']) {
-                $_SESSION['force_password_change'] = true;
-                header('Location: ' . BASE_URL . 'change-password.php');
+                $_SESSION['user_id'] = $user['id'];
+                $_SESSION['username'] = $user['username'];
+                $_SESSION['firstname'] = $user['firstname'];
+                $_SESSION['lastname'] = $user['lastname'];
+                $_SESSION['role'] = $user['role'];
+                
+                logAuditAction('Login', 'Benutzer hat sich angemeldet');
+                
+                // Prüfe ob Passwort erzwungen werden muss (beim ersten Login oder nach Admin-Reset)
+                $db = getDB();
+                $stmt = $db->prepare("SELECT must_change_password FROM users WHERE id = ?");
+                $stmt->execute([$user['id']]);
+                $userData = $stmt->fetch();
+                
+                if ($userData && $userData['must_change_password']) {
+                    $_SESSION['force_password_change'] = true;
+                    header('Location: ' . BASE_URL . 'change-password.php');
+                    exit();
+                }
+                
+                // Nach Login zur ursprünglichen Seite zurückkehren (z.B. QR-Checkin)
+                $redirect = $_GET['redirect'] ?? ($_POST['redirect'] ?? '');
+                if (!empty($redirect) && preg_match('#^/[^/]#', $redirect)) {
+                    header('Location: ' . $redirect);
+                } else {
+                    header('Location: ' . BASE_URL . 'index.php');
+                }
                 exit();
-            }
-            
-            // Nach Login zur ursprünglichen Seite zurückkehren (z.B. QR-Checkin)
-            $redirect = $_GET['redirect'] ?? ($_POST['redirect'] ?? '');
-            if (!empty($redirect) && preg_match('#^/[^/]#', $redirect)) {
-                header('Location: ' . $redirect);
             } else {
-                header('Location: ' . BASE_URL . 'index.php');
+                recordLoginAttempt($username, $clientIp);
+                logAuditAction('Login_Fehlgeschlagen', "Fehlgeschlagener Login für: $username", 'warning');
+                $error = 'Ungültiger Benutzername oder Passwort';
             }
-            exit();
         } else {
             recordLoginAttempt($username, $clientIp);
             logAuditAction('Login_Fehlgeschlagen', "Fehlgeschlagener Login für: $username", 'warning');
