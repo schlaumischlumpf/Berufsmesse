@@ -46,6 +46,41 @@ php_value max_execution_time 300
 # Directory Listing deaktivieren
 Options -Indexes
 
-# Error Pages (optional)
-# ErrorDocument 404 /berufsmesse/404.php
-# ErrorDocument 403 /berufsmesse/403.php
+# URL-Rewriting für Multi-Schulen
+RewriteEngine On
+
+# Statische Assets durchlassen
+RewriteRule ^assets/ - [L]
+RewriteRule ^uploads/ - [L]
+RewriteRule ^fpdf/ - [L]
+
+# Landingpage (Root ohne Slug)
+RewriteRule ^$ schools.php [L]
+
+# Globaler Login (ohne Schul-Slug, für Admins und Aussteller)
+RewriteRule ^login\.php$ login.php [L]
+
+# Schul-Slug-Routing
+# /{slug}/login.php → login.php?school_slug={slug}
+RewriteRule ^([a-z0-9-]+)/login\.php$ login.php?school_slug=$1 [L,QSA]
+
+# /{slug}/register.php → register.php?school_slug={slug}
+RewriteRule ^([a-z0-9-]+)/register\.php$ register.php?school_slug=$1 [L,QSA]
+
+# /{slug}/site-auth.php → site-auth.php?school_slug={slug}
+RewriteRule ^([a-z0-9-]+)/site-auth\.php$ site-auth.php?school_slug=$1 [L,QSA]
+
+# /{slug}/index.php?page=... → index.php?school_slug={slug}&page=...
+RewriteRule ^([a-z0-9-]+)/index\.php$ index.php?school_slug=$1 [L,QSA]
+
+# /{slug}/api/{file}.php → api/{file}.php?school_slug={slug}
+RewriteRule ^([a-z0-9-]+)/api/(.+\.php)$ api/$2?school_slug=$1 [L,QSA]
+
+# /{slug}/ → index.php?school_slug={slug} (Kurzform)
+RewriteRule ^([a-z0-9-]+)/?$ index.php?school_slug=$1 [L,QSA]
+
+# /{slug}/change-password.php
+RewriteRule ^([a-z0-9-]+)/change-password\.php$ change-password.php?school_slug=$1 [L,QSA]
+
+# /{slug}/logout.php
+RewriteRule ^([a-z0-9-]+)/logout\.php$ logout.php?school_slug=$1 [L,QSA]
