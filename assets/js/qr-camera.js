@@ -92,7 +92,7 @@
                     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
                     // jsQR zur Erkennung (muss extern geladen sein)
-                    if (typeof jsQR === 'function') {
+                    if (typeof jsQR !== 'undefined') {
                         const code = jsQR(imageData.data, imageData.width, imageData.height, {
                             inversionAttempts: 'dontInvert'
                         });

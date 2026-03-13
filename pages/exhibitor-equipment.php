@@ -83,7 +83,7 @@ $requests = $stmt->fetchAll();
             Ausstattung — <?php echo htmlspecialchars($exhibitor['name']); ?>
         </h2>
     </div>
-    <p class="text-sm text-gray-500">Ausstattung anfragen (Beamer, Strom, Tische, etc.)</p>
+    <p class="text-sm text-gray-500">Ausstattung anfragen (Beamer, Strom, Tische u. a.)</p>
 </div>
 
 <?php if ($message): ?>
