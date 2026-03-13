@@ -47,6 +47,12 @@ RUN mv "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 # Install MySQL/PDO extensions
 RUN docker-php-ext-install pdo_mysql mysqli
 
+# Enable mod_rewrite for .htaccess URL rewriting (Multi-Schulen-Routing)
+RUN a2enmod rewrite
+
+# Allow .htaccess overrides in the document root
+RUN sed -i '/<Directory \/var\/www\/>/,/<\/Directory>/ s/AllowOverride None/AllowOverride All/' /etc/apache2/apache2.conf
+
 # Copy app files from the app directory.
 COPY . /var/www/html
 
