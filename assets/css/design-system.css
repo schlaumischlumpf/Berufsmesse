@@ -97,6 +97,124 @@
 }
 
 /* ==========================================================================
+   Dark Mode Variables
+   ========================================================================== */
+html.dark {
+    --color-white: #1a1a2e;
+    --color-gray-50: #16213e;
+    --color-gray-100: #1a1a2e;
+    --color-gray-200: #2d2d44;
+    --color-gray-300: #3d3d56;
+    --color-gray-400: #6b7280;
+    --color-gray-500: #9ca3af;
+    --color-gray-600: #d1d5db;
+    --color-gray-700: #e5e7eb;
+    --color-gray-800: #f3f4f6;
+    --color-gray-900: #f9fafb;
+
+    /* Pastellfarben abgedunkelt */
+    --color-mint: #2d6a4f;
+    --color-mint-light: #1b4332;
+    --color-mint-dark: #52b788;
+    --color-lavender: #5a3d7a;
+    --color-lavender-light: #3c2255;
+    --color-lavender-dark: #9b7fc7;
+    --color-peach: #7a3b38;
+    --color-peach-light: #5a2a28;
+    --color-peach-dark: #e8918a;
+    --color-sky: #2a5a7a;
+    --color-sky-light: #1a3a5a;
+    --color-sky-dark: #7fc4ff;
+    --color-butter: #5a5020;
+    --color-butter-light: #3a3010;
+    --color-butter-dark: #f5e080;
+
+    /* Schatten anpassen */
+    --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.3);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.3);
+    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.3);
+    --shadow-glow-mint: 0 0 20px rgba(45, 106, 79, 0.4);
+    --shadow-glow-lavender: 0 0 20px rgba(90, 61, 122, 0.4);
+}
+
+/* Dark Mode: Background & Text Overrides */
+html.dark body {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    color: #e2e8f0;
+}
+
+html.dark .bg-white,
+html.dark .bg-gray-50 {
+    background-color: #1e293b !important;
+}
+
+html.dark .bg-white\/95 {
+    background-color: rgba(30, 41, 59, 0.95) !important;
+}
+
+html.dark .border-gray-100,
+html.dark .border-gray-200 {
+    border-color: #334155 !important;
+}
+
+html.dark .text-gray-800 { color: #e2e8f0 !important; }
+html.dark .text-gray-700 { color: #cbd5e1 !important; }
+html.dark .text-gray-600 { color: #94a3b8 !important; }
+html.dark .text-gray-500 { color: #94a3b8 !important; }
+html.dark .text-gray-400 { color: #64748b !important; }
+
+html.dark .bg-gray-100 { background-color: #334155 !important; }
+html.dark .bg-gray-200 { background-color: #475569 !important; }
+
+html.dark input, html.dark select, html.dark textarea {
+    background-color: #1e293b;
+    border-color: #334155;
+    color: #e2e8f0;
+}
+
+html.dark .card,
+html.dark .bg-white.rounded-xl {
+    background-color: #1e293b !important;
+    border-color: #334155 !important;
+}
+
+html.dark .hover\:bg-gray-50:hover { background-color: #334155 !important; }
+
+/* Dark Mode: Sidebar */
+html.dark .sidebar,
+html.dark #sidebar {
+    background-color: rgba(15, 23, 42, 0.95) !important;
+    border-color: #1e293b !important;
+}
+
+html.dark .nav-link:hover {
+    background: linear-gradient(135deg, #1b4332 0%, #1e293b 100%) !important;
+}
+
+html.dark .nav-link.active {
+    background: linear-gradient(135deg, #1b4332 0%, #3c2255 100%) !important;
+    box-shadow: 0 4px 12px rgba(45, 106, 79, 0.3);
+}
+
+html.dark .nav-group-title { color: #64748b !important; }
+
+/* Dark Mode: Tables */
+html.dark table thead { background-color: #0f172a !important; }
+html.dark table tbody tr:hover { background-color: #334155 !important; }
+html.dark .divide-y > :not(:last-child) { border-color: #334155 !important; }
+
+/* Dark Mode: Modals */
+html.dark .exhibitor-modal-box { background: #1e293b !important; }
+
+/* Dark Mode: Status Badges bleiben farbig (leicht angepasst) */
+html.dark .bg-emerald-50 { background-color: rgba(16, 185, 129, 0.15) !important; }
+html.dark .bg-red-50 { background-color: rgba(239, 68, 68, 0.15) !important; }
+html.dark .bg-amber-50 { background-color: rgba(245, 158, 11, 0.15) !important; }
+html.dark .bg-blue-50 { background-color: rgba(59, 130, 246, 0.15) !important; }
+html.dark .bg-purple-50 { background-color: rgba(139, 92, 246, 0.15) !important; }
+
+/* ==========================================================================
    Base Styles
    ========================================================================== */
 

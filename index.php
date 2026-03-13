@@ -499,6 +499,9 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/easter-eggs.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/mobile.css">
     
+    <!-- Darkmode (vor Content laden um Flash zu vermeiden) -->
+    <script src="<?php echo BASE_URL; ?>assets/js/darkmode.js"></script>
+    
     <style>
         /* ==========================================================================
            Pastel Color Palette - CSS Variables
@@ -1175,6 +1178,35 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <?php endif; ?>
                 <?php endif; ?>
 
+                <?php if (isExhibitor()): ?>
+                <div class="nav-group-title">Aussteller</div>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-dashboard' ? 'javascript:void(0)' : '?page=exhibitor-dashboard'; ?>" data-page="exhibitor-dashboard" class="nav-link <?php echo $currentPage === 'exhibitor-dashboard' ? 'active' : ''; ?>">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-profile' ? 'javascript:void(0)' : '?page=exhibitor-profile'; ?>" data-page="exhibitor-profile" class="nav-link <?php echo $currentPage === 'exhibitor-profile' ? 'active' : ''; ?>">
+                    <i class="fas fa-building"></i>
+                    <span>Profil</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-slots' ? 'javascript:void(0)' : '?page=exhibitor-slots'; ?>" data-page="exhibitor-slots" class="nav-link <?php echo $currentPage === 'exhibitor-slots' ? 'active' : ''; ?>">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Slot-Anmeldungen</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-equipment' ? 'javascript:void(0)' : '?page=exhibitor-equipment'; ?>" data-page="exhibitor-equipment" class="nav-link <?php echo $currentPage === 'exhibitor-equipment' ? 'active' : ''; ?>">
+                    <i class="fas fa-tools"></i>
+                    <span>Ausstattung</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-documents' ? 'javascript:void(0)' : '?page=exhibitor-documents'; ?>" data-page="exhibitor-documents" class="nav-link <?php echo $currentPage === 'exhibitor-documents' ? 'active' : ''; ?>">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Dokumente</span>
+                </a>
+                <?php endif; ?>
+
                 <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen', 'attendance_bearbeiten')): ?>
                 
                 <!-- GRUPPE: Tagesbetrieb (am häufigsten genutzt) -->
@@ -1268,6 +1300,13 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                     <i class="fas fa-layer-group"></i>
                     <span>Messe-Editionen</span>
                 </a>
+
+                <a href="<?php echo $currentPage === 'admin-schools' ? 'javascript:void(0)' : '?page=admin-schools'; ?>"
+                   data-page="admin-schools"
+                   class="nav-link <?php echo $currentPage === 'admin-schools' ? 'active' : ''; ?>">
+                    <i class="fas fa-school"></i>
+                    <span>Schulen</span>
+                </a>
                 <?php endif; ?>
 
                 <?php if (isAdmin() || hasPermission('einstellungen_sehen')): ?>
@@ -1310,6 +1349,11 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
 
         <!-- User Info with Help Button -->
         <div class="p-4 border-t border-gray-100 mt-auto bg-gradient-to-r from-gray-50 to-white">
+            <!-- Darkmode Toggle -->
+            <button id="darkmode-toggle" onclick="toggleDarkmode()" class="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-gray-50 to-slate-50 text-gray-600 rounded-lg text-sm font-medium hover:from-gray-100 hover:to-slate-100 transition-all duration-300 border border-gray-200">
+                <i class="fas fa-moon"></i>
+                <span>Dunkel</span>
+            </button>
             <!-- Help/Tour Button -->
             <button onclick="startGuidedTour()" class="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 rounded-lg text-sm font-medium hover:from-amber-100 hover:to-orange-100 transition-all duration-300 border border-amber-200">
                 <i class="fas fa-question-circle"></i>
@@ -1513,6 +1557,55 @@ if (!empty($_announcements)):
                         $pageLoaded = true;
                     }
                     break;
+
+                case 'admin-schools':
+                    if (isAdmin()) {
+                        include 'pages/admin-schools.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'admin-equipment':
+                    if (isAdmin() || isSchoolAdmin()) {
+                        include 'pages/admin-equipment.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-dashboard':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-dashboard.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-profile':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-profile.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-slots':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-slots.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-equipment':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-equipment.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-documents':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-documents.php';
+                        $pageLoaded = true;
+                    }
+                    break;
                 case 'qr-checkin':
                     include 'pages/qr-checkin.php';
                     $pageLoaded = true;
@@ -1521,7 +1614,9 @@ if (!empty($_announcements)):
             
             // Fallback zum Dashboard wenn keine Seite geladen wurde
             if (!$pageLoaded) {
-                if (isTeacher()) {
+                if (isExhibitor()) {
+                    include 'pages/exhibitor-dashboard.php';
+                } elseif (isTeacher()) {
                     include 'pages/teacher-dashboard.php';
                 } else {
                     include 'pages/dashboard.php';

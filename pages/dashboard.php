@@ -211,16 +211,16 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                         // Break/Pause-Handling
                         if ($slot['type'] === 'break'):
                     ?>
-                    <div class="timeline-item flex items-center gap-4 p-3 rounded-xl border bg-amber-50 border-amber-200">
-                        <div class="text-center min-w-[60px]">
-                            <span class="text-sm font-bold text-amber-700"><?php echo $slot['time']; ?></span>
+                    <div class="timeline-item flex items-center gap-2 sm:gap-4 p-3 rounded-xl border bg-amber-50 border-amber-200">
+                        <div class="text-center min-w-[50px] sm:min-w-[60px]">
+                            <span class="text-xs sm:text-sm font-bold text-amber-700"><?php echo $slot['time']; ?></span>
                             <span class="block text-xs text-amber-400"><?php echo $slot['end']; ?></span>
                         </div>
-                        <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-amber-100 hidden sm:flex items-center justify-center flex-shrink-0">
                             <i class="fas fa-coffee text-amber-600"></i>
                         </div>
                         <div class="flex-1 min-w-0">
-                            <h4 class="font-medium text-amber-700"><?php echo htmlspecialchars($slot['slot_name'] ?? 'Pause'); ?></h4>
+                            <h4 class="font-medium text-amber-700 text-sm break-words leading-tight"><?php echo htmlspecialchars($slot['slot_name'] ?? 'Pause'); ?></h4>
                             <p class="text-xs text-amber-500">Pause</p>
                         </div>
                     </div>
@@ -240,15 +240,15 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                             $iconColor = 'text-gray-400';
                         }
                     ?>
-                    <div class="timeline-item flex items-center gap-4 p-4 rounded-xl border <?php echo $bgClass; ?> hover:shadow-md transition-all duration-300 group">
+                    <div class="timeline-item flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl border <?php echo $bgClass; ?> hover:shadow-md transition-all duration-300 group">
                         <!-- Time -->
-                        <div class="text-center min-w-[60px]">
-                            <span class="text-sm font-bold text-gray-800"><?php echo $slot['time']; ?></span>
+                        <div class="text-center min-w-[50px] sm:min-w-[60px]">
+                            <span class="text-xs sm:text-sm font-bold text-gray-800"><?php echo $slot['time']; ?></span>
                             <span class="block text-xs text-gray-400"><?php echo $slot['end']; ?></span>
                         </div>
                         
-                        <!-- Icon -->
-                        <div class="w-10 h-10 rounded-lg <?php echo $iconBg; ?> flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                        <!-- Icon (hidden on mobile) -->
+                        <div class="w-8 h-8 sm:w-10 sm:h-10 rounded-lg <?php echo $iconBg; ?> hidden sm:flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
                             <?php if ($slot['type'] === 'free'): ?>
                                 <i class="fas fa-hand-pointer <?php echo $iconColor; ?>"></i>
                             <?php elseif ($hasReg): ?>
@@ -261,24 +261,25 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                         <!-- Content -->
                         <div class="flex-1 min-w-0">
                             <?php if ($hasReg): ?>
-                                <h4 class="font-semibold text-gray-800 truncate"><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></h4>
-                                <p class="text-xs text-gray-500 truncate">
+                                <h4 class="font-semibold text-gray-800 text-xs sm:text-sm break-words leading-tight"><?php echo htmlspecialchars(html_entity_decode($reg['exhibitor_name'], ENT_QUOTES | ENT_HTML5, 'UTF-8')); ?></h4>
+                                <p class="text-xs text-gray-500 break-words">
                                     <i class="fas fa-map-marker-alt mr-1"></i>
                                     <?php echo htmlspecialchars($reg['room_number'] ?? 'Raum folgt'); ?>
                                 </p>
                             <?php elseif ($slot['type'] === 'free'): ?>
-                                <h4 class="font-medium text-purple-700">Freie Wahl</h4>
+                                <h4 class="font-medium text-purple-700 text-xs sm:text-sm">Freie Wahl</h4>
                                 <p class="text-xs text-purple-500">Besuche einen Aussteller deiner Wahl</p>
                             <?php else: ?>
-                                <h4 class="font-medium text-gray-500">Noch nicht zugewiesen</h4>
+                                <h4 class="font-medium text-gray-500 text-xs sm:text-sm">Noch nicht zugewiesen</h4>
                                 <p class="text-xs text-gray-400">Zuweisung erfolgt automatisch</p>
                             <?php endif; ?>
                         </div>
                         
-                        <!-- Slot Badge -->
-                        <div class="text-right">
-                            <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium <?php echo $slot['type'] === 'free' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'; ?>">
-                                Slot <?php echo $slot['slot_number']; ?>
+                        <!-- Slot Badge (compact on mobile) -->
+                        <div class="text-right flex-shrink-0">
+                            <span class="inline-flex items-center px-1.5 sm:px-2 py-1 rounded-md text-xs font-medium <?php echo $slot['type'] === 'free' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'; ?>">
+                                <span class="sm:hidden"><?php echo $slot['slot_number']; ?></span>
+                                <span class="hidden sm:inline">Slot <?php echo $slot['slot_number']; ?></span>
                             </span>
                         </div>
                     </div>

@@ -517,6 +517,133 @@ SET @s = IF(@pwd_nullable = 'NO',
     'SELECT 1');
 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- ============================================================================
+-- Migration 19: Multi-Schulen-Architektur
+-- ============================================================================
+
+-- Tabelle: schools (Mandanten)
+CREATE TABLE IF NOT EXISTS `schools` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `name` VARCHAR(255) NOT NULL COMMENT 'Anzeigename der Schule',
+  `slug` VARCHAR(100) NOT NULL COMMENT 'URL-Slug, z.B. gymnasium-muster',
+  `logo` VARCHAR(255) DEFAULT NULL COMMENT 'Pfad zum Schullogo',
+  `address` VARCHAR(500) DEFAULT NULL,
+  `contact_email` VARCHAR(255) DEFAULT NULL,
+  `contact_phone` VARCHAR(50) DEFAULT NULL,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_by` INT(11) DEFAULT NULL COMMENT 'Admin der die Schule erstellt hat',
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_slug` (`slug`),
+  KEY `idx_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Schulen (Mandanten)';
+
+-- Standardschule anlegen falls noch keine existiert
+INSERT INTO `schools` (name, slug, is_active)
+SELECT 'Standardschule', 'standard', 1
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM schools LIMIT 1);
+
+-- school_id auf relevante Tabellen hinzufügen (Stored Procedure)
+DROP PROCEDURE IF EXISTS add_school_id;
+DELIMITER //
+CREATE PROCEDURE add_school_id(IN p_table VARCHAR(64))
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=p_table AND COLUMN_NAME='school_id') THEN
+        SET @s = CONCAT('ALTER TABLE `',p_table,'` ADD COLUMN `school_id` INT(11) DEFAULT NULL, ADD KEY `idx_school_id` (`school_id`)');
+        PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+    END IF;
+END //
+DELIMITER ;
+
+CALL add_school_id('messe_editions');
+CALL add_school_id('users');
+CALL add_school_id('settings');
+CALL add_school_id('announcements');
+
+-- Bestehende Daten der Standardschule zuordnen
+UPDATE messe_editions SET school_id = 1 WHERE school_id IS NULL;
+UPDATE users SET school_id = 1 WHERE role NOT IN ('admin') AND school_id IS NULL;
+UPDATE settings SET school_id = 1 WHERE school_id IS NULL;
+UPDATE announcements SET school_id = 1 WHERE school_id IS NULL;
+
+DROP PROCEDURE IF EXISTS add_school_id;
+
+-- Tabelle: exhibitor_users (Aussteller-Account-Verknüpfung N:M)
+CREATE TABLE IF NOT EXISTS `exhibitor_users` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `user_id` INT(11) NOT NULL COMMENT 'User mit role=exhibitor',
+  `exhibitor_id` INT(11) NOT NULL COMMENT 'Verknüpftes Unternehmen (exhibitors.id)',
+  `can_edit_profile` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Darf Unternehmensprofil bearbeiten',
+  `can_manage_documents` TINYINT(1) NOT NULL DEFAULT 1 COMMENT 'Darf Dokumente verwalten',
+  `assigned_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user_exhibitor` (`user_id`, `exhibitor_id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_exhibitor_id` (`exhibitor_id`),
+  FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`exhibitor_id`) REFERENCES `exhibitors`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Verknüpfung: Aussteller-User ↔ Unternehmen (N:M)';
+
+-- Tabelle: equipment_options (Ausstattungsoptionen pro Schule)
+CREATE TABLE IF NOT EXISTS `equipment_options` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `school_id` INT(11) NOT NULL,
+  `name` VARCHAR(150) NOT NULL COMMENT 'z.B. Beamer, Strom, WLAN, Tische',
+  `description` VARCHAR(500) DEFAULT NULL,
+  `sort_order` INT(11) NOT NULL DEFAULT 0,
+  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_school_active` (`school_id`, `is_active`),
+  FOREIGN KEY (`school_id`) REFERENCES `schools`(`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Ausstattungsoptionen pro Schule (Checkboxen für Aussteller)';
+
+-- Tabelle: exhibitor_equipment_requests (Ausstattungsanfragen)
+CREATE TABLE IF NOT EXISTS `exhibitor_equipment_requests` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT,
+  `exhibitor_id` INT(11) NOT NULL,
+  `edition_id` INT(11) NOT NULL,
+  `equipment_option_id` INT(11) DEFAULT NULL COMMENT 'NULL bei Freitext',
+  `custom_text` TEXT DEFAULT NULL COMMENT 'Freitext-Anfrage',
+  `quantity` INT(11) DEFAULT 1,
+  `status` ENUM('pending','approved','denied') NOT NULL DEFAULT 'pending',
+  `admin_notes` TEXT DEFAULT NULL,
+  `requested_by` INT(11) DEFAULT NULL COMMENT 'User der die Anfrage gestellt hat',
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_exhibitor_edition` (`exhibitor_id`, `edition_id`),
+  FOREIGN KEY (`exhibitor_id`) REFERENCES `exhibitors`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`equipment_option_id`) REFERENCES `equipment_options`(`id`) ON DELETE SET NULL,
+  FOREIGN KEY (`requested_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  COMMENT='Ausstattungsanfragen von Ausstellern';
+
+-- UNIQUE-Constraint: username + school_id
+SET @uidx = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND INDEX_NAME='unique_username_school');
+SET @s = IF(@uidx = 0,
+    'ALTER TABLE `users` ADD UNIQUE KEY `unique_username_school` (`username`, `school_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Settings: zusammengesetzter Key (setting_key, school_id)
+SET @idx = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='settings' AND INDEX_NAME='setting_key');
+SET @s = IF(@idx > 0, 'ALTER TABLE `settings` DROP INDEX `setting_key`', 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @uidx = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='settings' AND INDEX_NAME='unique_key_school');
+SET @s = IF(@uidx = 0,
+    'ALTER TABLE `settings` ADD UNIQUE KEY `unique_key_school` (`setting_key`, `school_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

@@ -1040,5 +1040,155 @@ function invalidateEditionCache(): void {
     unset($_SESSION['active_edition_id']);
 }
 
+// ─── Multi-Schulen ───────────────────────────────────────────────────────────
+
+/**
+ * Liest den school_slug aus URL (GET) oder Session.
+ * Gibt die vollständige Schul-Row zurück oder null.
+ */
+function getCurrentSchool(): ?array {
+    static $cache = null;
+    if ($cache !== null) return $cache ?: null;
+
+    $slug = $_GET['school_slug'] ?? ($_SESSION['school_slug'] ?? null);
+    if (!$slug) {
+        $cache = false;
+        return null;
+    }
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("SELECT * FROM schools WHERE slug = ? AND is_active = 1 LIMIT 1");
+        $stmt->execute([$slug]);
+        $row = $stmt->fetch();
+        if ($row) {
+            $_SESSION['school_slug'] = $row['slug'];
+            $_SESSION['school_id']   = (int)$row['id'];
+            $cache = $row;
+            return $row;
+        }
+    } catch (Exception $e) { /* Tabelle existiert noch nicht */ }
+    $cache = false;
+    return null;
+}
+
+/**
+ * Gibt die aktive edition_id für eine bestimmte Schule zurück.
+ * Falls school_id = NULL → globales Fallback (wie bisher).
+ */
+function getActiveEditionIdForSchool(int $schoolId): int {
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("SELECT id FROM messe_editions WHERE status = 'active' AND school_id = ? LIMIT 1");
+        $stmt->execute([$schoolId]);
+        $row = $stmt->fetch();
+        if ($row) return (int)$row['id'];
+    } catch (Exception $e) { }
+    return getActiveEditionId(); // Fallback
+}
+
+/**
+ * Generiert eine schulspezifische URL.
+ * schoolUrl('index.php?page=dashboard') → /gymnasium-muster/index.php?page=dashboard
+ */
+function schoolUrl(string $path = ''): string {
+    $school = getCurrentSchool();
+    if ($school) {
+        return BASE_URL . htmlspecialchars($school['slug']) . '/' . ltrim($path, '/');
+    }
+    return BASE_URL . ltrim($path, '/');
+}
+
+/**
+ * Prüft ob der eingeloggte User Zugriff auf die aktuelle Schule hat.
+ * Admins haben immer Zugriff.
+ * Aussteller haben Zugriff auf Schulen, bei denen sie Aussteller sind.
+ * Schüler/Lehrer/Orga nur auf ihre eigene Schule.
+ */
+function hasSchoolAccess(): bool {
+    if (isAdmin()) return true;
+    $school = getCurrentSchool();
+    if (!$school) return true; // Kein Schulkontext → überall erlaubt
+
+    $role = $_SESSION['role'] ?? '';
+
+    if ($role === 'exhibitor') {
+        // Aussteller: Prüfe über exhibitor_users → exhibitors → messe_editions → school_id
+        try {
+            $db   = getDB();
+            $stmt = $db->prepare("
+                SELECT 1 FROM exhibitor_users eu
+                JOIN exhibitors e ON eu.exhibitor_id = e.id
+                JOIN messe_editions me ON e.edition_id = me.id
+                WHERE eu.user_id = ? AND me.school_id = ?
+                LIMIT 1
+            ");
+            $stmt->execute([$_SESSION['user_id'], $school['id']]);
+            return (bool)$stmt->fetch();
+        } catch (Exception $e) { return false; }
+    }
+
+    // Schüler, Lehrer, Orga, school_admin
+    return (int)($_SESSION['school_id'] ?? 0) === (int)$school['id'];
+}
+
+/**
+ * Prüft ob der User ein Schul-Admin ist (für die aktuelle Schule).
+ */
+function isSchoolAdmin(): bool {
+    return isset($_SESSION['role']) && $_SESSION['role'] === 'school_admin';
+}
+
+/**
+ * Prüft ob der User ein Aussteller ist.
+ */
+function isExhibitor(): bool {
+    return isset($_SESSION['role']) && $_SESSION['role'] === 'exhibitor';
+}
+
+/**
+ * Erfordert globale Admin-Rechte ODER Schul-Admin-Rechte.
+ * Schul-Admins werden nur durchgelassen wenn sie Zugriff auf die aktuelle Schule haben.
+ */
+function requireSchoolAdminOrAdmin(): void {
+    requireLogin();
+    if (isAdmin()) return;
+    if (isSchoolAdmin() && hasSchoolAccess()) return;
+    header('Location: ' . BASE_URL . 'index.php');
+    exit();
+}
+
+/**
+ * Gibt die IDs aller Aussteller zurück, die einem User zugeordnet sind.
+ */
+function getExhibitorIdsForUser(int $userId): array {
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("SELECT exhibitor_id FROM exhibitor_users WHERE user_id = ?");
+        $stmt->execute([$userId]);
+        return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+    } catch (Exception $e) { return []; }
+}
+
+/**
+ * Generiert einen URL-sicheren Slug aus einem Schulnamen.
+ * Prüft Eindeutigkeit in der DB.
+ */
+function generateSchoolSlug(string $name): string {
+    $slug = strtolower(trim($name));
+    $slug = preg_replace('/[^a-z0-9]+/', '-', $slug);
+    $slug = trim($slug, '-');
+
+    $db = getDB();
+    $baseSlug = $slug;
+    $counter = 1;
+    while (true) {
+        $stmt = $db->prepare("SELECT COUNT(*) FROM schools WHERE slug = ?");
+        $stmt->execute([$slug]);
+        if ($stmt->fetchColumn() == 0) break;
+        $slug = $baseSlug . '-' . $counter++;
+    }
+    return $slug;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 ?>
