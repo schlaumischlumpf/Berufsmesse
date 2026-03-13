@@ -263,7 +263,27 @@ if (!empty($token)) {
             </div>
         </div>
     <?php elseif (empty($token)): ?>
-        <!-- Kein Token - manuelle Eingabe -->
+        <!-- Kamera-Scanner -->
+        <div class="bg-white rounded-xl border border-gray-100 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-semibold text-gray-800 text-sm">
+                    <i class="fas fa-camera text-emerald-500 mr-2"></i>
+                    QR-Code scannen
+                </h3>
+                <button id="toggleCameraBtn" onclick="toggleCamera()" class="px-3 py-1.5 text-xs font-medium bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-colors">
+                    <i class="fas fa-video mr-1"></i> <span>Kamera starten</span>
+                </button>
+            </div>
+            <div id="qr-camera-container" class="flex justify-center items-center min-h-[200px] bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                <div class="text-center text-gray-400 p-6">
+                    <i class="fas fa-camera text-4xl mb-3"></i>
+                    <p class="text-sm">Drücke «Kamera starten» um den QR-Code zu scannen</p>
+                </div>
+            </div>
+            <p id="qr-camera-status" class="text-xs text-gray-400 text-center mt-2"></p>
+        </div>
+
+        <!-- Manuell eingeben (Fallback) -->
         <div class="bg-white rounded-xl border border-gray-100 p-6">
             <h3 class="font-semibold text-gray-800 text-sm mb-4">
                 <i class="fas fa-keyboard text-emerald-500 mr-2"></i>
@@ -290,8 +310,61 @@ if (!empty($token)) {
                 <li><i class="fas fa-check text-blue-500 mr-1"></i> Scanne den QR-Code am Ausstellerstand</li>
                 <li><i class="fas fa-check text-blue-500 mr-1"></i> Dein Browser öffnet automatisch die Check-in Seite</li>
                 <li><i class="fas fa-check text-blue-500 mr-1"></i> Deine Anwesenheit wird automatisch erfasst</li>
+                <li><i class="fas fa-camera text-blue-500 mr-1"></i> Oder nutze die Kamera zum direkten Scannen!</li>
             </ul>
         </div>
+
+        <!-- jsQR Library + Camera Logic -->
+        <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js"></script>
+        <script src="<?php echo BASE_URL; ?>assets/js/qr-camera.js"></script>
+        <script>
+        let cameraActive = false;
+
+        function toggleCamera() {
+            const container = document.getElementById('qr-camera-container');
+            const btn = document.getElementById('toggleCameraBtn');
+            const status = document.getElementById('qr-camera-status');
+
+            if (cameraActive) {
+                QRCameraScanner.stop();
+                cameraActive = false;
+                container.innerHTML = '<div class="text-center text-gray-400 p-6"><i class="fas fa-camera text-4xl mb-3"></i><p class="text-sm">Drücke «Kamera starten» um den QR-Code zu scannen</p></div>';
+                btn.querySelector('span').textContent = 'Kamera starten';
+                status.textContent = '';
+            } else {
+                status.textContent = 'Kamera wird gestartet...';
+                QRCameraScanner.init({
+                    container: container,
+                    onScan: function(data) {
+                        // Prüfe ob es eine URL mit token ist
+                        let tokenValue = data;
+                        try {
+                            const url = new URL(data);
+                            const t = url.searchParams.get('token');
+                            if (t) tokenValue = t;
+                        } catch(e) {
+                            // Kein URL — Token direkt verwenden
+                        }
+                        // Weiterleitung zum Check-in
+                        status.textContent = 'QR-Code erkannt! Checke ein...';
+                        window.location.href = '?page=qr-checkin&token=' + encodeURIComponent(tokenValue);
+                    },
+                    onError: function(msg) {
+                        status.textContent = msg;
+                        container.innerHTML = '<div class="text-center text-red-400 p-6"><i class="fas fa-exclamation-triangle text-3xl mb-3"></i><p class="text-sm">' + msg + '</p></div>';
+                    }
+                });
+                cameraActive = true;
+                btn.querySelector('span').textContent = 'Kamera stoppen';
+                status.textContent = 'Kamera aktiv — halte den QR-Code in das Kamerabild.';
+            }
+        }
+
+        // Cleanup bei Seitenwechsel
+        window.addEventListener('beforeunload', function() {
+            if (cameraActive) QRCameraScanner.stop();
+        });
+        </script>
     <?php endif; ?>
 
     <!-- Meine Anwesenheit -->

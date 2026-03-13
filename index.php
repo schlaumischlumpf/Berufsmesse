@@ -499,6 +499,9 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/easter-eggs.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/mobile.css">
     
+    <!-- Darkmode (vor Content laden um Flash zu vermeiden) -->
+    <script src="<?php echo BASE_URL; ?>assets/js/darkmode.js"></script>
+    
     <style>
         /* ==========================================================================
            Pastel Color Palette - CSS Variables
@@ -1346,6 +1349,11 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
 
         <!-- User Info with Help Button -->
         <div class="p-4 border-t border-gray-100 mt-auto bg-gradient-to-r from-gray-50 to-white">
+            <!-- Darkmode Toggle -->
+            <button id="darkmode-toggle" onclick="toggleDarkmode()" class="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-gray-50 to-slate-50 text-gray-600 rounded-lg text-sm font-medium hover:from-gray-100 hover:to-slate-100 transition-all duration-300 border border-gray-200">
+                <i class="fas fa-moon"></i>
+                <span>Dunkel</span>
+            </button>
             <!-- Help/Tour Button -->
             <button onclick="startGuidedTour()" class="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 rounded-lg text-sm font-medium hover:from-amber-100 hover:to-orange-100 transition-all duration-300 border border-amber-200">
                 <i class="fas fa-question-circle"></i>
