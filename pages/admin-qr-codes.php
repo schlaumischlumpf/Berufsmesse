@@ -18,13 +18,14 @@ if (!isAdmin() && !hasPermission('qr_codes_sehen')) {
 try {
     // Admins und Benutzer mit qr_codes_verwalten sehen alle Aussteller
     if (isAdmin() || hasPermission('qr_codes_verwalten')) {
-        $stmt = $db->query("
+        $stmt = $db->prepare("
             SELECT e.*, r.room_number
             FROM exhibitors e
             LEFT JOIN rooms r ON e.room_id = r.id
-            WHERE e.active = 1
+            WHERE e.active = 1 AND e.edition_id = ?
             ORDER BY e.name
         ");
+        $stmt->execute([$activeEditionId]);
         $exhibitors = $stmt->fetchAll();
     } else {
         // Exhibitor-spezifische Orga-Mitglieder sehen nur ihre zugewiesenen Aussteller
@@ -33,23 +34,26 @@ try {
             FROM exhibitors e
             LEFT JOIN rooms r ON e.room_id = r.id
             INNER JOIN exhibitor_orga_team eot ON e.id = eot.exhibitor_id
-            WHERE e.active = 1 AND eot.user_id = ?
+            WHERE e.active = 1 AND eot.user_id = ? AND e.edition_id = ? AND eot.edition_id = ?
             ORDER BY e.name
         ");
-        $stmt->execute([$_SESSION['user_id']]);
+        $stmt->execute([$_SESSION['user_id'], $activeEditionId, $activeEditionId]);
         $exhibitors = $stmt->fetchAll();
     }
 } catch (Exception $e) {
     $exhibitors = [];
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Exhibitors Query Error: ' . $e->getMessage());
 }
 
 // Alle Timeslots laden (inkl. Slots 2 und 4 für freie Wahl)
 try {
-    $stmt = $db->query("SELECT * FROM timeslots ORDER BY slot_number ASC");
+    $stmt = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? AND is_break = 0 ORDER BY start_time ASC, slot_number ASC");
+    $stmt->execute([$activeEditionId]);
     $timeslots = $stmt->fetchAll();
 } catch (Exception $e) {
     $timeslots = [];
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Timeslots Query Error: ' . $e->getMessage());
 }
 
@@ -62,23 +66,26 @@ try {
     }
     
     // Zuerst prüfen: Sind überhaupt Tokens in der DB?
-    $stmtCheck = $db->query("SELECT COUNT(*) as total, MIN(expires_at) as earliest, MAX(expires_at) as latest FROM qr_tokens");
+    $stmtCheck = $db->prepare("SELECT COUNT(*) as total, MIN(expires_at) as earliest, MAX(expires_at) as latest FROM qr_tokens WHERE edition_id = ?");
+    $stmtCheck->execute([$activeEditionId]);
     $tokenCheck = $stmtCheck->fetch();
     $tokenCheck['current_time'] = date('Y-m-d H:i:s');
     
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT qt.*, e.name as exhibitor_name, t.slot_name, t.slot_number
         FROM qr_tokens qt
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
-        WHERE qt.expires_at > NOW()
+        WHERE qt.expires_at > NOW() AND qt.edition_id = ?
         ORDER BY e.name, t.slot_number
     ");
+    $stmt->execute([$activeEditionId]);
     $existingTokens = $stmt->fetchAll();
 } catch (Exception $e) {
     $existingTokens = [];
     $tokenCheck = ['total' => 0, 'earliest' => null, 'latest' => null, 'current_time' => date('Y-m-d H:i:s')];
     $dbError = $e->getMessage();
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Tokens Query Error: ' . $e->getMessage());
 }
 
@@ -102,31 +109,35 @@ if (!empty($searchQuery)) {
 
 // Anwesenheitsstatistik laden
 try {
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT a.exhibitor_id, a.timeslot_id, COUNT(*) as present_count
         FROM attendance a
+        WHERE a.edition_id = ?
         GROUP BY a.exhibitor_id, a.timeslot_id
     ");
+    $stmt->execute([$activeEditionId]);
     $attendanceStats = [];
     foreach ($stmt->fetchAll() as $row) {
         $attendanceStats[$row['exhibitor_id'] . '_' . $row['timeslot_id']] = $row['present_count'];
     }
 } catch (Exception $e) {
     $attendanceStats = [];
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Attendance Stats Error: ' . $e->getMessage());
 }
 
 // Registrierungen + Anwesenheit laden (zeigt alle Angemeldeten mit Scan-Status)
 try {
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT r.exhibitor_id, r.timeslot_id, u.firstname, u.lastname, u.class, u.id as user_id,
                a.checked_in_at
         FROM registrations r
         JOIN users u ON r.user_id = u.id
         LEFT JOIN attendance a ON a.user_id = r.user_id AND a.exhibitor_id = r.exhibitor_id AND a.timeslot_id = r.timeslot_id
-        WHERE r.timeslot_id IS NOT NULL
+        WHERE r.timeslot_id IS NOT NULL AND r.edition_id = ?
         ORDER BY r.exhibitor_id, r.timeslot_id, u.lastname, u.firstname
     ");
+    $stmt->execute([$activeEditionId]);
     $attendanceDetails = [];
     foreach ($stmt->fetchAll() as $row) {
         $key = $row['exhibitor_id'] . '_' . $row['timeslot_id'];
@@ -137,18 +148,22 @@ try {
     }
 } catch (Exception $e) {
     $attendanceDetails = [];
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Attendance Details Error: ' . $e->getMessage());
 }
 
 // Gesamt-Statistik
 try {
-    $stmt = $db->query("SELECT COUNT(DISTINCT user_id) as total FROM attendance");
+    $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as total FROM attendance WHERE edition_id = ?");
+    $stmt->execute([$activeEditionId]);
     $totalAttendees = $stmt->fetchColumn();
-    $stmt = $db->query("SELECT COUNT(*) as total FROM attendance");
+    $stmt = $db->prepare("SELECT COUNT(*) as total FROM attendance WHERE edition_id = ?");
+    $stmt->execute([$activeEditionId]);
     $totalCheckins = $stmt->fetchColumn();
 } catch (Exception $e) {
     $totalAttendees = 0;
     $totalCheckins = 0;
+    logErrorToAudit($e, 'QR-Codes');
     error_log('QR-Codes Page - Total Stats Error: ' . $e->getMessage());
 }
 
@@ -198,6 +213,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
         </div>
         <?php if (isAdmin() || hasPermission('qr_codes_erstellen')): ?>
         <form method="POST">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <button type="submit" name="generate_all" value="1"
                     class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2"
                     onclick="return confirm('Alle QR-Codes neu generieren? Bestehende werden ersetzt.')">
@@ -312,8 +328,8 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                 $presentCount = $attendanceStats[$key] ?? 0;
                 
                 // Registrierungen für diesen Slot zählen
-                $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
-                $stmt->execute([$exhibitor['id'], $timeslot['id']]);
+                $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?");
+                $stmt->execute([$exhibitor['id'], $timeslot['id'], $activeEditionId]);
                 $regCount = $stmt->fetchColumn();
             ?>
             <div class="border border-gray-200 rounded-lg p-4 <?php echo $token ? 'bg-gray-50' : 'bg-yellow-50 border-yellow-200'; ?>">
@@ -349,6 +365,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                                 <i class="fas fa-key mr-1"></i>Token
                             </button>
                             <form method="POST" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                                 <input type="hidden" name="timeslot_id" value="<?php echo $timeslot['id']; ?>">
                                 <button type="submit" name="generate_single" value="1"
@@ -364,6 +381,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                         <i class="fas fa-qrcode text-3xl text-gray-300 mb-2"></i>
                         <p class="text-xs text-gray-500 mb-3">Kein QR-Code vorhanden</p>
                         <form method="POST">
+                            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                             <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                             <input type="hidden" name="timeslot_id" value="<?php echo $timeslot['id']; ?>">
                             <button type="submit" name="generate_single" value="1"

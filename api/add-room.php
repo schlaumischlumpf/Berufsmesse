@@ -11,7 +11,10 @@ if (!isAdmin() && !hasPermission('raeume_erstellen')) {
     exit;
 }
 
+requireCsrf();
+
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Get POST data
 $data = json_decode(file_get_contents('php://input'), true);
@@ -29,8 +32,8 @@ if (empty($data['capacity']) || $data['capacity'] < 1) {
 
 try {
     // Check if room number already exists
-    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ?");
-    $stmt->execute([$data['room_number']]);
+    $stmt = $db->prepare("SELECT id FROM rooms WHERE room_number = ? AND rooms.edition_id = ?");
+    $stmt->execute([$data['room_number'], $activeEditionId]);
     
     if ($stmt->fetch()) {
         echo json_encode(['success' => false, 'message' => 'Ein Raum mit dieser Nummer existiert bereits']);
@@ -39,15 +42,16 @@ try {
     
     // Insert new room (with equipment - Issue #17)
     $stmt = $db->prepare("
-        INSERT INTO rooms (room_number, floor, capacity, equipment) 
-        VALUES (?, ?, ?, ?)
+        INSERT INTO rooms (room_number, floor, capacity, equipment, edition_id) 
+        VALUES (?, ?, ?, ?, ?)
     ");
     
     $stmt->execute([
         $data['room_number'],
         $data['floor'] ?: null,
         $data['capacity'],
-        $data['equipment'] ?? null
+        $data['equipment'] ?? null,
+        $activeEditionId
     ]);
     
     echo json_encode([
@@ -57,7 +61,8 @@ try {
     ]);
     logAuditAction('raum_erstellt', "Raum '{$data['room_number']}' erstellt (Kap.: {$data['capacity']})");
     
-} catch (PDOException $e) {
+} catch (Exception $e) {
+    logErrorToAudit($e, 'API-RaumHinzufügen');
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Datenbankfehler: ' . $e->getMessage()]);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

@@ -11,7 +11,7 @@ if (!isAdmin() && !hasPermission('qr_codes_sehen') && !hasPermission('qr_codes_e
 $db = getDB();
 
 // Alle Schüler mit ihren Einschreibungen (Slots 1, 3, 5) und Anwesenheitsstatus laden
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT
         u.id        AS user_id,
         u.firstname,
@@ -28,15 +28,19 @@ $stmt = $db->query("
         IF(a.id IS NOT NULL, 1, 0) AS is_present
     FROM users u
     LEFT JOIN registrations r  ON r.user_id      = u.id
+                               AND r.edition_id   = ?
     LEFT JOIN exhibitors e     ON e.id            = r.exhibitor_id
+                               AND e.edition_id   = ?
     LEFT JOIN timeslots t      ON t.id            = r.timeslot_id
-                               AND t.slot_number IN (1, 3, 5)
+                               AND t.slot_number " . getManagedSlotsSqlIn() . "
     LEFT JOIN attendance a     ON a.user_id       = u.id
                                AND a.exhibitor_id = r.exhibitor_id
                                AND a.timeslot_id  = r.timeslot_id
+                               AND a.edition_id   = ?
     WHERE u.role = 'student'
     ORDER BY u.class ASC, u.lastname ASC, u.firstname ASC, t.slot_number ASC
 ");
+$stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId]);
 
 // Daten nach Schüler gruppieren
 $studentsRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -69,9 +73,11 @@ foreach ($studentsRaw as $row) {
 
 // Statistiken
 $totalStudents   = count($students);
-$stmt = $db->query("SELECT COUNT(DISTINCT user_id) FROM attendance");
+$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $presentStudents = $stmt->fetchColumn();
-$stmt = $db->query("SELECT COUNT(*) FROM attendance");
+$stmt = $db->prepare("SELECT COUNT(*) FROM attendance WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $totalCheckins   = $stmt->fetchColumn();
 ?>
 
@@ -176,13 +182,15 @@ $totalCheckins   = $stmt->fetchColumn();
                 </div>
                 <div class="flex items-center gap-3">
                     <?php if ($totalSlots > 0): ?>
-                    <span class="text-xs font-semibold px-2.5 py-1 rounded-full <?php
-                        if ($statusClass === 'present') echo 'bg-emerald-100 text-emerald-700';
-                        elseif ($statusClass === 'partial') echo 'bg-amber-100 text-amber-700';
-                        else echo 'bg-red-50 text-red-600';
-                    ?>">
-                        <?php echo $presentCount; ?>/<?php echo $totalSlots; ?>
-                        <?php echo $statusClass === 'present' ? ' ✓' : ''; ?>
+                    <span class="student-badge text-xs font-semibold px-2.5 py-1 rounded-full 
+                        <?php
+                            if ($statusClass === 'present') echo 'bg-emerald-100 text-emerald-700';
+                            elseif ($statusClass === 'partial') echo 'bg-amber-100 text-amber-700';
+                            else echo 'bg-red-50 text-red-600';
+                        ?>">
+                        <?php
+                            echo $presentCount . '/' . $totalSlots . ($statusClass === 'present' ? ' ✓' : ''); 
+                        ?>
                     </span>
                     <?php else: ?>
                     <span class="text-xs text-gray-400 italic">Keine Einschreibungen</span>
@@ -313,7 +321,10 @@ async function markAttendance(userId, exhibitorId, timeslotId, action, btn) {
     try {
         const resp = await fetch(BASE_API, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': '<?php echo generateCsrfToken(); ?>'
+            },
             body: JSON.stringify({
                 action:       action === 'present' ? 'mark_present' : 'mark_absent',
                 user_id:      userId,
@@ -324,8 +335,10 @@ async function markAttendance(userId, exhibitorId, timeslotId, action, btn) {
         const data = await resp.json();
 
         if (data.success) {
+            btn.innerHTML = origHtml;
             updateSlotRow(userId, timeslotId, action === 'present');
             updateStudentBadge(userId);
+            showToast(data.message || 'Erfolgreich', 'green');
         } else {
             showToast(data.message || 'Fehler', 'red');
             btn.innerHTML = origHtml;
@@ -384,6 +397,18 @@ function updateStudentBadge(userId) {
     const badge = card.querySelector('.student-badge');
     if (badge) {
         badge.textContent = present + '/' + total + (present >= total && total > 0 ? ' ✓' : '');
+        
+        // CSS-Klassen für Farbe aktualisieren
+        badge.className = badge.className.replace(/bg-\w+-\d+/g, '');
+        badge.className = badge.className.replace(/text-\w+-\d+/g, '');
+        
+        if (present >= total && total > 0) {
+            badge.className += ' bg-emerald-100 text-emerald-700';
+        } else if (present > 0) {
+            badge.className += ' bg-amber-100 text-amber-700';
+        } else {
+            badge.className += ' bg-red-50 text-red-600';
+        }
     }
 
     // Status aktualisieren für Filter
@@ -400,14 +425,4 @@ function showToast(msg, color) {
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 3000);
 }
-
-// Beim Laden Badges setzen
-document.querySelectorAll('.student-card').forEach(card => {
-    const uid      = card.querySelector('[id^="slots-"]')?.id?.replace('slots-', '');
-    if (!uid) return;
-    const badge    = card.querySelector('[class*="rounded-full"]');
-    if (badge && badge.textContent.trim()) {
-        badge.classList.add('student-badge');
-    }
-});
 </script>

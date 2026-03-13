@@ -39,12 +39,14 @@ CREATE TABLE IF NOT EXISTS `audit_logs` (
   `user_id` int(11) DEFAULT NULL,
   `username` varchar(100) NOT NULL,
   `action` varchar(255) NOT NULL,
+  `severity` ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info' COMMENT 'Schweregrad des Log-Eintrags',
   `details` text DEFAULT NULL,
   `ip_address` varchar(45) DEFAULT NULL,
   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
   PRIMARY KEY (`id`),
   KEY `idx_user_id` (`user_id`),
   KEY `idx_action` (`action`),
+  KEY `idx_severity` (`severity`),
   KEY `idx_created_at` (`created_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Audit Logs für alle Nutzeraktionen';
 
@@ -205,7 +207,7 @@ CREATE TABLE IF NOT EXISTS `users` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `username` varchar(100) NOT NULL,
   `email` varchar(255) DEFAULT NULL,
-  `password` varchar(255) NOT NULL,
+  `password` varchar(255) DEFAULT NULL,
   `firstname` varchar(100) NOT NULL,
   `lastname` varchar(100) NOT NULL,
   `class` varchar(50) DEFAULT NULL,
@@ -263,29 +265,26 @@ DELIMITER //
 -- Stored Procedure zum sicheren Hinzufügen von Spalten
 DROP PROCEDURE IF EXISTS add_column_if_not_exists//
 CREATE PROCEDURE add_column_if_not_exists(
-    IN table_name VARCHAR(128),
-    IN column_name VARCHAR(128),
-    IN column_definition TEXT
+    IN p_table VARCHAR(128),
+    IN p_column VARCHAR(128),
+    IN p_definition TEXT
 )
 BEGIN
-    DECLARE column_exists INT DEFAULT 0;
+    DECLARE col_exists INT DEFAULT 0;
 
     -- Prüfen ob Spalte existiert
-    SELECT COUNT(*) INTO column_exists
+    SELECT COUNT(*) INTO col_exists
     FROM information_schema.COLUMNS
     WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME = table_name
-      AND COLUMN_NAME = column_name;
+      AND TABLE_NAME   = p_table
+      AND COLUMN_NAME  = p_column;
 
     -- Spalte hinzufügen wenn sie nicht existiert
-    IF column_exists = 0 THEN
-        SET @sql = CONCAT('ALTER TABLE `', table_name, '` ADD COLUMN `', column_name, '` ', column_definition);
+    IF col_exists = 0 THEN
+        SET @sql = CONCAT('ALTER TABLE `', p_table, '` ADD COLUMN `', p_column, '` ', p_definition);
         PREPARE stmt FROM @sql;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
-        SELECT CONCAT('Column ', column_name, ' added to table ', table_name) AS message;
-    ELSE
-        SELECT CONCAT('Column ', column_name, ' already exists in table ', table_name) AS message;
     END IF;
 END//
 
@@ -301,9 +300,33 @@ CALL add_column_if_not_exists('users', 'must_change_password', 'tinyint(1) DEFAU
 CALL add_column_if_not_exists('registrations', 'priority', 'int(11) DEFAULT NULL COMMENT \'Priorität der Anmeldung (1 = höchste Priorität)\'');
 CALL add_column_if_not_exists('rooms', 'equipment', 'varchar(500) DEFAULT NULL COMMENT \'Raumausstattung (z.B. Beamer, Smartboard)\'');
 CALL add_column_if_not_exists('exhibitor_documents', 'visible_for_students', 'tinyint(1) DEFAULT 0 COMMENT \'Gibt an ob das Dokument für Schüler sichtbar ist\'');
+CALL add_column_if_not_exists('audit_logs', 'severity', "ENUM('info', 'warning', 'error') NOT NULL DEFAULT 'info' COMMENT 'Schweregrad des Log-Eintrags'");
 
--- Stored Procedure entfernen
-DROP PROCEDURE IF EXISTS add_column_if_not_exists;
+-- Index für severity hinzufügen (nur wenn nicht vorhanden)
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
+DELIMITER //
+CREATE PROCEDURE add_index_if_not_exists(
+    IN p_table VARCHAR(128),
+    IN p_index VARCHAR(128),
+    IN p_column VARCHAR(128)
+)
+BEGIN
+    DECLARE idx_exists INT DEFAULT 0;
+    SELECT COUNT(*) INTO idx_exists
+    FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = p_table
+      AND INDEX_NAME   = p_index;
+    IF idx_exists = 0 THEN
+        SET @sql = CONCAT('ALTER TABLE `', p_table, '` ADD INDEX `', p_index, '` (`', p_column, '`)');
+        PREPARE stmt FROM @sql;
+        EXECUTE stmt;
+        DEALLOCATE PREPARE stmt;
+    END IF;
+END//
+DELIMITER ;
+CALL add_index_if_not_exists('audit_logs', 'idx_severity', 'severity');
+DROP PROCEDURE IF EXISTS add_index_if_not_exists;
 
 -- ============================================================================
 -- Foreign Key Constraints hinzufügen (nur wenn sie nicht existieren)
@@ -314,9 +337,9 @@ DELIMITER //
 -- Stored Procedure zum sicheren Hinzufügen von Foreign Keys
 DROP PROCEDURE IF EXISTS add_fk_if_not_exists//
 CREATE PROCEDURE add_fk_if_not_exists(
-    IN table_name VARCHAR(128),
-    IN constraint_name VARCHAR(128),
-    IN fk_definition TEXT
+    IN p_table VARCHAR(128),
+    IN p_constraint VARCHAR(128),
+    IN p_definition TEXT
 )
 BEGIN
     DECLARE fk_exists INT DEFAULT 0;
@@ -324,20 +347,17 @@ BEGIN
     -- Prüfen ob Foreign Key existiert
     SELECT COUNT(*) INTO fk_exists
     FROM information_schema.TABLE_CONSTRAINTS
-    WHERE TABLE_SCHEMA = DATABASE()
-      AND TABLE_NAME = table_name
-      AND CONSTRAINT_NAME = constraint_name
-      AND CONSTRAINT_TYPE = 'FOREIGN KEY';
+    WHERE TABLE_SCHEMA     = DATABASE()
+      AND TABLE_NAME       = p_table
+      AND CONSTRAINT_NAME  = p_constraint
+      AND CONSTRAINT_TYPE  = 'FOREIGN KEY';
 
     -- Foreign Key hinzufügen wenn er nicht existiert
     IF fk_exists = 0 THEN
-        SET @sql = CONCAT('ALTER TABLE `', table_name, '` ADD CONSTRAINT `', constraint_name, '` ', fk_definition);
+        SET @sql = CONCAT('ALTER TABLE `', p_table, '` ADD CONSTRAINT `', p_constraint, '` ', p_definition);
         PREPARE stmt FROM @sql;
         EXECUTE stmt;
         DEALLOCATE PREPARE stmt;
-        SELECT CONCAT('Foreign Key ', constraint_name, ' added to table ', table_name) AS message;
-    ELSE
-        SELECT CONCAT('Foreign Key ', constraint_name, ' already exists in table ', table_name) AS message;
     END IF;
 END//
 
@@ -389,11 +409,115 @@ ALTER TABLE exhibitors MODIFY COLUMN category TEXT;
 -- Schema Update erfolgreich abgeschlossen
 -- ============================================================================
 
-COMMIT;
+-- ============================================================================
+-- Migration 12: Mehrjährigkeit
+-- ============================================================================
 
-SELECT 'Schema update completed successfully!' AS message;
-SELECT 'All missing tables and columns have been created.' AS message;
-SELECT 'Existing data has been preserved.' AS message;
+CREATE TABLE IF NOT EXISTS `messe_editions` (
+  `id`                            INT(11)       NOT NULL AUTO_INCREMENT,
+  `name`                          VARCHAR(150)  NOT NULL,
+  `year`                          INT(4)        NOT NULL,
+  `status`                        ENUM('active','archived') NOT NULL DEFAULT 'archived',
+  `registration_start`            DATETIME      DEFAULT NULL,
+  `registration_end`              DATETIME      DEFAULT NULL,
+  `event_date`                    DATE          DEFAULT NULL,
+  `max_registrations_per_student` INT(11)       NOT NULL DEFAULT 3,
+  `created_at`                    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO `messe_editions` (name, year, status, registration_start, registration_end, event_date, max_registrations_per_student)
+SELECT
+  CONCAT('Berufsmesse ', YEAR(COALESCE((SELECT setting_value FROM settings WHERE setting_key='event_date' LIMIT 1), NOW()))),
+  YEAR(COALESCE((SELECT setting_value FROM settings WHERE setting_key='event_date' LIMIT 1), NOW())),
+  'active',
+  (SELECT setting_value FROM settings WHERE setting_key='registration_start' LIMIT 1),
+  (SELECT setting_value FROM settings WHERE setting_key='registration_end' LIMIT 1),
+  (SELECT setting_value FROM settings WHERE setting_key='event_date' LIMIT 1),
+  COALESCE((SELECT setting_value FROM settings WHERE setting_key='max_registrations_per_student' LIMIT 1), 3)
+FROM DUAL WHERE NOT EXISTS (SELECT 1 FROM messe_editions LIMIT 1);
+
+DROP PROCEDURE IF EXISTS add_edition_id;
+DELIMITER //
+CREATE PROCEDURE add_edition_id(IN p_table VARCHAR(64))
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.COLUMNS
+                   WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME=p_table AND COLUMN_NAME='edition_id') THEN
+        SET @s = CONCAT('ALTER TABLE `',p_table,'` ADD COLUMN `edition_id` INT(11) NOT NULL DEFAULT 1, ADD KEY `idx_edition_id` (`edition_id`)');
+        PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+    END IF;
+END //
+DELIMITER ;
+
+CALL add_edition_id('registrations'); CALL add_edition_id('exhibitors');
+CALL add_edition_id('timeslots');     CALL add_edition_id('rooms');
+CALL add_edition_id('room_slot_capacities'); CALL add_edition_id('attendance');
+CALL add_edition_id('qr_tokens');    CALL add_edition_id('exhibitor_documents');
+CALL add_edition_id('exhibitor_orga_team');
+DROP PROCEDURE IF EXISTS add_edition_id;
+
+-- Migration 13: announcements
+CREATE TABLE IF NOT EXISTS `announcements` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT, `title` VARCHAR(200) NOT NULL,
+  `body` TEXT NOT NULL, `type` ENUM('info','warning','success','error') NOT NULL DEFAULT 'info',
+  `target_role` ENUM('all','student','teacher','admin') NOT NULL DEFAULT 'all',
+  `expires_at` DATETIME DEFAULT NULL, `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+  `created_by` INT(11) NOT NULL, `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`), KEY `idx_active_role` (`is_active`,`target_role`), KEY `idx_expires_at` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Migration 14: timeslots.is_managed
+CALL add_column_if_not_exists('timeslots', 'is_managed',
+    "TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = fester Zuteilungs-Slot'");
+UPDATE `timeslots` SET is_managed = 1 WHERE slot_number IN (1,3,5) AND is_managed = 0;
+
+-- Migration 15: login_attempts
+CREATE TABLE IF NOT EXISTS `login_attempts` (
+  `id` INT(11) NOT NULL AUTO_INCREMENT, `username` VARCHAR(100) NOT NULL,
+  `ip_address` VARCHAR(45) NOT NULL, `attempted_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`), KEY `idx_username` (`username`), KEY `idx_ip` (`ip_address`), KEY `idx_attempted` (`attempted_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Migration 16: edition_id zu users (Schüler/Lehrer/Orga sind editionsspezifisch)
+CALL add_column_if_not_exists('users', 'edition_id',
+    "INT(11) DEFAULT NULL COMMENT 'NULL = globaler Admin, sonst editionsspezifischer Benutzer'");
+UPDATE users SET edition_id = (SELECT id FROM messe_editions WHERE status='active' LIMIT 1)
+    WHERE role != 'admin' AND edition_id IS NULL;
+
+-- Alle Hilfsprozeduren entfernen
+DROP PROCEDURE IF EXISTS add_column_if_not_exists;
+
+-- UNIQUE-Constraint ändern: username + edition_id statt nur username
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND INDEX_NAME='username');
+SET @s = IF(@idx_exists > 0, 'ALTER TABLE `users` DROP INDEX `username`', 'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @uidx_exists = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND INDEX_NAME='unique_username_edition');
+SET @s = IF(@uidx_exists = 0,
+    'ALTER TABLE `users` ADD UNIQUE KEY `unique_username_edition` (`username`, `edition_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Migration 17: timeslots.is_break
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='timeslots' AND COLUMN_NAME='is_break');
+SET @s = IF(@col_exists = 0,
+    "ALTER TABLE `timeslots` ADD COLUMN `is_break` TINYINT(1) NOT NULL DEFAULT 0 COMMENT '1 = Pause, 0 = normaler Slot'",
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Migration 18: password-Spalte darf NULL sein (für passwortlose Importe)
+SET @pwd_nullable = (SELECT IS_NULLABLE FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='users' AND COLUMN_NAME='password');
+SET @s = IF(@pwd_nullable = 'NO',
+    'ALTER TABLE `users` MODIFY COLUMN `password` varchar(255) DEFAULT NULL',
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;
 /*!40101 SET CHARACTER_SET_RESULTS=@OLD_CHARACTER_SET_RESULTS */;

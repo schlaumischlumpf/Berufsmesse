@@ -12,6 +12,10 @@ date_default_timezone_set('Europe/Berlin');
 if (session_status() === PHP_SESSION_NONE) {
     ini_set('session.cookie_httponly', 1);
     ini_set('session.use_only_cookies', 1);
+    ini_set('session.cookie_samesite', 'Strict');
+    ini_set('session.gc_maxlifetime', 3600);
+    ini_set('session.sid_length', 48);
+    ini_set('session.sid_bits_per_character', 6);
     $cookieSecure = getenv('COOKIE_SECURE') ?: ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? '1' : '0');
     ini_set('session.cookie_secure', $cookieSecure);
     session_start();
@@ -47,4 +51,12 @@ if ($appEnv === 'development') {
 define('TRUSTED_PROXIES', array_filter(array_map('trim', explode(',',
     getenv('TRUSTED_PROXIES') ?: '172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.1'
 ))));
+
+// HTTP-Sicherheitsheader
+if (!headers_sent()) {
+    header('X-Frame-Options: DENY');
+    header('X-Content-Type-Options: nosniff');
+    header('Referrer-Policy: strict-origin-when-cross-origin');
+    header('Permissions-Policy: camera=(), microphone=(), geolocation=()');
+}
 ?>

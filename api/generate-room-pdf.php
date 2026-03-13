@@ -12,7 +12,10 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
     die('Keine Berechtigung');
 }
 
+try {
+
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Filter
 $filterRoom = $_GET['room'] ?? '';
@@ -29,11 +32,12 @@ $query = "
     JOIN exhibitors e ON reg.exhibitor_id = e.id
     JOIN timeslots t ON reg.timeslot_id = t.id
     JOIN rooms r ON e.room_id = r.id
+    WHERE reg.edition_id = ? AND e.edition_id = ? AND t.edition_id = ? AND r.edition_id = ?
 ";
 
-$params = [];
+$params = [$activeEditionId, $activeEditionId, $activeEditionId, $activeEditionId];
 if ($filterRoom) {
-    $query .= " WHERE r.id = ?";
+    $query .= " AND r.id = ?";
     $params[] = intval($filterRoom);
 }
 
@@ -44,7 +48,8 @@ $stmt->execute($params);
 $registrations = $stmt->fetchAll();
 
 // Räume für Titel
-$stmt = $db->query("SELECT id, room_number FROM rooms ORDER BY room_number");
+$stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE rooms.edition_id = ? ORDER BY room_number");
+$stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
 // Nach Raum und Slot gruppieren
@@ -208,3 +213,12 @@ if ($filterRoom) {
 }
 
 $pdf->Output('D', $filename);
+
+} catch (Exception $e) {
+    logErrorToAudit($e, 'PDF-Raumuebersicht');
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    die('Fehler beim Erstellen des PDFs.');
+}

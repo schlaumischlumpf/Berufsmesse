@@ -10,12 +10,15 @@ if (!isAdmin() && !hasPermission('raeume_bearbeiten')) {
     exit;
 }
 
+requireCsrf();
+
 try {
     $db = getDB();
+    $activeEditionId = getActiveEditionId();
     
     // Alle Raum-Zuordnungen entfernen
-    $stmt = $db->prepare("UPDATE exhibitors SET room_id = NULL");
-    $stmt->execute();
+    $stmt = $db->prepare("UPDATE exhibitors SET room_id = NULL WHERE edition_id = ?");
+    $stmt->execute([$activeEditionId]);
     
     $affectedRows = $stmt->rowCount();
     logAuditAction('raumzuordnungen_geleert', "Alle $affectedRows Raum-Zuordnungen der Aussteller entfernt");
@@ -27,8 +30,7 @@ try {
     ]);
     
 } catch (Exception $e) {
-    echo json_encode([
-        'success' => false,
-        'message' => 'Fehler beim Löschen: ' . $e->getMessage()
-    ]);
+    logErrorToAudit($e, 'API-RaumClear');
+    http_response_code(500);
+    echo json_encode(['success' => false, 'message' => 'Ein interner Fehler ist aufgetreten.']);
 }

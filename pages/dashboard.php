@@ -15,10 +15,10 @@ $stmt = $db->prepare("
     JOIN exhibitors e ON r.exhibitor_id = e.id 
     JOIN timeslots t ON r.timeslot_id = t.id 
     LEFT JOIN rooms rm ON e.room_id = rm.id
-    WHERE r.user_id = ?
+    WHERE r.user_id = ? AND r.edition_id = ? AND e.edition_id = ?
     ORDER BY t.slot_number ASC
 ");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$_SESSION['user_id'], $activeEditionId, $activeEditionId]);
 $userRegistrations = $stmt->fetchAll();
 
 // Registrierungsstatus
@@ -31,14 +31,15 @@ $stmt = $db->prepare("
     SELECT COUNT(*) as count
     FROM registrations r
     JOIN timeslots t ON r.timeslot_id = t.id
-    WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+    WHERE r.user_id = ? AND r.edition_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
 ");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$_SESSION['user_id'], $activeEditionId]);
 $totalRegistrations = $stmt->fetch()['count'];
 $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
 
 // Aussteller mit freien Plätzen
-$stmt = $db->query("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1 AND edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $totalExhibitors = $stmt->fetch()['count'];
 
 // Nächster Termin ermitteln
@@ -52,14 +53,21 @@ foreach ($userRegistrations as $reg) {
     }
 }
 
-// Timeline für heute
-$timeline = [
-    ['time' => '09:00', 'end' => '09:30', 'slot_number' => 1, 'type' => 'assigned'],
-    ['time' => '09:40', 'end' => '10:10', 'slot_number' => 2, 'type' => 'free'],
-    ['time' => '10:40', 'end' => '11:10', 'slot_number' => 3, 'type' => 'assigned'],
-    ['time' => '11:20', 'end' => '11:50', 'slot_number' => 4, 'type' => 'free'],
-    ['time' => '12:20', 'end' => '12:50', 'slot_number' => 5, 'type' => 'assigned'],
-];
+// Timeline für heute – dynamisch aus Datenbank laden
+$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY start_time ASC, slot_number ASC");
+$stmtSlots->execute([$activeEditionId]);
+$dbSlots = $stmtSlots->fetchAll();
+$timeline = [];
+foreach ($dbSlots as $slot) {
+    $isBreak = !empty($slot['is_break']);
+    $timeline[] = [
+        'time' => substr($slot['start_time'] ?? '00:00', 0, 5),
+        'end'  => substr($slot['end_time'] ?? '00:00', 0, 5),
+        'slot_number' => $slot['slot_number'],
+        'slot_name' => $slot['slot_name'],
+        'type' => $isBreak ? 'break' : ($slot['is_managed'] ? 'assigned' : 'free'),
+    ];
+}
 
 // Registrierungen nach Slot
 $regBySlot = [];
@@ -67,6 +75,12 @@ foreach ($userRegistrations as $reg) {
     $regBySlot[$reg['slot_number']] = $reg;
 }
 ?>
+
+<script>
+const REG_START  = "<?php echo htmlspecialchars(getSetting('registration_start', '')); ?>";
+const REG_END    = "<?php echo htmlspecialchars(getSetting('registration_end', '')); ?>";
+const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
+</script>
 
 <div class="dashboard-container max-w-7xl mx-auto">
     <!-- Welcome Section -->
@@ -87,7 +101,10 @@ foreach ($userRegistrations as $reg) {
                 <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
                 <div>
                     <span class="text-sm font-semibold text-green-700">Einschreibung offen</span>
-                    <p class="text-xs text-green-600">bis <?php echo formatDateTime($regEnd); ?></p>
+                    <p class="text-xs text-green-600">
+                        noch <span id="dashCountdownValue" class="font-semibold tabular-nums">…</span>
+                        · bis <?php echo formatDateTime($regEnd); ?>
+                    </p>
                 </div>
             </div>
             <?php elseif ($regStatus === 'upcoming'): ?>
@@ -95,7 +112,10 @@ foreach ($userRegistrations as $reg) {
                 <div class="w-3 h-3 bg-amber-500 rounded-full"></div>
                 <div>
                     <span class="text-sm font-semibold text-amber-700">Startet bald</span>
-                    <p class="text-xs text-amber-600">ab <?php echo formatDateTime($regStart); ?></p>
+                    <p class="text-xs text-amber-600">
+                        noch <span id="dashCountdownValue" class="font-semibold tabular-nums">…</span>
+                        · ab <?php echo formatDateTime($regStart); ?>
+                    </p>
                 </div>
             </div>
             <?php endif; ?>
@@ -188,6 +208,23 @@ foreach ($userRegistrations as $reg) {
                         $hasReg = isset($regBySlot[$slot['slot_number']]);
                         $reg = $hasReg ? $regBySlot[$slot['slot_number']] : null;
                         
+                        // Break/Pause-Handling
+                        if ($slot['type'] === 'break'):
+                    ?>
+                    <div class="timeline-item flex items-center gap-4 p-3 rounded-xl border bg-amber-50 border-amber-200">
+                        <div class="text-center min-w-[60px]">
+                            <span class="text-sm font-bold text-amber-700"><?php echo $slot['time']; ?></span>
+                            <span class="block text-xs text-amber-400"><?php echo $slot['end']; ?></span>
+                        </div>
+                        <div class="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+                            <i class="fas fa-coffee text-amber-600"></i>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h4 class="font-medium text-amber-700"><?php echo htmlspecialchars($slot['slot_name'] ?? 'Pause'); ?></h4>
+                            <p class="text-xs text-amber-500">Pause</p>
+                        </div>
+                    </div>
+                    <?php else:
                         // Status-Farben
                         if ($slot['type'] === 'free') {
                             $bgClass = 'bg-purple-50 border-purple-200';
@@ -245,6 +282,7 @@ foreach ($userRegistrations as $reg) {
                             </span>
                         </div>
                     </div>
+                    <?php endif; ?>
                     <?php endforeach; ?>
                 </div>
             </div>
@@ -434,3 +472,29 @@ document.addEventListener('DOMContentLoaded', () => {
     text-align: right;
 }
 </style>
+
+<script>
+function startCountdown(targetIsoStr, elementId) {
+    function update() {
+        const diff = new Date(targetIsoStr).getTime() - Date.now();
+        const el   = document.getElementById(elementId);
+        if (!el) return;
+        if (diff <= 0) { location.reload(); return; }
+        const days  = Math.floor(diff / 86400000);
+        const hours = Math.floor((diff % 86400000) / 3600000);
+        const mins  = Math.floor((diff % 3600000) / 60000);
+        const secs  = Math.floor((diff % 60000) / 1000);
+        const showSecs = diff < 2 * 3600 * 1000;
+        let text = '';
+        if (days > 0)    text += days + 'd ';
+        if (hours > 0)   text += hours + 'h ';
+        text += mins + 'min';
+        if (showSecs)    text += ' ' + secs + 's';
+        el.textContent = text.trim();
+    }
+    update();
+    setInterval(update, 1000);
+}
+if (REG_STATUS === 'open')          startCountdown(REG_END,   'dashCountdownValue');
+else if (REG_STATUS === 'upcoming') startCountdown(REG_START, 'dashCountdownValue');
+</script>

@@ -11,18 +11,27 @@
 require_once '../config.php';
 require_once '../functions.php';
 
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
+    header('Allow: POST');
+    die('Methode nicht erlaubt.');
+}
+
 if (!isAdmin() && !hasPermission('zuteilung_ausfuehren')) {
     header('Location: ../index.php');
     exit;
 }
 
+requireCsrf();
+
 set_time_limit(300); // 5 Minuten Timeout
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 try {
     // Verwaltete Slots (nur 1, 3, 5)
-    $managedSlots = [1, 3, 5];
+    $managedSlots = getManagedSlotNumbers();
     
     $assignedCount = 0;
     $errors = [];
@@ -32,15 +41,17 @@ try {
     //          → Slots bei ihren gewählten Ausstellern zuweisen
     // ============================================================
     
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT r.id as registration_id, r.user_id, r.exhibitor_id, e.name as exhibitor_name, e.room_id, COALESCE(r.priority, 2) as priority
         FROM registrations r
         JOIN exhibitors e ON r.exhibitor_id = e.id
         WHERE r.timeslot_id IS NULL
         AND e.active = 1
         AND e.room_id IS NOT NULL
+        AND r.edition_id = ? AND e.edition_id = ?
         ORDER BY COALESCE(r.priority, 2) ASC, r.registered_at ASC
     ");
+    $stmt->execute([$activeEditionId, $activeEditionId]);
     $pendingRegistrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($pendingRegistrations as $reg) {
@@ -54,9 +65,10 @@ try {
             SELECT t.slot_number 
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
-            WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+            WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
+            AND r.edition_id = ? AND t.edition_id = ?
         ");
-        $stmt->execute([$studentId]);
+        $stmt->execute([$studentId, $activeEditionId, $activeEditionId]);
         $usedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
         $availableSlots = array_diff($managedSlots, $usedSlots);
@@ -73,14 +85,14 @@ try {
         $lowestCount = PHP_INT_MAX;
         
         foreach ($availableSlots as $slotNumber) {
-            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
-            $stmt->execute([$slotNumber]);
+            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ? AND timeslots.edition_id = ?");
+            $stmt->execute([$slotNumber, $activeEditionId]);
             $timeslotId = $stmt->fetchColumn();
             
             if (!$timeslotId) continue;
             
-            $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
-            $stmt->execute([$exhibitorId, $timeslotId]);
+            $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?");
+            $stmt->execute([$exhibitorId, $timeslotId, $activeEditionId]);
             $currentCount = $stmt->fetchColumn();
             
             $slotCapacity = getRoomSlotCapacity($roomId, $timeslotId, $priority);
@@ -105,40 +117,42 @@ try {
     // PHASE 2: Schüler ohne vollständige Slots verteilen
     // ============================================================
     
-    $stmt = $db->query("
+    $stmt = $db->prepare("
         SELECT u.id,
-               COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number IN (1,3,5) THEN 1 ELSE 0 END), 0) as assigned_count
+               COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number " . getManagedSlotsSqlIn() . " THEN 1 ELSE 0 END), 0) as assigned_count
         FROM users u
-        LEFT JOIN registrations r ON u.id = r.user_id
-        LEFT JOIN timeslots t ON r.timeslot_id = t.id
+        LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = ?
+        LEFT JOIN timeslots t ON r.timeslot_id = t.id AND t.edition_id = ?
         WHERE u.role = 'student'
         GROUP BY u.id
-        HAVING assigned_count < " . MANAGED_SLOTS_COUNT . "
+        HAVING assigned_count < " . getManagedSlotCount() . "
         ORDER BY assigned_count DESC
     ");
+    $stmt->execute([$activeEditionId, $activeEditionId]);
     $studentsNeedingSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($studentsNeedingSlots as $student) {
         $studentId = $student['id'];
         
         $stmt = $db->prepare("
-            SELECT t.slot_number 
+            Select t.slot_number 
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
-            WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+            WHERE r.user_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
+            AND r.edition_id = ? AND t.edition_id = ?
         ");
-        $stmt->execute([$studentId]);
+        $stmt->execute([$studentId, $activeEditionId, $activeEditionId]);
         $assignedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
-        $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ?");
-        $stmt->execute([$studentId]);
+        $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
+        $stmt->execute([$studentId, $activeEditionId]);
         $existingExhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
         
         $missingSlots = array_diff($managedSlots, $assignedSlots);
         
         foreach ($missingSlots as $slotNumber) {
-            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
-            $stmt->execute([$slotNumber]);
+            $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ? AND timeslots.edition_id = ?");
+            $stmt->execute([$slotNumber, $activeEditionId]);
             $timeslotId = $stmt->fetchColumn();
             
             if (!$timeslotId) continue;
@@ -146,12 +160,12 @@ try {
             $stmt = $db->prepare("
                 SELECT e.id, e.name, e.room_id, COUNT(DISTINCT reg.user_id) as current_count
                 FROM exhibitors e
-                LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
-                WHERE e.active = 1 AND e.room_id IS NOT NULL
+                LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ? AND reg.edition_id = ?
+                WHERE e.active = 1 AND e.room_id IS NOT NULL AND e.edition_id = ?
                 GROUP BY e.id, e.name, e.room_id
                 ORDER BY current_count ASC, RAND()
             ");
-            $stmt->execute([$timeslotId]);
+            $stmt->execute([$timeslotId, $activeEditionId, $activeEditionId]);
             $exhibitors = $stmt->fetchAll();
             
             $selectedExhibitor = null;
@@ -167,8 +181,8 @@ try {
             }
             
             if ($selectedExhibitor) {
-                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'automatic')");
-                if ($stmt->execute([$studentId, $selectedExhibitor['id'], $timeslotId])) {
+                $stmt = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, edition_id) VALUES (?, ?, ?, 'automatic', ?)");
+                if ($stmt->execute([$studentId, $selectedExhibitor['id'], $timeslotId, $activeEditionId])) {
                     $assignedCount++;
                     $existingExhibitors[] = $selectedExhibitor['id'];
                 }
@@ -196,7 +210,8 @@ try {
     }
     
 } catch (Exception $e) {
-    $_SESSION['auto_assign_error'] = $e->getMessage();
+    logErrorToAudit($e, 'API-AutoZuweisung');
+    $_SESSION['auto_assign_error'] = 'Ein interner Fehler ist aufgetreten.';
 }
 
 // Zurück zum Dashboard

@@ -1,3 +1,4 @@
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <?php
 // Admin Dashboard mit Statistiken
 
@@ -34,34 +35,38 @@ $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")
 $stats['total_students'] = $stmt->fetch()['count'];
 
 // Gesamtzahl Aussteller
-$stmt = $db->query("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1 AND edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['total_exhibitors'] = $stmt->fetch()['count'];
 
 // Gesamtzahl Anmeldungen
-$stmt = $db->query("SELECT COUNT(*) as count FROM registrations");
+$stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['total_registrations'] = $stmt->fetch()['count'];
 
 // Schüler mit Anmeldungen (nur role='student', nicht Lehrer/Admins - Issue #14)
-$stmt = $db->query("SELECT COUNT(DISTINCT r.user_id) as count FROM registrations r JOIN users u ON r.user_id = u.id WHERE u.role = 'student'");
+$stmt = $db->prepare("SELECT COUNT(DISTINCT r.user_id) as count FROM registrations r JOIN users u ON r.user_id = u.id WHERE u.role = 'student' AND r.edition_id = ?");
+$stmt->execute([$activeEditionId]);
 $stats['students_registered'] = $stmt->fetch()['count'];
 
 // Schüler ohne Anmeldungen
 $stats['students_not_registered'] = $stats['total_students'] - $stats['students_registered'];
 
 // Aussteller nach Beliebtheit
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT e.name, COUNT(r.id) as registrations
     FROM exhibitors e
-    LEFT JOIN registrations r ON e.id = r.exhibitor_id
-    WHERE e.active = 1
+    LEFT JOIN registrations r ON e.id = r.exhibitor_id AND r.edition_id = ?
+    WHERE e.active = 1 AND e.edition_id = ?
     GROUP BY e.id
     ORDER BY registrations DESC
     LIMIT 5
 ");
+$stmt->execute([$activeEditionId, $activeEditionId]);
 $topExhibitors = $stmt->fetchAll();
 
 // Registrierungen pro Zeitslot
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT 
         t.slot_name, 
         t.slot_number, 
@@ -69,22 +74,26 @@ $stmt = $db->query("
         t.end_time,
         COUNT(r.id) as registrations
     FROM timeslots t
-    LEFT JOIN registrations r ON t.id = r.timeslot_id
+    LEFT JOIN registrations r ON t.id = r.timeslot_id AND r.edition_id = ?
+    WHERE t.edition_id = ?
     GROUP BY t.id, t.slot_name, t.slot_number, t.start_time, t.end_time
     ORDER BY t.slot_number ASC
 ");
+$stmt->execute([$activeEditionId, $activeEditionId]);
 $slotStats = $stmt->fetchAll();
 
 // Letzte Registrierungen
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT r.*, u.firstname, u.lastname, e.name as exhibitor_name, t.slot_name
     FROM registrations r
     JOIN users u ON r.user_id = u.id
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
+    WHERE r.edition_id = ? AND e.edition_id = ?
     ORDER BY r.registered_at DESC
     LIMIT 10
 ");
+$stmt->execute([$activeEditionId, $activeEditionId]);
 $recentRegistrations = $stmt->fetchAll();
 ?>
 
@@ -211,6 +220,16 @@ $recentRegistrations = $stmt->fetchAll();
                 <button onclick="switchTab('registrations')" id="tab-registrations" class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 transition">
                     <i class="fas fa-clipboard-list mr-2"></i>Letzte Anmeldungen
                 </button>
+                <button onclick="switchTab('timeline')" id="tab-timeline"
+                    class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent
+                           text-gray-500 hover:text-gray-700 hover:border-gray-300 transition">
+                    <i class="fas fa-chart-line mr-2"></i>Registrierungs-Timeline
+                </button>
+                <button onclick="switchTab('classes')" id="tab-classes"
+                    class="tab-button px-6 py-4 text-sm font-medium border-b-2 border-transparent
+                           text-gray-500 hover:text-gray-700 hover:border-gray-300 transition">
+                    <i class="fas fa-users mr-2"></i>Klassenbeteiligung
+                </button>
             </nav>
         </div>
 
@@ -238,10 +257,12 @@ $recentRegistrations = $stmt->fetchAll();
                     </div>
                     <?php if (isAdmin() || hasPermission('zuteilung_ausfuehren')): ?>
                     <div class="flex-shrink-0">
-                        <button onclick="runAutoAssign()" id="autoAssignBtn" 
-                                class="bg-amber-500 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-amber-600 transition">
-                            <i class="fas fa-play-circle mr-2"></i>Ausführen
-                        </button>
+                        <form method="POST" action="api/auto-assign.php" style="display:inline" onsubmit="return confirm('Automatische Zuteilung wirklich starten?')">
+                            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                            <button type="submit" class="bg-amber-500 text-white px-5 py-2.5 rounded-lg font-medium hover:bg-amber-600 transition">
+                                <i class="fas fa-play-circle mr-2"></i>Ausführen
+                            </button>
+                        </form>
                     </div>
                     <?php endif; ?>
                 </div>
@@ -312,27 +333,23 @@ $recentRegistrations = $stmt->fetchAll();
                     </h3>
                     <p class="text-xs text-gray-500 mb-3">
                         <i class="fas fa-info-circle text-blue-500 mr-1"></i>
-                        Nur feste Zuteilungen (Slot 1, 3, 5)
+                        Nur feste Zuteilungen (Managed Slots)
                     </p>
                     <div class="space-y-3">
                         <?php 
-                        // Nur Slots mit festen Zuteilungen (1, 3, 5)
+                        // Nur Slots mit festen Zuteilungen
                         $assignedSlots = array_filter($slotStats, function($s) { 
-                            return in_array($s['slot_number'], [1, 3, 5]); 
+                            return in_array($s['slot_number'], getManagedSlotNumbers()); 
                         });
                         $totalSlotRegs = array_sum(array_column($assignedSlots, 'registrations')) ?: 1;
                         
-                        // Farben für die 3 festen Slots
-                        $slotColors = [
-                            1 => 'bg-blue-500',
-                            3 => 'bg-emerald-500',
-                            5 => 'bg-amber-500'
-                        ];
+                        // Dynamische Farben für Slots
+                        $availableColors = ['bg-blue-500', 'bg-emerald-500', 'bg-amber-500', 'bg-purple-500', 'bg-rose-500', 'bg-cyan-500'];
                         
                         $slotIndex = 1;
                         foreach ($assignedSlots as $slot): 
                             $percentage = $totalSlotRegs > 0 ? ($slot['registrations'] / $totalSlotRegs) * 100 : 0;
-                            $colorClass = $slotColors[$slot['slot_number']] ?? 'bg-gray-500';
+                            $colorClass = $availableColors[($slotIndex - 1) % count($availableColors)];
                         ?>
                         <div>
                             <div class="flex items-center justify-between mb-1.5">
@@ -421,6 +438,32 @@ $recentRegistrations = $stmt->fetchAll();
                 </table>
             </div>
         </div>
+
+        <div id="tab-content-timeline" class="tab-content p-6 hidden">
+            <h3 class="text-base font-semibold text-gray-800 mb-1 flex items-center">
+                <i class="fas fa-chart-line text-blue-500 mr-2"></i>Registrierungs-Timeline
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">Einschreibungen pro Tag – manuell vs. automatisch</p>
+            <div class="relative" style="height: 280px;">
+                <canvas id="timelineChart"></canvas>
+                <div id="timelineLoading" class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80">
+                    <i class="fas fa-spinner fa-spin text-gray-400 text-2xl"></i>
+                </div>
+            </div>
+        </div>
+
+        <div id="tab-content-classes" class="tab-content p-6 hidden">
+            <h3 class="text-base font-semibold text-gray-800 mb-1 flex items-center">
+                <i class="fas fa-users text-purple-500 mr-2"></i>Klassenbeteiligung
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">Anteil angemeldeter Schüler je Klasse – sortiert nach Beteiligung</p>
+            <div class="relative" style="height: 320px;">
+                <canvas id="classesChart"></canvas>
+                <div id="classesLoading" class="absolute inset-0 flex items-center justify-center bg-white bg-opacity-80">
+                    <i class="fas fa-spinner fa-spin text-gray-400 text-2xl"></i>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -470,6 +513,50 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Tab Switching
+let statsLoaded = false;
+function loadDashboardStats() {
+    if (statsLoaded) return;
+    statsLoaded = true;
+    fetch('api/dashboard-stats.php')
+        .then(r => r.json())
+        .then(data => {
+            renderTimelineChart(data.timeline || []);
+            renderClassesChart(data.classes || []);
+        })
+        .catch(() => {
+            document.getElementById('timelineLoading').innerHTML = '<span class="text-red-400 text-sm">Fehler beim Laden</span>';
+            document.getElementById('classesLoading').innerHTML  = '<span class="text-red-400 text-sm">Fehler beim Laden</span>';
+        });
+}
+
+function renderTimelineChart(data) {
+    document.getElementById('timelineLoading').classList.add('hidden');
+    new Chart(document.getElementById('timelineChart'), {
+        type: 'line',
+        data: {
+            labels: data.map(d => d.day),
+            datasets: [
+                { label: 'Manuell',      data: data.map(d => d.manual), borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.3, pointRadius: 3 },
+                { label: 'Automatisch',  data: data.map(d => d.auto),   borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,0.1)',  fill: true, tension: 0.3, pointRadius: 3 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'top' } }, scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } } }
+    });
+}
+
+function renderClassesChart(data) {
+    document.getElementById('classesLoading').classList.add('hidden');
+    data.sort((a, b) => a.rate - b.rate);
+    new Chart(document.getElementById('classesChart'), {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.class),
+            datasets: [{ label: 'Beteiligung (%)', data: data.map(d => d.rate), backgroundColor: data.map(d => d.rate >= 80 ? '#10b981' : d.rate >= 50 ? '#f59e0b' : '#ef4444'), borderRadius: 4 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, indexAxis: 'y', plugins: { legend: { display: false }, tooltip: { callbacks: { label: (ctx) => { const d = data[ctx.dataIndex]; return ` ${d.registered} / ${d.total} Schüler (${d.rate}%)`; } } } }, scales: { x: { min: 0, max: 100, ticks: { callback: v => v + '%' } }, y: { grid: { display: false } } } }
+    });
+}
+
 function switchTab(tabName) {
     // Update buttons
     document.querySelectorAll('.tab-button').forEach(btn => {
@@ -486,20 +573,10 @@ function switchTab(tabName) {
     });
     
     document.getElementById('tab-content-' + tabName).classList.remove('hidden');
+
+    if (tabName === 'timeline' || tabName === 'classes') {
+        loadDashboardStats();
+    }
 }
 
-// Auto-Assignment Function
-function runAutoAssign() {
-    if (!confirm('Möchtest Du die automatische Zuteilung wirklich durchführen?\n\nDies wird alle Schüler, die noch nicht für alle 3 Slots registriert sind, automatisch auf Aussteller verteilen.')) {
-        return;
-    }
-    
-    const btn = document.getElementById('autoAssignBtn');
-    const originalText = btn.innerHTML;
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Verarbeite...';
-    
-    // Redirect zur Verarbeitung
-    window.location.href = '?page=admin-dashboard&auto_assign=run';
-}
 </script>

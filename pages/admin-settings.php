@@ -8,6 +8,7 @@ if (!isAdmin() && !hasPermission('einstellungen_sehen')) {
 
 // Handle Settings Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
@@ -31,6 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
 
 // Handle Security Settings Update (nur Admins)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_security'])) {
+    requireCsrf();
     if (!isAdmin()) {
         die('Keine Berechtigung - nur Administratoren');
     }
@@ -57,6 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_security'])) {
 
 // Handle QR Code URL Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
@@ -68,14 +71,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
 
 // Handle QR Code Validity Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_validity'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
     $before = max(0, intval($_POST['qr_validity_before']));
     $after  = max(0, intval($_POST['qr_validity_after']));
+    $enabled = isset($_POST['qr_validity_enabled']) ? '1' : '0';
     updateSetting('qr_validity_before', $before);
     updateSetting('qr_validity_after', $after);
-    logAuditAction('qr_gueltigkeit_geaendert', "QR-Gültigkeitsfenster: $before Min. vor / $after Min. nach Slot");
+    updateSetting('qr_validity_enabled', $enabled);
+    logAuditAction('qr_gueltigkeit_geaendert', "QR-Gültigkeitsfenster: $before Min. vor / $after Min. nach Slot | Aktiviert: $enabled");
     $message = ['type' => 'success', 'text' => 'Gültigkeitsdauer erfolgreich gespeichert'];
 }
 
@@ -91,12 +97,98 @@ $currentSettings = [
     'qr_code_url' => getSetting('qr_code_url', 'https://localhost' . BASE_URL),
     'qr_validity_before' => getSetting('qr_validity_before', 10),
     'qr_validity_after' => getSetting('qr_validity_after', 15),
+    'qr_validity_enabled' => getSetting('qr_validity_enabled', '1'),
     'registration_page_enabled' => getSetting('registration_page_enabled', '0'),
     'site_password_enabled' => getSetting('site_password_enabled', '0'),
     'site_password_set' => !empty(getSetting('site_password', ''))
 ];
 
 // Branchen-Verwaltung wurde nach admin-exhibitors.php verschoben
+
+// Zeitslot bearbeiten
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_timeslot'])) {
+    requireCsrf();
+    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) die('Keine Berechtigung');
+    $slotId    = intval($_POST['slot_id']);
+    $slotName  = trim($_POST['slot_name']);
+    $startTime = trim($_POST['start_time']);
+    $endTime   = trim($_POST['end_time']);
+    $isManaged = isset($_POST['is_managed']) ? 1 : 0;
+    $isBreak   = isset($_POST['is_break']) ? 1 : 0;
+    if ($isBreak) $isManaged = 0;
+    if (empty($slotName)) {
+        $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
+    } else {
+        // Überschneidungsprüfung
+        $overlapStmt = $db->prepare("SELECT slot_name FROM timeslots WHERE edition_id = ? AND id != ? AND start_time < ? AND end_time > ?");
+        $overlapStmt->execute([$activeEditionId, $slotId, $endTime, $startTime]);
+        $overlap = $overlapStmt->fetch();
+        if ($overlap && $startTime && $endTime) {
+            $message = ['type' => 'error', 'text' => 'Zeitraum überschneidet sich mit "' . htmlspecialchars($overlap['slot_name']) . '".'];
+        } else {
+            $db->prepare("UPDATE timeslots SET slot_name=?, start_time=?, end_time=?, is_managed=?, is_break=? WHERE id=?")
+               ->execute([$slotName, $startTime ?: null, $endTime ?: null, $isManaged, $isBreak, $slotId]);
+            logAuditAction('timeslot_bearbeitet', "Slot #$slotId: '$slotName', managed=$isManaged, break=$isBreak", 'warning');
+            $message = ['type' => 'success', 'text' => 'Zeitslot gespeichert.'];
+        }
+    }
+}
+
+// Zeitslot hinzufügen
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
+    requireCsrf();
+    if (!isAdmin()) die('Keine Berechtigung');
+    $slotName  = trim($_POST['new_slot_name']);
+    $startTime = trim($_POST['new_start_time']);
+    $endTime   = trim($_POST['new_end_time']);
+    $isManaged = isset($_POST['new_is_managed']) ? 1 : 0;
+    $isBreak   = isset($_POST['new_is_break']) ? 1 : 0;
+    if ($isBreak) $isManaged = 0;
+    if (empty($slotName)) {
+        $message = ['type' => 'error', 'text' => 'Slot-Name darf nicht leer sein.'];
+    } else {
+        // Überschneidungsprüfung
+        $overlapStmt = $db->prepare("SELECT slot_name FROM timeslots WHERE edition_id = ? AND start_time < ? AND end_time > ?");
+        $overlapStmt->execute([$activeEditionId, $endTime, $startTime]);
+        $overlap = $overlapStmt->fetch();
+        if ($overlap && $startTime && $endTime) {
+            $message = ['type' => 'error', 'text' => 'Zeitraum überschneidet sich mit "' . htmlspecialchars($overlap['slot_name']) . '".'];
+        } else {
+            $stmt = $db->prepare("SELECT COALESCE(MAX(slot_number),0) FROM timeslots WHERE edition_id = ?");
+            $stmt->execute([$activeEditionId]);
+            $maxNum = (int)$stmt->fetchColumn();
+            $db->prepare("INSERT INTO timeslots (slot_number,slot_name,start_time,end_time,is_managed,is_break,edition_id) VALUES (?,?,?,?,?,?,?)")
+               ->execute([$maxNum + 1, $slotName, $startTime ?: null, $endTime ?: null, $isManaged, $isBreak, $activeEditionId]);
+            logAuditAction('timeslot_erstellt', "Neuer Slot '$slotName'");
+            $message = ['type' => 'success', 'text' => 'Zeitslot hinzugefügt.'];
+        }
+    }
+}
+
+// Zeitslot löschen
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_timeslot'])) {
+    requireCsrf();
+    if (!isAdmin()) die('Keine Berechtigung');
+    $slotId = intval($_POST['slot_id']);
+    $stmtCheck = $db->prepare("
+        SELECT (SELECT COUNT(*) FROM registrations WHERE timeslot_id=?) +
+               (SELECT COUNT(*) FROM attendance    WHERE timeslot_id=?) +
+               (SELECT COUNT(*) FROM qr_tokens     WHERE timeslot_id=?) AS total
+    ");
+    $stmtCheck->execute([$slotId, $slotId, $slotId]);
+    $usageCount = (int)$stmtCheck->fetchColumn();
+    if ($usageCount > 0) {
+        $message = ['type' => 'error', 'text' => "Slot kann nicht gelöscht werden – $usageCount verknüpfte Einträge."];
+    } else {
+        $db->prepare("DELETE FROM timeslots WHERE id=?")->execute([$slotId]);
+        logAuditAction('timeslot_geloescht', "Slot #$slotId gelöscht", 'warning');
+        $message = ['type' => 'success', 'text' => 'Zeitslot gelöscht.'];
+    }
+}
+
+$stmt = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY start_time ASC, slot_number ASC");
+$stmt->execute([$activeEditionId]);
+$allTimeslots = $stmt->fetchAll();
 ?>
 
 <!-- Einstellungen – Tab-basiertes Mobile-First Layout -->
@@ -137,6 +229,12 @@ $currentSettings = [
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-info-circle"></i> <span>System</span>
             </button>
+            <button onclick="switchSettingsTab('zeitslots')" data-tab="zeitslots"
+                    class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium
+                           whitespace-nowrap border-b-2 border-transparent text-gray-500
+                           hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-clock"></i> Zeitslots
+            </button>
         </div>
 
         <!-- ============================================================ -->
@@ -144,6 +242,7 @@ $currentSettings = [
         <!-- ============================================================ -->
         <div id="tab-allgemein" class="settings-tab-content p-4 sm:p-6">
             <form method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 
                 <!-- Schnellstatus -->
                 <div class="p-3 rounded-lg border <?php 
@@ -206,7 +305,7 @@ $currentSettings = [
                             <div class="flex items-center gap-3">
                                 <input type="number" name="max_registrations_per_student" 
                                        value="<?php echo $currentSettings['max_registrations_per_student']; ?>"
-                                       min="1" max="3" required
+                                       min="1" max="20" required
                                        class="w-20 px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:border-emerald-400 text-sm text-center font-bold text-lg">
                                 <span class="text-xs text-gray-500">Aussteller (= Zeitslots)</span>
                             </div>
@@ -244,6 +343,7 @@ $currentSettings = [
                 
                 <!-- Base URL Einstellung -->
                 <form method="POST" class="space-y-4">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-link text-emerald-500"></i> Base-URL für QR-Codes
                     </h4>
@@ -302,6 +402,7 @@ $currentSettings = [
 
                 <!-- Gültigkeitsdauer der QR-Codes -->
                 <form method="POST" class="space-y-4">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <h4 class="text-sm font-semibold text-gray-800 flex items-center gap-2">
                         <i class="fas fa-clock text-amber-500"></i> Gültigkeitsdauer der QR-Codes
                     </h4>
@@ -310,7 +411,20 @@ $currentSettings = [
                         Das Datum wird dem in den Einstellungen festgelegten Messetermin entnommen.
                     </p>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- Zeitfenster-Toggle -->
+                    <label class="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-100 hover:bg-gray-50 transition">
+                        <input type="checkbox" name="qr_validity_enabled" value="1"
+                               id="qrValidityEnabled"
+                               <?php echo $currentSettings['qr_validity_enabled'] === '1' ? 'checked' : ''; ?>
+                               onchange="toggleQrValidityFields(this.checked)"
+                               class="w-5 h-5 text-amber-500 rounded border-gray-300 focus:ring-amber-400 mt-0.5 flex-shrink-0">
+                        <div>
+                            <span class="text-sm font-medium text-gray-700 block">Zeitfenster-Prüfung aktivieren</span>
+                            <span class="text-xs text-gray-500">Wenn deaktiviert, sind QR-Codes jederzeit gültig – unabhängig vom Zeitslot.</span>
+                        </div>
+                    </label>
+
+                    <div id="qrValidityFields" class="grid grid-cols-1 sm:grid-cols-2 gap-4 <?php echo $currentSettings['qr_validity_enabled'] !== '1' ? 'opacity-40 pointer-events-none' : ''; ?>">
                         <div class="bg-blue-50 border border-blue-100 rounded-lg p-4">
                             <label class="block text-xs font-semibold text-blue-800 mb-2">
                                 <i class="fas fa-hourglass-start mr-1"></i>
@@ -362,6 +476,7 @@ $currentSettings = [
         <?php if (isAdmin()): ?>
         <div id="tab-sicherheit" class="settings-tab-content hidden p-4 sm:p-6">
             <form method="POST" class="space-y-6">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
 
                 <!-- Registrierungsseite -->
                 <div>
@@ -476,6 +591,118 @@ $currentSettings = [
                 </div>
             </div>
         </div>
+
+        <div id="tab-zeitslots" class="settings-tab-content hidden p-4 sm:p-6">
+
+            <div class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
+                <i class="fas fa-exclamation-triangle mr-1"></i>
+                <strong>Achtung:</strong> Änderungen wirken sich sofort auf Anmeldungen, Raumzuteilung
+                und automatische Zuteilung aus. Slots mit Anmeldungen können nicht gelöscht werden.
+            </div>
+
+            <h4 class="text-sm font-semibold text-gray-800 mb-3">Bestehende Zeitslots</h4>
+            <div class="space-y-2 mb-6">
+                <?php foreach ($allTimeslots as $slot): ?>
+                <form method="POST" class="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                    <input type="hidden" name="slot_id" value="<?php echo $slot['id']; ?>">
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                        <div class="sm:col-span-2">
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Name</label>
+                            <input type="text" name="slot_name"
+                                   value="<?php echo htmlspecialchars($slot['slot_name']); ?>"
+                                   class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Von</label>
+                            <input type="time" name="start_time"
+                                   value="<?php echo substr($slot['start_time'] ?? '', 0, 5); ?>"
+                                   class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-500 mb-1">Bis</label>
+                            <input type="time" name="end_time"
+                                   value="<?php echo substr($slot['end_time'] ?? '', 0, 5); ?>"
+                                   class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-white">
+                        </div>
+                        <div class="sm:col-span-2">
+                            <div class="flex items-center gap-4">
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="is_managed" value="1"
+                                           <?php echo $slot['is_managed'] ? 'checked' : ''; ?>
+                                           class="w-4 h-4 text-emerald-500 rounded">
+                                    <span class="text-xs text-gray-700 font-medium">Feste Zuteilung (Managed)</span>
+                                </label>
+                                <label class="flex items-center gap-2 cursor-pointer">
+                                    <input type="checkbox" name="is_break" value="1"
+                                           <?php echo (!empty($slot['is_break'])) ? 'checked' : ''; ?>
+                                           class="w-4 h-4 text-amber-500 rounded">
+                                    <span class="text-xs text-gray-700 font-medium"><i class="fas fa-coffee mr-1"></i>Pause</span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="flex gap-2 sm:col-span-2 justify-end">
+                            <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                            <button type="submit" name="save_timeslot"
+                                    class="px-3 py-2 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition font-medium">
+                                <i class="fas fa-save mr-1"></i>Speichern
+                            </button>
+                            <?php endif; ?>
+                            <?php if (isAdmin()): ?>
+                            <button type="submit" name="delete_timeslot"
+                                    onclick="return confirm('Zeitslot wirklich löschen?')"
+                                    class="px-3 py-2 bg-red-50 border border-red-200 text-red-600 text-xs rounded-lg hover:bg-red-100 transition font-medium">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                </form>
+                <?php endforeach; ?>
+            </div>
+
+            <?php if (isAdmin()): ?>
+            <h4 class="text-sm font-semibold text-gray-800 mb-3">Neuen Zeitslot hinzufügen</h4>
+            <form method="POST" class="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                    <div class="sm:col-span-2">
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Name *</label>
+                        <input type="text" name="new_slot_name" required placeholder="z.B. Slot 6"
+                               class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Von</label>
+                        <input type="time" name="new_start_time" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-500 mb-1">Bis</label>
+                        <input type="time" name="new_end_time" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white">
+                    </div>
+                    <div class="sm:col-span-3">
+                        <div class="flex items-center gap-4">
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="new_is_managed" value="1" class="w-4 h-4 text-blue-500 rounded">
+                                <span class="text-xs text-gray-700 font-medium">Feste Zuteilung</span>
+                            </label>
+                            <label class="flex items-center gap-2 cursor-pointer">
+                                <input type="checkbox" name="new_is_break" value="1" class="w-4 h-4 text-amber-500 rounded">
+                                <span class="text-xs text-gray-700 font-medium"><i class="fas fa-coffee mr-1"></i>Pause</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <button type="submit" name="add_timeslot"
+                                class="w-full px-4 py-2 bg-blue-500 text-white text-sm rounded-lg hover:bg-blue-600 transition font-medium">
+                            <i class="fas fa-plus mr-1"></i>Hinzufügen
+                        </button>
+                    </div>
+                </div>
+            </form>
+            <?php endif; ?>
+
+        </div><!-- /tab-zeitslots -->
+
     </div>
 </div>
 
@@ -541,6 +768,18 @@ function toggleSitePasswordField() {
         field.classList.remove('hidden');
     } else {
         field.classList.add('hidden');
+    }
+}
+
+// QR-Gültigkeitsfelder ein-/ausblenden
+function toggleQrValidityFields(enabled) {
+    const fields = document.getElementById('qrValidityFields');
+    if (fields) {
+        if (enabled) {
+            fields.classList.remove('opacity-40', 'pointer-events-none');
+        } else {
+            fields.classList.add('opacity-40', 'pointer-events-none');
+        }
     }
 }
 

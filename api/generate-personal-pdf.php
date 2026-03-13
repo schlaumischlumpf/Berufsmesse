@@ -12,7 +12,10 @@ if (!isLoggedIn()) {
     die('Nicht eingeloggt');
 }
 
+try {
+
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Helper: UTF-8 zu Latin-1 konvertieren
 function conv($str) {
@@ -36,11 +39,12 @@ $stmt = $db->prepare("
     FROM registrations r
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
-    LEFT JOIN rooms rm ON e.room_id = rm.id
+    LEFT JOIN rooms rm ON e.room_id = rm.id AND rm.edition_id = ?
     WHERE r.user_id = ?
+    AND r.edition_id = ? AND e.edition_id = ? AND t.edition_id = ?
     ORDER BY t.slot_number ASC
 ");
-$stmt->execute([$_SESSION['user_id']]);
+$stmt->execute([$activeEditionId, $_SESSION['user_id'], $activeEditionId, $activeEditionId, $activeEditionId]);
 $registrations = $stmt->fetchAll();
 
 // Nach Slot gruppieren
@@ -49,18 +53,22 @@ foreach ($registrations as $reg) {
     $regBySlot[$reg['slot_number']] = $reg;
 }
 
-// Tagesablauf
-$schedule = [
-    ['time' => '09:00', 'end' => '09:30', 'label' => 'Slot 1', 'type' => 'assigned', 'slot' => 1],
-    ['time' => '09:30', 'end' => '09:40', 'label' => 'Pause', 'type' => 'break', 'slot' => null],
-    ['time' => '09:40', 'end' => '10:10', 'label' => 'Slot 2', 'type' => 'free', 'slot' => 2],
-    ['time' => '10:10', 'end' => '10:40', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null],
-    ['time' => '10:40', 'end' => '11:10', 'label' => 'Slot 3', 'type' => 'assigned', 'slot' => 3],
-    ['time' => '11:10', 'end' => '11:20', 'label' => 'Pause', 'type' => 'break', 'slot' => null],
-    ['time' => '11:20', 'end' => '11:50', 'label' => 'Slot 4', 'type' => 'free', 'slot' => 4],
-    ['time' => '11:50', 'end' => '12:20', 'label' => 'Essenspause', 'type' => 'break', 'slot' => null],
-    ['time' => '12:20', 'end' => '12:50', 'label' => 'Slot 5', 'type' => 'assigned', 'slot' => 5],
-];
+// Tagesablauf dynamisch aus Datenbank laden
+$stmtSlots = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? ORDER BY start_time ASC, slot_number ASC");
+$stmtSlots->execute([$activeEditionId]);
+$dbSlots = $stmtSlots->fetchAll();
+$schedule = [];
+foreach ($dbSlots as $slot) {
+    $isBreak   = !empty($slot['is_break']);
+    $isManaged = (bool)$slot['is_managed'];
+    $schedule[] = [
+        'time'  => substr($slot['start_time'] ?? '00:00', 0, 5),
+        'end'   => substr($slot['end_time'] ?? '00:00', 0, 5),
+        'label' => $slot['slot_name'],
+        'type'  => $isBreak ? 'break' : ($isManaged ? 'assigned' : 'free'),
+        'slot'  => $isBreak ? null : $slot['slot_number'],
+    ];
+}
 
 $eventDate = getSetting('event_date') ?? date('Y-m-d');
 $userName = $_SESSION['firstname'] . ' ' . $_SESSION['lastname'];
@@ -269,3 +277,11 @@ $pdf->Legend();
 // PDF ausgeben
 $filename = 'Berufsmesse_Zeitplan_' . str_replace(' ', '_', $userName) . '_' . date('Y-m-d') . '.pdf';
 $pdf->Output('D', $filename);
+} catch (Exception $e) {
+    logErrorToAudit($e, 'PDF-PersoenicherZeitplan');
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    die('Fehler beim Erstellen des PDFs.');
+}

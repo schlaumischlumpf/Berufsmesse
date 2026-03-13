@@ -8,6 +8,7 @@ if (!isAdmin() && !hasPermission('aussteller_sehen')) {
 
 // Handle Form Submissions
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    requireCsrf();
     if (isset($_POST['add_exhibitor'])) {
         if (!isAdmin() && !hasPermission('aussteller_erstellen')) die('Keine Berechtigung');
         // Neuen Aussteller hinzufuegen
@@ -44,9 +45,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $logoPath = handleLogoUpload($_FILES['logo']);
         }
         
-        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields, logo, offer_types, jobs, features, equipment) 
-                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
-        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $equipment])) {
+        $stmt = $db->prepare("INSERT INTO exhibitors (name, short_description, description, category, contact_person, email, phone, website, visible_fields, logo, offer_types, jobs, features, equipment, edition_id) 
+                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        if ($stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $equipment, $activeEditionId])) {
             logAuditAction('aussteller_erstellt', "Aussteller '$name' erstellt");
             $message = ['type' => 'success', 'text' => 'Aussteller erfolgreich hinzugefuegt'];
         } else {
@@ -131,9 +132,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             SELECT r.id, r.user_id, r.timeslot_id, t.slot_number
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
-            WHERE r.exhibitor_id = ? AND r.timeslot_id IS NOT NULL
+            WHERE r.exhibitor_id = ? AND r.timeslot_id IS NOT NULL AND r.edition_id = ?
         ");
-        $stmt->execute([$id]);
+        $stmt->execute([$id, $activeEditionId]);
         $affectedRegistrations = $stmt->fetchAll();
 
         $redistributedCount = 0;
@@ -149,13 +150,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        COUNT(DISTINCT r2.user_id) as current_count
                 FROM exhibitors e
                 LEFT JOIN registrations r2 ON e.id = r2.exhibitor_id AND r2.timeslot_id = ?
-                WHERE e.active = 1 AND e.id != ? AND e.room_id IS NOT NULL
-                  AND e.id NOT IN (SELECT exhibitor_id FROM registrations WHERE user_id = ?)
+                WHERE e.active = 1 AND e.id != ? AND e.room_id IS NOT NULL AND e.edition_id = ?
+                  AND e.id NOT IN (SELECT exhibitor_id FROM registrations WHERE user_id = ? AND edition_id = ?)
                 GROUP BY e.id, e.name, e.room_id
                 ORDER BY current_count ASC, RAND()
                 LIMIT 1
             ");
-            $stmt->execute([$timeslotId, $id, $studentId]);
+            $stmt->execute([$timeslotId, $id, $studentId, $activeEditionId, $activeEditionId]);
             $newExhibitor = $stmt->fetch();
 
             if ($newExhibitor) {
@@ -169,6 +170,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $redistributedCount++;
                         }
                     } catch (PDOException $e) {
+                        logErrorToAudit($e, 'Aussteller-Admin');
                         // Constraint-Verletzung - Registrierung wird durch CASCADE gelöscht
                     }
                 } else {
@@ -251,6 +253,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 logAuditAction('branche_erstellt', "Branche '$indName' erstellt");
                 $industryMessage = ['type' => 'success', 'text' => "Branche '$indName' erfolgreich angelegt"];
             } catch (PDOException $e) {
+                logErrorToAudit($e, 'Aussteller-Admin');
                 if ($e->getCode() == 23000) {
                     $industryMessage = ['type' => 'error', 'text' => "Branche '$indName' existiert bereits"];
                 } else {
@@ -274,6 +277,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 logAuditAction('branche_bearbeitet', "Branche ID $indId zu '$indName' umbenannt");
                 $industryMessage = ['type' => 'success', 'text' => "Branche erfolgreich aktualisiert"];
             } catch (PDOException $e) {
+                logErrorToAudit($e, 'Aussteller-Admin');
                 if ($e->getCode() == 23000) {
                     $industryMessage = ['type' => 'error', 'text' => "Eine Branche mit diesem Namen existiert bereits"];
                 } else {
@@ -343,6 +347,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 // === Branchen-Verwaltung Handlers ===
 $industryMessage = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_industry'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
     $name = trim($_POST['industry_name'] ?? '');
     $sortOrder = intval($_POST['industry_sort_order'] ?? 0);
@@ -357,12 +362,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_industry'])) {
             logAuditAction('branche_erstellt', "Branche '$name' angelegt");
             $industryMessage = ['type' => 'success', 'text' => "Branche '$name' angelegt"];
         } catch (PDOException $e) {
+            logErrorToAudit($e, 'Aussteller-Admin');
             $industryMessage = ['type' => 'error', 'text' => 'Branchenname bereits vorhanden'];
         }
     }
     $activeTab = 'branchen';
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_industry'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
     $id = intval($_POST['industry_id']);
     $name = trim($_POST['industry_name'] ?? '');
@@ -380,6 +387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_industry'])) {
     $activeTab = 'branchen';
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_industry'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
     $id = intval($_POST['industry_id']);
     $stmt = $db->prepare("SELECT COUNT(*) FROM exhibitors WHERE category = (SELECT name FROM industries WHERE id = ?)");
@@ -400,22 +408,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_industry'])) {
 // === Orga-Team Handlers ===
 $orgaMessage = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
     $exhibitorId = intval($_POST['exhibitor_id']);
     $userId = intval($_POST['user_id']);
     if ($exhibitorId && $userId) {
         try {
-            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga_team (exhibitor_id, user_id) VALUES (?, ?)");
-            $stmt->execute([$exhibitorId, $userId]);
+            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga_team (exhibitor_id, user_id, edition_id) VALUES (?, ?, ?)");
+            $stmt->execute([$exhibitorId, $userId, $activeEditionId]);
             logAuditAction('orga_zugewiesen', "Orga-Mitglied #$userId Aussteller #$exhibitorId zugewiesen");
             $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich zugewiesen'];
         } catch (PDOException $e) {
+            logErrorToAudit($e, 'Aussteller-Admin');
             $orgaMessage = ['type' => 'error', 'text' => 'Zuweisung fehlgeschlagen: ' . $e->getMessage()];
         }
     }
     $activeTab = 'orga-team';
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_orga'])) {
+    requireCsrf();
     if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
     $orgaId = intval($_POST['orga_id']);
     $db->prepare("DELETE FROM exhibitor_orga_team WHERE id = ?")->execute([$orgaId]);
@@ -465,17 +476,20 @@ if (isAdmin() || hasPermission('orga_team_sehen')) {
 $orgaAssignments = [];
 if (isAdmin() || hasPermission('orga_team_sehen')) {
     try {
-        $stmtOA = $db->query("
+        $stmtOA = $db->prepare("
             SELECT eo.id, eo.exhibitor_id, eo.user_id, eo.assigned_at,
                    u.firstname, u.lastname, u.username
             FROM exhibitor_orga_team eo
             JOIN users u ON eo.user_id = u.id
+            WHERE eo.edition_id = ?
             ORDER BY eo.exhibitor_id, u.lastname
         ");
+        $stmtOA->execute([$activeEditionId]);
         foreach ($stmtOA->fetchAll() as $row) {
             $orgaAssignments[$row['exhibitor_id']][] = $row;
         }
     } catch (PDOException $e) {
+        logErrorToAudit($e, 'Aussteller-Admin');
         // Table might not exist yet in old installations
         $orgaAssignments = [];
     }
@@ -485,12 +499,14 @@ if (isAdmin() || hasPermission('orga_team_sehen')) {
 $activeTab = $activeTab ?? ($_GET['tab'] ?? 'aussteller');
 
 // Alle Aussteller laden mit Raum-Kapazitaet
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT e.*, r.capacity as room_capacity
     FROM exhibitors e
     LEFT JOIN rooms r ON e.room_id = r.id
+    WHERE e.edition_id = ?
     ORDER BY e.name ASC
 ");
+$stmt->execute([$activeEditionId]);
 $allExhibitors = $stmt->fetchAll();
 
 // Orga-Benutzer laden (Rolle 'orga' oder mit qr_codes_verwalten Berechtigung)
@@ -574,14 +590,21 @@ $orgaUsers = $stmt->fetchAll();
             $roomCapacity = $exhibitor['room_capacity'] ? intval($exhibitor['room_capacity']) : 0;
             $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
             
-            // Registrierungen zaehlen
-            $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ?");
-            $stmt->execute([$exhibitor['id']]);
+            // Registrierungen zaehlen (alle Plaetze in verwalteten Slots)
+            $stmt = $db->prepare("
+                SELECT COUNT(*) as count 
+                FROM registrations r
+                JOIN timeslots t ON r.timeslot_id = t.id
+                WHERE r.exhibitor_id = ? 
+                AND r.edition_id = ? 
+                AND t.slot_number " . getManagedSlotsSqlIn()
+            );
+            $stmt->execute([$exhibitor['id'], $activeEditionId]);
             $regCount = $stmt->fetch()['count'];
             
             // Dokumente laden
-            $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ?");
-            $stmt->execute([$exhibitor['id']]);
+            $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND exhibitor_documents.edition_id = ?");
+            $stmt->execute([$exhibitor['id'], $activeEditionId]);
             $documents = $stmt->fetchAll();
         ?>
         <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
@@ -624,6 +647,7 @@ $orgaUsers = $stmt->fetchAll();
                         <?php endif; ?>
                         <?php if (isAdmin() || hasPermission('aussteller_loeschen')): ?>
                         <form method="POST" class="inline" onsubmit="return confirm('Wirklich loeschen?')">
+                            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                             <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                             <button type="submit" name="delete_exhibitor" class="px-3 py-1.5 text-sm bg-red-50 text-red-600 rounded-lg hover:bg-red-100 transition">
                                 <i class="fas fa-trash"></i>
@@ -646,6 +670,7 @@ $orgaUsers = $stmt->fetchAll();
                             try {
                                 $categories = json_decode($exhibitor['category'], true) ?? [];
                             } catch (Exception $e) {
+                                logErrorToAudit($e, 'Aussteller-Admin');
                                 // Fallback für alte String-Werte
                                 $categories = [$exhibitor['category']];
                             }
@@ -724,6 +749,7 @@ $orgaUsers = $stmt->fetchAll();
             <!-- Formular: Neue Branche -->
             <div id="addIndustryForm" class="hidden bg-gray-50 rounded-lg p-4 border border-gray-200">
                 <form method="POST" class="space-y-3">
+                    <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                         <div class="sm:col-span-2">
                             <label class="block text-xs font-medium text-gray-600 mb-1">Name</label>
@@ -763,6 +789,7 @@ $orgaUsers = $stmt->fetchAll();
                             <i class="fas fa-edit text-sm"></i>
                         </button>
                         <form method="POST" class="inline" onsubmit="return confirm('Branche wirklich löschen?')">
+                            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                             <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
                             <button type="submit" name="delete_industry"
                                     class="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition" title="Löschen">
@@ -773,6 +800,7 @@ $orgaUsers = $stmt->fetchAll();
 
                     <!-- Bearbeiten-Modus (hidden) -->
                     <form id="ind-edit-form-<?php echo $ind['id']; ?>" method="POST" class="hidden w-full">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                         <div class="flex flex-col sm:flex-row gap-2 w-full">
                             <input type="hidden" name="industry_id" value="<?php echo $ind['id']; ?>">
                             <input type="text" name="industry_name" value="<?php echo htmlspecialchars($ind['name']); ?>" maxlength="100" required
@@ -854,6 +882,7 @@ $orgaUsers = $stmt->fetchAll();
                 <div class="p-6">
                     <!-- Add Orga Member Form -->
                     <form method="POST" class="mb-4">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                         <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                         <div class="flex gap-3">
                             <select name="user_id" required class="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500">
@@ -905,6 +934,7 @@ $orgaUsers = $stmt->fetchAll();
                                 </div>
                             </div>
                             <form method="POST" onsubmit="return confirm('Möchten Sie dieses Orga-Mitglied wirklich entfernen?');">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
                                 <input type="hidden" name="user_id" value="<?php echo $member['id']; ?>">
                                 <button type="submit" name="remove_orga_member"
@@ -940,6 +970,7 @@ $orgaUsers = $stmt->fetchAll();
         </div>
         
         <form method="POST" class="p-6 space-y-4" id="exhibitorForm" enctype="multipart/form-data" onsubmit="return validateExhibitorForm()">
+            <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <input type="hidden" name="exhibitor_id" id="exhibitor_id">
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1172,6 +1203,7 @@ $orgaUsers = $stmt->fetchAll();
         <div class="p-6">
             <!-- Upload Form -->
             <form method="POST" enctype="multipart/form-data" class="mb-6">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                 <input type="hidden" name="exhibitor_id" id="doc_exhibitor_id">
                 <div class="border-2 border-dashed border-gray-200 rounded-lg p-6 text-center">
                     <i class="fas fa-cloud-upload-alt text-3xl text-gray-300 mb-3"></i>
@@ -1340,6 +1372,7 @@ function loadDocuments(exhibitorId) {
                                 <i class="fas fa-download"></i>
                             </a>
                             <form method="POST" class="inline">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="document_id" value="${doc.id}">
                                 <button type="submit" name="toggle_document_visibility"
                                         class="p-1.5 rounded transition ${doc.visible_for_students == 1 ? 'text-emerald-500 hover:text-emerald-600 hover:bg-emerald-50' : 'text-gray-400 hover:text-gray-500 hover:bg-gray-100'}"
@@ -1348,6 +1381,7 @@ function loadDocuments(exhibitorId) {
                                 </button>
                             </form>
                             <form method="POST" class="inline" onsubmit="return confirm('Wirklich loeschen?')">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="document_id" value="${doc.id}">
                                 <button type="submit" name="delete_document" class="p-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 rounded transition" title="Löschen">
                                     <i class="fas fa-trash"></i>

@@ -12,15 +12,20 @@ if (!isLoggedIn() || (!isAdmin() && !isTeacher() && !hasPermission('berichte_dru
     die('Keine Berechtigung');
 }
 
-$db = getDB();
+try {
 
-$stmt = $db->query("
+$db = getDB();
+$activeEditionId = getActiveEditionId();
+
+$stmt = $db->prepare("
     SELECT r.room_number, e.name as exhibitor_name
     FROM exhibitors e
     JOIN rooms r ON e.room_id = r.id
     WHERE e.active = 1
+    AND e.edition_id = ? AND r.edition_id = ?
     ORDER BY r.room_number, e.name
 ");
+$stmt->execute([$activeEditionId, $activeEditionId]);
 $data = $stmt->fetchAll();
 
 $eventDate = getSetting('event_date') ?? date('Y-m-d');
@@ -106,3 +111,12 @@ if (empty($data)) {
 }
 
 $pdf->Output('D', 'Berufsmesse_Raumzuteilung_' . date('Y-m-d') . '.pdf');
+
+} catch (Exception $e) {
+    logErrorToAudit($e, 'PDF-Raumzuteilung');
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    die('Fehler beim Erstellen des PDFs.');
+}

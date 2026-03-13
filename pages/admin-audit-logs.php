@@ -16,6 +16,7 @@ $db = getDB();
 $filterUser = $_GET['filter_user'] ?? '';
 $filterAction = $_GET['filter_action'] ?? '';
 $filterDate = $_GET['filter_date'] ?? '';
+$filterSeverity = $_GET['filter_severity'] ?? '';
 $page = max(1, intval($_GET['log_page'] ?? 1));
 $perPage = 50;
 $offset = ($page - 1) * $perPage;
@@ -40,6 +41,14 @@ if ($filterDate) {
     $params[] = $filterDate;
 }
 
+if ($filterSeverity) {
+    $allowedSeverities = ['info', 'warning', 'error'];
+    if (in_array($filterSeverity, $allowedSeverities, true)) {
+        $where[] = "al.severity = ?";
+        $params[] = $filterSeverity;
+    }
+}
+
 $whereClause = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
 
 // Gesamtanzahl
@@ -47,6 +56,18 @@ $countStmt = $db->prepare("SELECT COUNT(*) FROM audit_logs al $whereClause");
 $countStmt->execute($params);
 $totalLogs = $countStmt->fetchColumn();
 $totalPages = max(1, ceil($totalLogs / $perPage));
+
+// Fehleranzahl (gefiltert nach anderen Parametern, aber immer severity=error)
+$errorCountWhere = $where;
+$errorCountParams = $params;
+if (!$filterSeverity) {
+    $errorCountWhere[] = "al.severity = ?";
+    $errorCountParams[] = 'error';
+}
+$errorCountStmt = $db->prepare("SELECT COUNT(*) FROM audit_logs al " .
+    (!empty($errorCountWhere) ? 'WHERE ' . implode(' AND ', $errorCountWhere) : ''));
+$errorCountStmt->execute($errorCountParams);
+$errorCount = $errorCountStmt->fetchColumn();
 
 // Logs laden
 $stmt = $db->prepare("
@@ -103,6 +124,16 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                 <input type="date" name="filter_date" value="<?php echo htmlspecialchars($filterDate); ?>"
                        class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
             </div>
+
+            <div class="min-w-[180px]">
+                <label class="block text-xs font-semibold text-gray-600 mb-1">Schweregrad</label>
+                <select name="filter_severity" class="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+                    <option value="">Alle Schweregrade</option>
+                    <option value="info"    <?php echo $filterSeverity === 'info'    ? 'selected' : ''; ?>>Info</option>
+                    <option value="warning" <?php echo $filterSeverity === 'warning' ? 'selected' : ''; ?>>Warnung</option>
+                    <option value="error"   <?php echo $filterSeverity === 'error'   ? 'selected' : ''; ?>>Fehler</option>
+                </select>
+            </div>
             
             <div class="flex gap-2">
                 <button type="submit" class="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition text-sm font-medium">
@@ -111,7 +142,7 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                 <a href="?page=admin-audit-logs" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm font-medium">
                     <i class="fas fa-times mr-1"></i>Zurücksetzen
                 </a>
-                <a href="?page=admin-audit-logs&filter_user=<?php echo urlencode($filterUser); ?>&filter_action=<?php echo urlencode($filterAction); ?>&filter_date=<?php echo urlencode($filterDate); ?>&export=txt"
+                <a href="?page=admin-audit-logs&filter_user=<?php echo urlencode($filterUser); ?>&filter_action=<?php echo urlencode($filterAction); ?>&filter_date=<?php echo urlencode($filterDate); ?>&filter_severity=<?php echo urlencode($filterSeverity); ?>&export=txt"
                    class="px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition text-sm font-medium">
                     <i class="fas fa-download mr-1"></i>TXT Export
                 </a>
@@ -120,7 +151,7 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
     </div>
 
     <!-- Statistik -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div class="bg-white rounded-xl p-5 border border-gray-100">
             <div class="flex items-center justify-between">
                 <div>
@@ -156,6 +187,25 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                 </div>
             </div>
         </div>
+
+        <div class="bg-white rounded-xl p-5 border border-gray-100">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-gray-500 text-sm mb-1">Fehler (gefiltert)</p>
+                    <p class="text-2xl font-semibold <?php echo $errorCount > 0 ? 'text-red-600' : 'text-gray-800'; ?>">
+                        <?php echo $errorCount; ?>
+                    </p>
+                </div>
+                <div class="w-10 h-10 rounded-lg <?php echo $errorCount > 0 ? 'bg-red-50' : 'bg-gray-50'; ?> flex items-center justify-center">
+                    <i class="fas fa-exclamation-triangle <?php echo $errorCount > 0 ? 'text-red-500' : 'text-gray-400'; ?>"></i>
+                </div>
+            </div>
+            <?php if ($errorCount > 0 && $filterSeverity !== 'error'): ?>
+            <a href="?page=admin-audit-logs&filter_severity=error" class="text-xs text-red-500 hover:underline mt-1 inline-block">
+                Nur Fehler anzeigen &rarr;
+            </a>
+            <?php endif; ?>
+        </div>
     </div>
 
     <!-- Log-Tabelle -->
@@ -167,6 +217,7 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Zeitpunkt (UTC)</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Nutzer</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Aktion</th>
+                        <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Schweregrad</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">Details</th>
                         <th class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">IP</th>
                     </tr>
@@ -181,7 +232,7 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                     </tr>
                     <?php else: ?>
                     <?php foreach ($logs as $log): ?>
-                    <tr class="hover:bg-gray-50 transition">
+                    <tr class="<?php echo ($log['severity'] ?? 'info') === 'error' ? 'bg-red-50 hover:bg-red-100' : 'hover:bg-gray-50'; ?> transition">
                         <td class="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                             <?php echo date('d.m.Y H:i:s', strtotime($log['created_at'])); ?>
                         </td>
@@ -194,6 +245,20 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
                         <td class="px-4 py-3 text-sm">
                             <span class="px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-semibold">
                                 <?php echo htmlspecialchars($log['action']); ?>
+                            </span>
+                        </td>
+                        <td class="px-4 py-3 text-sm">
+                            <?php
+                            $sev = $log['severity'] ?? 'info';
+                            $sevConfig = [
+                                'info'    => ['bg-blue-100 text-blue-800',    'Info'],
+                                'warning' => ['bg-yellow-100 text-yellow-800', 'Warnung'],
+                                'error'   => ['bg-red-100 text-red-800',       'Fehler'],
+                            ];
+                            [$sevClass, $sevLabel] = $sevConfig[$sev] ?? $sevConfig['info'];
+                            ?>
+                            <span class="px-2 py-1 <?php echo $sevClass; ?> rounded-full text-xs font-semibold">
+                                <?php echo $sevLabel; ?>
                             </span>
                         </td>
                         <td class="px-4 py-3 text-sm text-gray-600 max-w-xs truncate" title="<?php echo htmlspecialchars($log['details'] ?? ''); ?>">
@@ -218,14 +283,14 @@ $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
         </div>
         <div class="flex gap-2">
             <?php if ($page > 1): ?>
-            <a href="?page=admin-audit-logs&log_page=<?php echo $page - 1; ?>&filter_user=<?php echo urlencode($filterUser); ?>&filter_action=<?php echo urlencode($filterAction); ?>&filter_date=<?php echo urlencode($filterDate); ?>"
+            <a href="?page=admin-audit-logs&log_page=<?php echo $page - 1; ?>&filter_user=<?php echo urlencode($filterUser); ?>&filter_action=<?php echo urlencode($filterAction); ?>&filter_date=<?php echo urlencode($filterDate); ?>&filter_severity=<?php echo urlencode($filterSeverity); ?>"
                class="px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm">
                 <i class="fas fa-chevron-left mr-1"></i>Zurück
             </a>
             <?php endif; ?>
             
             <?php if ($page < $totalPages): ?>
-            <a href="?page=admin-audit-logs&log_page=<?php echo $page + 1; ?>&filter_user=<?php echo urlencode($filterUser); ?>&filter_action=<?php echo urlencode($filterAction); ?>&filter_date=<?php echo urlencode($filterDate); ?>"
+            <a href="?page=admin-audit-logs&log_page=<?php echo $page + 1; ?>&filter_user=<?php echo urlencode($filterUser); ?>&filter_action=<?php echo urlencode($filterAction); ?>&filter_date=<?php echo urlencode($filterDate); ?>&filter_severity=<?php echo urlencode($filterSeverity); ?>"
                class="px-3 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition text-sm">
                 Weiter<i class="fas fa-chevron-right ml-1"></i>
             </a>

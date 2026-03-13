@@ -2,12 +2,18 @@
 require_once 'config.php';
 require_once 'functions.php';
 
+// Editions-Session-Cache initialisieren
+if (isLoggedIn() && !isset($_SESSION['active_edition_id'])) {
+    getActiveEditionId();
+}
+
 // Seitenpasswort prüfen
 checkSitePassword();
 
 requireLogin();
 
 $db = getDB();
+$activeEditionId = getActiveEditionId();
 
 // Handle page redirects BEFORE any HTML output
 $currentPage = $_GET['page'] ?? 'dashboard';
@@ -23,7 +29,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
     // Direkt die API-Logik ausführen
     try {
         // Verwaltete Slots (nur 1, 3, 5)
-        $managedSlots = [1, 3, 5];
+        $managedSlots = getManagedSlotNumbers();
         
         $assignedCount = 0;
         $errors = [];
@@ -34,15 +40,18 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
         // ============================================================
         
         // Alle Anmeldungen ohne Slot-Zuteilung laden (Priorität berücksichtigen - Issue #16)
-        $stmt = $db->query("
+        $stmt = $db->prepare("
             SELECT r.id as registration_id, r.user_id, r.exhibitor_id, e.name as exhibitor_name, e.room_id, COALESCE(r.priority, 2) as priority
             FROM registrations r
             JOIN exhibitors e ON r.exhibitor_id = e.id
             WHERE r.timeslot_id IS NULL
             AND e.active = 1
             AND e.room_id IS NOT NULL
+            AND r.edition_id = ?
+            AND e.edition_id = ?
             ORDER BY COALESCE(r.priority, 2) ASC, r.registered_at ASC
         ");
+        $stmt->execute([$activeEditionId, $activeEditionId]);
         $pendingRegistrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($pendingRegistrations as $reg) {
@@ -56,9 +65,9 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 SELECT t.slot_number 
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+                WHERE r.user_id = ? AND r.edition_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
             ");
-            $stmt->execute([$studentId]);
+            $stmt->execute([$studentId, $activeEditionId]);
             $usedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
             // Verfügbare Slots für diesen Schüler
@@ -77,8 +86,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
             $lowestCount = PHP_INT_MAX;
             
             foreach ($availableSlots as $slotNumber) {
-                $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
-                $stmt->execute([$slotNumber]);
+                $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ? AND edition_id = ?");
+                $stmt->execute([$slotNumber, $activeEditionId]);
                 $timeslotId = $stmt->fetchColumn();
                 
                 if (!$timeslotId) continue;
@@ -86,9 +95,9 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 // Aktuelle Belegung bei diesem Aussteller in diesem Slot
                 $stmt = $db->prepare("
                     SELECT COUNT(*) as cnt FROM registrations 
-                    WHERE exhibitor_id = ? AND timeslot_id = ?
+                    WHERE exhibitor_id = ? AND timeslot_id = ? AND edition_id = ?
                 ");
-                $stmt->execute([$exhibitorId, $timeslotId]);
+                $stmt->execute([$exhibitorId, $timeslotId, $activeEditionId]);
                 $currentCount = $stmt->fetchColumn();
                 
                 // Kapazität prüfen (mit Priorität)
@@ -121,18 +130,19 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
         // Alle Schüler mit weniger als 3 zugewiesenen Slots (timeslot_id NOT NULL)
         // Sortierung: Schüler die sich eingeschrieben hatten zuerst, dann nach zugewiesenen Slots absteigend
         // Schüler ohne jegliche Einschreibung kommen zuletzt
-        $stmt = $db->query("
+        $stmt = $db->prepare("
             SELECT u.id,
-                   COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number IN (1,3,5) THEN 1 ELSE 0 END), 0) as assigned_count,
+                   COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number " . getManagedSlotsSqlIn() . " THEN 1 ELSE 0 END), 0) as assigned_count,
                    COUNT(r.id) as total_registrations
             FROM users u
-            LEFT JOIN registrations r ON u.id = r.user_id
+            LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = ?
             LEFT JOIN timeslots t ON r.timeslot_id = t.id
             WHERE u.role = 'student'
             GROUP BY u.id
-            HAVING assigned_count < " . MANAGED_SLOTS_COUNT . "
+            HAVING assigned_count < " . getManagedSlotCount() . "
             ORDER BY (COUNT(r.id) = 0) ASC, assigned_count DESC
         ");
+        $stmt->execute([$activeEditionId]);
         $studentsNeedingSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($studentsNeedingSlots as $student) {
@@ -143,14 +153,14 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 SELECT t.slot_number 
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE r.user_id = ? AND t.slot_number IN (1, 3, 5)
+                WHERE r.user_id = ? AND r.edition_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
             ");
-            $stmt->execute([$studentId]);
+            $stmt->execute([$studentId, $activeEditionId]);
             $assignedSlots = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
             // Bei welchen Ausstellern ist der Schüler bereits (mit oder ohne Slot)?
-            $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ?");
-            $stmt->execute([$studentId]);
+            $stmt = $db->prepare("SELECT exhibitor_id FROM registrations WHERE user_id = ? AND edition_id = ?");
+            $stmt->execute([$studentId, $activeEditionId]);
             $existingExhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
             
             // Fehlende Slots ermitteln
@@ -158,8 +168,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
             
             foreach ($missingSlots as $slotNumber) {
                 // Timeslot ID ermitteln
-                $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ?");
-                $stmt->execute([$slotNumber]);
+                $stmt = $db->prepare("SELECT id FROM timeslots WHERE slot_number = ? AND edition_id = ?");
+                $stmt->execute([$slotNumber, $activeEditionId]);
                 $timeslotId = $stmt->fetchColumn();
                 
                 if (!$timeslotId) {
@@ -173,12 +183,12 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                            COUNT(DISTINCT reg.user_id) as current_count
                     FROM exhibitors e
                     LEFT JOIN rooms r ON e.room_id = r.id
-                    LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ?
-                    WHERE e.active = 1 AND e.room_id IS NOT NULL
+                    LEFT JOIN registrations reg ON e.id = reg.exhibitor_id AND reg.timeslot_id = ? AND reg.edition_id = ?
+                    WHERE e.active = 1 AND e.room_id IS NOT NULL AND e.edition_id = ?
                     GROUP BY e.id, e.name, e.room_id
                     ORDER BY current_count ASC, RAND()
                 ");
-                $stmt->execute([$timeslotId]);
+                $stmt->execute([$timeslotId, $activeEditionId, $activeEditionId]);
                 $exhibitors = $stmt->fetchAll();
                 
                 $selectedExhibitor = null;
@@ -200,11 +210,11 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 if ($selectedExhibitor) {
                     // Neue Registrierung erstellen
                     $stmt = $db->prepare("
-                        INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type)
-                        VALUES (?, ?, ?, 'automatic')
+                        INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, edition_id)
+                        VALUES (?, ?, ?, 'automatic', ?)
                     ");
                     
-                    if ($stmt->execute([$studentId, $selectedExhibitor['id'], $timeslotId])) {
+                    if ($stmt->execute([$studentId, $selectedExhibitor['id'], $timeslotId, $activeEditionId])) {
                         $assignedCount++;
                         $existingExhibitors[] = $selectedExhibitor['id']; // Merken für nächste Iteration
                     } else {
@@ -217,7 +227,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
         }
         
         // Statistik erstellen - Anzahl Schüler mit unvollständigen Anmeldungen
-        $stmt = $db->query("
+        $stmt = $db->prepare("
             SELECT COUNT(*) as incomplete
             FROM users u
             WHERE u.role = 'student'
@@ -225,9 +235,10 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 SELECT COUNT(DISTINCT t.slot_number)
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE r.user_id = u.id AND t.slot_number IN (1, 3, 5)
-            ) < " . MANAGED_SLOTS_COUNT . "
+                WHERE r.user_id = u.id AND r.edition_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
+            ) < " . getManagedSlotCount() . "
         ");
+        $stmt->execute([$activeEditionId]);
         $incompleteStudents = $stmt->fetchColumn();
         
         $_SESSION['auto_assign_success'] = true;
@@ -259,13 +270,16 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
 
 // QR-Code Generierung (Bulk) - BEFORE HTML output
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (isAdmin() || hasPermission('qr_codes_erstellen'))) {
+    requireCsrf();
     $generated = 0;
     $errorMsg = '';
     try {
-        $stmt = $db->query("SELECT id FROM exhibitors WHERE active = 1");
+        $stmt = $db->prepare("SELECT id FROM exhibitors WHERE active = 1 AND edition_id = ?");
+        $stmt->execute([$activeEditionId]);
         $exhibitors = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
-        $stmt = $db->query("SELECT id, end_time FROM timeslots ORDER BY slot_number ASC");
+        $stmt = $db->prepare("SELECT id, end_time FROM timeslots WHERE edition_id = ? ORDER BY slot_number ASC");
+        $stmt->execute([$activeEditionId]);
         $timeslots = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($exhibitors)) {
@@ -291,11 +305,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (i
                     $expiresAt = date('Y-m-d H:i:s', strtotime('+24 hours'));
                 }
                 $stmt = $db->prepare("
-                    INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at, edition_id)
+                    VALUES (?, ?, ?, ?, ?)
                     ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at)
                 ");
-                $stmt->execute([$exId, $tsId, $token, $expiresAt]);
+                $stmt->execute([$exId, $tsId, $token, $expiresAt, $activeEditionId]);
                 $generated++;
             }
         }
@@ -316,6 +330,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_all']) && (i
 
 // QR-Code Generierung (Einzeln) - BEFORE HTML output
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) && (isAdmin() || hasPermission('qr_codes_erstellen'))) {
+    requireCsrf();
     try {
         $exhibitorId = intval($_POST['exhibitor_id']);
         $timeslotId  = intval($_POST['timeslot_id']);
@@ -324,8 +339,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) &&
         $eventDate     = getSetting('event_date');
         $validityAfter = intval(getSetting('qr_validity_after', 15));
 
-        $tsStmt = $db->prepare("SELECT end_time FROM timeslots WHERE id = ?");
-        $tsStmt->execute([$timeslotId]);
+        $tsStmt = $db->prepare("SELECT end_time FROM timeslots WHERE id = ? AND edition_id = ?");
+        $tsStmt->execute([$timeslotId, $activeEditionId]);
         $tsData = $tsStmt->fetch(PDO::FETCH_ASSOC);
 
         if ($eventDate && $tsData && !empty($tsData['end_time'])) {
@@ -338,11 +353,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) &&
         }
 
         $stmt = $db->prepare("
-            INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO qr_tokens (exhibitor_id, timeslot_id, token, expires_at, edition_id)
+            VALUES (?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE token = VALUES(token), expires_at = VALUES(expires_at)
         ");
-        $stmt->execute([$exhibitorId, $timeslotId, $token, $expiresAt]);
+        $stmt->execute([$exhibitorId, $timeslotId, $token, $expiresAt, $activeEditionId]);
     } catch (Exception $e) {
         error_log('QR generation error: ' . $e->getMessage());
     }
@@ -351,7 +366,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) &&
 }
 
 // Aussteller laden
-$stmt = $db->query("SELECT * FROM exhibitors WHERE active = 1 ORDER BY name ASC");
+$stmt = $db->prepare("SELECT * FROM exhibitors WHERE active = 1 AND edition_id = ? ORDER BY name ASC");
+$stmt->execute([$activeEditionId]);
 $exhibitors = $stmt->fetchAll();
 
 // Einschreibungen des Benutzers laden (LEFT JOIN für NULL timeslot_id - Issue #6)
@@ -359,8 +375,8 @@ $stmt = $db->prepare("SELECT r.*, e.name as exhibitor_name, t.slot_name
                       FROM registrations r 
                       JOIN exhibitors e ON r.exhibitor_id = e.id 
                       LEFT JOIN timeslots t ON r.timeslot_id = t.id 
-                      WHERE r.user_id = ?");
-$stmt->execute([$_SESSION['user_id']]);
+                      WHERE r.user_id = ? AND r.edition_id = ?");
+$stmt->execute([$_SESSION['user_id'], $activeEditionId]);
 $userRegistrations = $stmt->fetchAll();
 
 // Registrierungsstatus prüfen
@@ -481,6 +497,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/design-system.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/guided-tour.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/easter-eggs.css">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/mobile.css">
     
     <style>
         /* ==========================================================================
@@ -845,35 +862,23 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 padding-top: max(0.75rem, env(safe-area-inset-top, 0.75rem));
             }
 
-            /* Issue #24: Mobile - Buttons mit Text+Icon nur Icon anzeigen */
-            /* Allgemeine Regel: Alle Buttons mit Icons zeigen nur Icon auf Mobile */
-            button:has(i) span,
-            a.btn:has(i) span,
-            .btn:has(i) span,
-            a:has(i) span {
+            /* Buttons in Tabellen-Aktionsspalten: nur Icon auf Mobile */
+            /* Verwende explizite .btn-icon-only Klasse statt pauschaler :has()-Regel */
+            .btn-icon-only span {
                 display: none !important;
             }
-
-            /* Fallback für Browser ohne :has() Support */
-            .btn-mobile-icon span.btn-text,
-            .btn-mobile-icon span {
-                display: none !important;
+            .btn-icon-only {
+                padding: 0.5rem !important;
+                min-width: 44px;
+                min-height: 44px;
+                justify-content: center;
             }
 
-            /* Issue #24: Mobile - Tagesplan Buttons kompakter */
+            /* Mobile - Tagesplan Buttons kompakter */
             .schedule-actions .btn,
             .schedule-actions a {
                 padding: 0.375rem 0.5rem;
                 font-size: 0.75rem;
-            }
-
-            /* Kompakteres Padding für Buttons mit nur Icons */
-            button:has(i):not(:has(span)),
-            .btn:has(i):not(:has(span)),
-            a:has(i):not(:has(span)) {
-                padding: 0.5rem;
-                min-width: 44px;
-                justify-content: center;
             }
             
             /* Tabellen auf Mobile: horizontal scrollbar */
@@ -1086,7 +1091,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
 </head>
 <body class="bg-gray-50">
     <!-- Mobile Overlay -->
-    <div id="mobileOverlay" class="md:hidden fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300 opacity-0"></div>
+    <div id="mobileOverlay" class="lg:hidden fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300 opacity-0"></div>
 
     <!-- Sidebar -->
     <aside id="sidebar" class="sidebar sidebar-transition fixed left-0 top-0 h-full bg-white/95 backdrop-blur-lg border-r border-gray-100 w-64 z-40 flex flex-col shadow-xl">
@@ -1101,13 +1106,25 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
             </div>
         </div>
         <!-- Mobile Close Button (outside sidebar, right edge) - hidden by default -->
-        <button id="sidebarCloseBtn" class="md:hidden hidden absolute top-4 p-2 bg-white/90 text-gray-500 hover:text-gray-700 hover:bg-white rounded-full shadow-lg transition-all z-50" style="left: calc(100% + 12px); min-width:40px; min-height:40px;">
+        <button id="sidebarCloseBtn" class="lg:hidden hidden absolute top-4 p-2 bg-white/90 text-gray-500 hover:text-gray-700 hover:bg-white rounded-full shadow-lg transition-all z-50" style="left: calc(100% + 12px); min-width:40px; min-height:40px;" aria-label="Seitenleiste schließen">
             <i class="fas fa-times text-base"></i>
         </button>
 
         <!-- Navigation -->
         <div class="flex-1 overflow-y-auto sidebar-scroll px-4 py-4">
             <nav class="space-y-1">
+                <?php if (isAdmin() || isTeacher()): ?>
+                    <?php $activeEd = getActiveEdition(); ?>
+                    <div class="px-3 py-2 mb-1 rounded-lg bg-emerald-50 border border-emerald-100 text-xs">
+                        <div class="text-emerald-600 font-semibold flex items-center gap-1">
+                            <i class="fas fa-calendar-check text-emerald-500"></i>
+                            Aktive Messe
+                        </div>
+                        <div class="text-gray-700 mt-0.5 truncate font-medium">
+                            <?php echo htmlspecialchars($activeEd['name']); ?>
+                        </div>
+                    </div>
+                <?php endif; ?>
                 <?php if (!isTeacher()): ?>
                 <div class="nav-group-title">Übersicht</div>
                 
@@ -1244,6 +1261,15 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 </a>
                 <?php endif; ?>
                 
+                <?php if (isAdmin()): ?>
+                <a href="<?php echo $currentPage === 'admin-editions' ? 'javascript:void(0)' : '?page=admin-editions'; ?>"
+                   data-page="admin-editions"
+                   class="nav-link <?php echo $currentPage === 'admin-editions' ? 'active' : ''; ?>">
+                    <i class="fas fa-layer-group"></i>
+                    <span>Messe-Editionen</span>
+                </a>
+                <?php endif; ?>
+
                 <?php if (isAdmin() || hasPermission('einstellungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-settings' ? 'javascript:void(0)' : '?page=admin-settings'; ?>" data-page="admin-settings" class="nav-link <?php echo $currentPage === 'admin-settings' ? 'active' : ''; ?>">
                     <i class="fas fa-cog"></i>
@@ -1251,6 +1277,26 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 </a>
                 <?php endif; ?>
                 
+                <?php if (isAdmin()): ?>
+                <a href="<?php echo $currentPage === 'admin-announcements' ? 'javascript:void(0)' : '?page=admin-announcements'; ?>"
+                   data-page="admin-announcements"
+                   class="nav-link <?php echo $currentPage === 'admin-announcements' ? 'active' : ''; ?>">
+                    <i class="fas fa-bullhorn"></i>
+                    <span>Ankündigungen</span>
+                    <?php
+                    try {
+                        $annNow = date('Y-m-d H:i:s');
+                        $annStmt = $db->prepare("SELECT COUNT(*) FROM announcements
+                            WHERE is_active = 1 AND (expires_at IS NULL OR expires_at > ?)");
+                        $annStmt->execute([$annNow]);
+                        $annCount = $annStmt->fetchColumn();
+                        if ($annCount > 0): ?>
+                        <span class="ml-auto w-2 h-2 rounded-full bg-red-500 flex-shrink-0"></span>
+                    <?php endif;
+                    } catch (Exception $e) { } ?>
+                </a>
+                <?php endif; ?>
+
                 <?php if (isAdmin() || hasPermission('audit_logs_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-audit-logs' ? 'javascript:void(0)' : '?page=admin-audit-logs'; ?>" data-page="admin-audit-logs" class="nav-link <?php echo $currentPage === 'admin-audit-logs' ? 'active' : ''; ?>">
                     <i class="fas fa-history"></i>
@@ -1290,15 +1336,55 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     </aside>
 
     <!-- Main Content -->
-    <main class="md:ml-64 min-h-screen">
+    <main class="lg:ml-64 min-h-screen">
         <!-- Content Area with Animation -->
         <div class="page-content p-4 sm:p-6 lg:p-8">
             <!-- Mobile Burger (floats left of page title) -->
-            <div id="mobileHeader" class="md:hidden float-left mr-3 relative z-20">
-                <button id="mobileMenuBtn" class="bg-gray-50 text-gray-600 p-2.5 rounded-xl border border-gray-200 transition-all duration-200 hover:bg-gray-100" style="min-width:44px; min-height:44px;">
+            <div id="mobileHeader" class="lg:hidden inline-flex items-center mr-3 relative z-20" style="float:left;">
+                <button id="mobileMenuBtn" class="bg-gray-50 text-gray-600 p-2.5 rounded-xl border border-gray-200 transition-all duration-200 hover:bg-gray-100" style="min-width:44px; min-height:44px;" aria-label="Menü öffnen" aria-expanded="false">
                     <i class="fas fa-bars text-lg"></i>
                 </button>
             </div>
+            <?php
+            $activeEditionId = getActiveEditionId();
+            ?>
+<?php
+$_announcements = isLoggedIn() ? getActiveAnnouncements($_SESSION['role'] ?? 'student') : [];
+if (!empty($_announcements)):
+?>
+<div id="announcementContainer" class="mb-4 space-y-2">
+    <?php foreach ($_announcements as $_ann):
+        $annColors = [
+            'info'    => 'bg-blue-50 border-blue-200 text-blue-800',
+            'warning' => 'bg-amber-50 border-amber-200 text-amber-800',
+            'success' => 'bg-emerald-50 border-emerald-200 text-emerald-800',
+            'error'   => 'bg-red-50 border-red-200 text-red-800',
+        ];
+        $annIcons = [
+            'info'    => 'fa-info-circle text-blue-500',
+            'warning' => 'fa-exclamation-triangle text-amber-500',
+            'success' => 'fa-check-circle text-emerald-500',
+            'error'   => 'fa-times-circle text-red-500',
+        ];
+        $colorClass = $annColors[$_ann['type']] ?? $annColors['info'];
+        $iconClass  = $annIcons[$_ann['type']]  ?? $annIcons['info'];
+    ?>
+    <div class="announcement-banner flex items-start gap-3 px-4 py-3 rounded-xl border <?php echo $colorClass; ?>"
+         data-announcement-id="<?php echo $_ann['id']; ?>">
+        <i class="fas <?php echo $iconClass; ?> mt-0.5 flex-shrink-0"></i>
+        <div class="flex-1 min-w-0">
+            <p class="font-semibold text-sm"><?php echo htmlspecialchars($_ann['title']); ?></p>
+            <?php if (!empty($_ann['body'])): ?>
+            <p class="text-xs mt-0.5 opacity-80"><?php echo nl2br(htmlspecialchars($_ann['body'])); ?></p>
+            <?php endif; ?>
+        </div>
+        <button onclick="this.closest('.announcement-banner').remove()"
+                class="flex-shrink-0 opacity-50 hover:opacity-100 transition text-lg leading-none"
+                aria-label="Schließen">×</button>
+    </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
             <?php
             // Seiten-Content laden
             $pageLoaded = false;
@@ -1407,6 +1493,20 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                         $pageLoaded = true;
                     }
                     break;
+                case 'admin-announcements':
+                    if (isAdmin()) {
+                        include 'pages/admin-announcements.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'admin-editions':
+                    if (isAdmin()) {
+                        include 'pages/admin-editions.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
                 case 'admin-audit-logs':
                     if (isAdmin() || hasPermission('audit_logs_sehen')) {
                         include 'pages/admin-audit-logs.php';
@@ -1433,6 +1533,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
 
     <!-- JavaScript Libraries -->
     <script src="<?php echo BASE_URL; ?>assets/js/animations.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/mobile-tables.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/js/guided-tour.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/js/easter-eggs.js"></script>
     
@@ -1483,12 +1584,29 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
 
         // Close sidebar when clicking outside on mobile
         document.addEventListener('click', (e) => {
-            if (window.innerWidth < 768 && sidebar.classList.contains('open')) {
+            if (window.innerWidth < 1024 && sidebar.classList.contains('open')) {
                 if (!sidebar.contains(e.target) && !(mobileOverlay && mobileOverlay.contains(e.target))) {
                     closeMobileSidebar();
                 }
             }
         });
+
+        // Close sidebar when a nav-link is clicked on mobile
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', () => {
+                if (window.innerWidth < 1024) closeMobileSidebar();
+            });
+        });
+
+        // Update aria-expanded on hamburger button
+        function updateAriaExpanded(open) {
+            if (mobileMenuBtn) mobileMenuBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        const _origOpen = openMobileSidebar;
+        const _origClose = closeMobileSidebar;
+        // Patch open/close to update aria
+        window.openMobileSidebar = function() { _origOpen(); updateAriaExpanded(true); };
+        window.closeMobileSidebar = function() { _origClose(); updateAriaExpanded(false); };
         
         // Start Guided Tour Function
         function startGuidedTour() {

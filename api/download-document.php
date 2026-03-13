@@ -3,6 +3,9 @@ require_once '../config.php';
 require_once '../functions.php';
 
 requireLogin();
+$activeEditionId = getActiveEditionId();
+
+try {
 
 $documentId = intval($_GET['id'] ?? 0);
 
@@ -12,8 +15,8 @@ if (!$documentId) {
 }
 
 $db = getDB();
-$stmt = $db->prepare("SELECT filename, original_name, file_type, visible_for_students FROM exhibitor_documents WHERE id = ?");
-$stmt->execute([$documentId]);
+$stmt = $db->prepare("SELECT filename, original_name, file_type, visible_for_students FROM exhibitor_documents WHERE id = ? AND exhibitor_documents.edition_id = ?");
+$stmt->execute([$documentId, $activeEditionId]);
 $doc = $stmt->fetch();
 
 if (!$doc) {
@@ -59,4 +62,11 @@ header('Cache-Control: private, no-cache');
 
 readfile($filepath);
 exit();
-?>
+
+} catch (Exception $e) {
+    logErrorToAudit($e, 'API-DokumentDownload');
+    if (!headers_sent()) {
+        http_response_code(500);
+    }
+    die('Fehler beim Herunterladen des Dokuments.');
+}

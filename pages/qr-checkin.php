@@ -16,9 +16,9 @@ if (!empty($token)) {
         JOIN exhibitors e ON qt.exhibitor_id = e.id
         JOIN timeslots t ON qt.timeslot_id = t.id
         LEFT JOIN rooms r ON e.room_id = r.id
-        WHERE qt.token = ? AND (qt.expires_at IS NULL OR qt.expires_at > NOW())
+        WHERE qt.token = ? AND (qt.expires_at IS NULL OR qt.expires_at > NOW()) AND qt.edition_id = ?
     ");
-    $stmt->execute([$token]);
+    $stmt->execute([$token, $activeEditionId]);
     $qrToken = $stmt->fetch(PDO::FETCH_ASSOC);
     
     if (!$qrToken) {
@@ -60,9 +60,9 @@ if (!empty($token)) {
         // Prüfen ob der Schüler für diesen Aussteller/Slot registriert ist
         $stmt = $db->prepare("
             SELECT id FROM registrations
-            WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?
+            WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?
         ");
-        $stmt->execute([$userId, $exhibitorId, $timeslotId]);
+        $stmt->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
         $registration = $stmt->fetch();
 
         if (!$registration && !$isFreeSlot) {
@@ -81,8 +81,8 @@ if (!empty($token)) {
             if ($exData) $roomId = $exData['room_id'];
 
             // Aktuelle Belegung prüfen
-            $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ?");
-            $stmt2->execute([$exhibitorId, $timeslotId]);
+            $stmt2 = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?");
+            $stmt2->execute([$exhibitorId, $timeslotId, $activeEditionId]);
             $currentCount = $stmt2->fetchColumn();
 
             $slotCapacity = $roomId ? getRoomSlotCapacity($roomId, $timeslotId) : 0;
@@ -96,11 +96,11 @@ if (!empty($token)) {
             } else {
                 // Registrierung + Anwesenheit eintragen
                 try {
-                    $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type) VALUES (?, ?, ?, 'qr_checkin')");
-                    $stmt2->execute([$userId, $exhibitorId, $timeslotId]);
+                    $stmt2 = $db->prepare("INSERT INTO registrations (user_id, exhibitor_id, timeslot_id, registration_type, edition_id) VALUES (?, ?, ?, 'qr_checkin', ?)");
+                    $stmt2->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
 
-                    $stmt2 = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token) VALUES (?, ?, ?, ?)");
-                    $stmt2->execute([$userId, $exhibitorId, $timeslotId, $token]);
+                    $stmt2 = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token, edition_id) VALUES (?, ?, ?, ?, ?)");
+                    $stmt2->execute([$userId, $exhibitorId, $timeslotId, $token, $activeEditionId]);
 
                     $checkinResult = [
                         'type' => 'success',
@@ -108,6 +108,7 @@ if (!empty($token)) {
                         'exhibitor' => $qrToken
                     ];
                 } catch (Exception $e) {
+                    logErrorToAudit($e, 'QR-Checkin');
                     $checkinResult = ['type' => 'error', 'message' => 'Fehler beim Check-in: ' . $e->getMessage()];
                 }
             }
@@ -116,9 +117,9 @@ if (!empty($token)) {
             // Prüfen ob bereits eingecheckt
             $stmt = $db->prepare("
                 SELECT id FROM attendance
-                WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ?
+                WHERE user_id = ? AND exhibitor_id = ? AND timeslot_id = ? AND attendance.edition_id = ?
             ");
-            $stmt->execute([$userId, $exhibitorId, $timeslotId]);
+            $stmt->execute([$userId, $exhibitorId, $timeslotId, $activeEditionId]);
 
             if ($stmt->fetch()) {
                 $checkinResult = [
@@ -130,10 +131,10 @@ if (!empty($token)) {
                 // Anwesenheit eintragen
                 try {
                     $stmt = $db->prepare("
-                        INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token)
-                        VALUES (?, ?, ?, ?)
+                        INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token, edition_id)
+                        VALUES (?, ?, ?, ?, ?)
                     ");
-                    $stmt->execute([$userId, $exhibitorId, $timeslotId, $token]);
+                    $stmt->execute([$userId, $exhibitorId, $timeslotId, $token, $activeEditionId]);
 
                     $checkinResult = [
                         'type' => 'success',
@@ -141,6 +142,7 @@ if (!empty($token)) {
                         'exhibitor' => $qrToken
                     ];
                 } catch (Exception $e) {
+                    logErrorToAudit($e, 'QR-Checkin');
                     $checkinResult = ['type' => 'error', 'message' => 'Fehler beim Check-in: ' . $e->getMessage()];
                 }
             }
@@ -151,6 +153,68 @@ if (!empty($token)) {
 ?>
 
 <div class="max-w-lg mx-auto space-y-6">
+<style>
+/* QR Check-In – Mobile Enhancements */
+@keyframes checkinFlash {
+    0%   { opacity: 1; }
+    20%  { opacity: 0.7; }
+    40%  { opacity: 1; }
+    60%  { opacity: 0.85; }
+    100% { opacity: 1; }
+}
+.checkin-flash {
+    animation: checkinFlash 0.6s ease-out;
+}
+@media (max-width: 768px) {
+    /* Scan result: full viewport width flash */
+    .checkin-result {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        border-radius: 0 !important;
+        animation: checkinFlash 0.5s ease-out;
+    }
+    .checkin-result .result-inner {
+        background: white;
+        border-radius: 1.25rem;
+        padding: 2rem;
+        max-width: 360px;
+        width: 100%;
+        text-align: center;
+        box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+    }
+    .checkin-result .close-btn {
+        display: block !important;
+        margin-top: 1.25rem;
+        width: 100%;
+        padding: 0.75rem;
+        border-radius: 0.75rem;
+        background: rgba(0,0,0,0.1);
+        font-weight: 600;
+        font-size: 0.9375rem;
+        cursor: pointer;
+        border: none;
+    }
+    /* Manual input enlarged */
+    input[name="token"] {
+        font-size: 1.25rem !important;
+        min-height: 56px !important;
+        text-align: center;
+        letter-spacing: 0.1em;
+    }
+    /* Submit button full width */
+    form button[type="submit"] {
+        width: 100%;
+        min-height: 52px;
+        font-size: 1rem;
+    }
+}
+</style>
     <!-- Header -->
     <div class="text-center">
         <div class="w-16 h-16 mx-auto rounded-2xl flex items-center justify-center shadow-lg mb-4" 
@@ -172,7 +236,8 @@ if (!empty($token)) {
         $c = $colors[$checkinResult['type']] ?? $colors['info'];
         ?>
         
-        <div class="bg-<?php echo $c['bg']; ?>-50 border border-<?php echo $c['bg']; ?>-200 p-6 rounded-xl text-center">
+        <div class="checkin-result bg-<?php echo $c['bg']; ?>-50 border border-<?php echo $c['bg']; ?>-200 p-6 rounded-xl text-center">
+            <div class="result-inner">
             <div class="w-16 h-16 mx-auto bg-<?php echo $c['bg']; ?>-100 rounded-full flex items-center justify-center mb-4">
                 <i class="fas fa-<?php echo $c['icon']; ?> text-<?php echo $c['bg']; ?>-500 text-3xl"></i>
             </div>
@@ -192,6 +257,10 @@ if (!empty($token)) {
                 <?php endif; ?>
             </div>
             <?php endif; ?>
+            <button class="close-btn hidden" onclick="this.closest('.checkin-result').style.display='none'">
+                Schließen
+            </button>
+            </div>
         </div>
     <?php elseif (empty($token)): ?>
         <!-- Kein Token - manuelle Eingabe -->
@@ -232,10 +301,10 @@ if (!empty($token)) {
         FROM attendance a
         JOIN exhibitors e ON a.exhibitor_id = e.id
         JOIN timeslots t ON a.timeslot_id = t.id
-        WHERE a.user_id = ?
+        WHERE a.user_id = ? AND a.edition_id = ? AND e.edition_id = ?
         ORDER BY t.slot_number ASC
     ");
-    $stmt->execute([$_SESSION['user_id']]);
+    $stmt->execute([$_SESSION['user_id'], $activeEditionId, $activeEditionId]);
     $myAttendance = $stmt->fetchAll();
     ?>
     

@@ -7,28 +7,32 @@ if (!isAdmin() && !hasPermission('kapazitaeten_sehen')) {
 }
 
 // Alle Räume laden
-$stmt = $db->query("SELECT * FROM rooms ORDER BY room_number");
+$stmt = $db->prepare("SELECT * FROM rooms WHERE edition_id = ? ORDER BY room_number");
+$stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
 // Alle Timeslots laden
-$stmt = $db->query("SELECT * FROM timeslots ORDER BY slot_number");
+$stmt = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? AND is_break = 0 ORDER BY start_time ASC, slot_number ASC");
+$stmt->execute([$activeEditionId]);
 $timeslots = $stmt->fetchAll();
 
 // Handle Form Submission
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_capacities'])) {
+    requireCsrf();
     $db->beginTransaction();
     try {
         // Alle vorhandenen Einträge löschen
-        $db->exec("DELETE FROM room_slot_capacities");
+        $__stmtExec = $db->prepare("DELETE FROM room_slot_capacities WHERE edition_id = ?");
+        $__stmtExec->execute([$activeEditionId]);
         
         // Neue Kapazitäten speichern
-        $stmt = $db->prepare("INSERT INTO room_slot_capacities (room_id, timeslot_id, capacity) VALUES (?, ?, ?)");
+        $stmt = $db->prepare("INSERT INTO room_slot_capacities (room_id, timeslot_id, capacity, edition_id) VALUES (?, ?, ?, ?)");
         
         foreach ($_POST['capacity'] as $roomId => $timeslotData) {
             foreach ($timeslotData as $timeslotId => $capacity) {
                 $cap = intval($capacity);
                 if ($cap > 0) {
-                    $stmt->execute([$roomId, $timeslotId, $cap]);
+                    $stmt->execute([$roomId, $timeslotId, $cap, $activeEditionId]);
                 }
             }
         }
@@ -37,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_capacities'])) {
         logAuditAction('kapazitaeten_geaendert', 'Raumkapazitäten pro Zeitslot aktualisiert');
         $message = ['type' => 'success', 'text' => 'Kapazitäten erfolgreich gespeichert'];
     } catch (Exception $e) {
+        logErrorToAudit($e, 'Raumkapazitäten');
         $db->rollBack();
         $message = ['type' => 'error', 'text' => 'Fehler beim Speichern: ' . $e->getMessage()];
     }
@@ -44,7 +49,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_capacities'])) {
 
 // Aktuelle Kapazitäten laden
 $capacities = [];
-$stmt = $db->query("SELECT * FROM room_slot_capacities");
+$stmt = $db->prepare("SELECT * FROM room_slot_capacities WHERE edition_id = ?");
+$stmt->execute([$activeEditionId]);
 foreach ($stmt->fetchAll() as $cap) {
     $capacities[$cap['room_id']][$cap['timeslot_id']] = $cap['capacity'];
 }
@@ -89,6 +95,7 @@ foreach ($stmt->fetchAll() as $cap) {
 
     <!-- Capacity Form -->
     <form method="POST" class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
         <div class="overflow-x-auto">
             <table class="w-full">
                 <thead class="bg-gray-50 border-b border-gray-200">

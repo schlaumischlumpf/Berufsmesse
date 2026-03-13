@@ -9,6 +9,9 @@ if (!isLoggedIn()) {
     exit();
 }
 
+try {
+
+$activeEditionId = getActiveEditionId();
 $exhibitorId = intval($_GET['id'] ?? 0);
 $tab = $_GET['tab'] ?? 'info';
 
@@ -18,8 +21,8 @@ if (!$exhibitorId) {
 }
 
 $db = getDB();
-$stmt = $db->prepare("SELECT * FROM exhibitors WHERE id = ?");
-$stmt->execute([$exhibitorId]);
+$stmt = $db->prepare("SELECT * FROM exhibitors WHERE id = ? AND exhibitors.edition_id = ?");
+$stmt->execute([$exhibitorId, $activeEditionId]);
 $exhibitor = $stmt->fetch();
 
 if (!$exhibitor) {
@@ -32,17 +35,17 @@ $stmt = $db->prepare("
     SELECT r.capacity 
     FROM exhibitors e 
     LEFT JOIN rooms r ON e.room_id = r.id 
-    WHERE e.id = ?
+    WHERE e.id = ? AND e.edition_id = ?
 ");
-$stmt->execute([$exhibitorId]);
+$stmt->execute([$exhibitorId, $activeEditionId]);
 $roomData = $stmt->fetch();
 
 $roomCapacity = $roomData && $roomData['capacity'] ? intval($roomData['capacity']) : 0;
 $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
 
 // Registrierungsstatistik
-$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ?");
-$stmt->execute([$exhibitorId]);
+$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as count FROM registrations WHERE exhibitor_id = ? AND registrations.edition_id = ?");
+$stmt->execute([$exhibitorId, $activeEditionId]);
 $registeredCount = $stmt->fetch()['count'];
 
 $content = '';
@@ -67,6 +70,11 @@ echo json_encode([
     'exhibitor' => $exhibitor,
     'content' => $content
 ]);
+
+} catch (Exception $e) {
+    logErrorToAudit($e, 'API-AusstellerInfo');
+    echo json_encode(['success' => false, 'message' => 'Fehler beim Laden des Ausstellers.']);
+}
 
 // Neue Funktion für Schüler-Detailansicht
 function generateDetailsTab($exhibitor) {
@@ -99,6 +107,15 @@ function generateDetailsTab($exhibitor) {
     // Berufe/Tätigkeiten (aus jobs Feld oder Description parsen)
     $jobs = $exhibitor['jobs'] ?? '';
     
+    // Kategorien dekodieren (wird als JSON-Array gespeichert)
+    $categoryRaw = $exhibitor['category'] ?? '';
+    $categoryLabels = [];
+    if ($categoryRaw) {
+        $decoded = json_decode($categoryRaw, true);
+        $categoryLabels = is_array($decoded) ? $decoded : [$categoryRaw];
+    }
+    $categoryDisplay = !empty($categoryLabels) ? implode(', ', $categoryLabels) : 'Allgemein';
+    
     // Besonderheiten
     $besonderheiten = $exhibitor['features'] ?? '';
     
@@ -119,7 +136,7 @@ function generateDetailsTab($exhibitor) {
             <div>
                 <h3 class="text-xl font-bold text-gray-900"><?php echo htmlspecialchars($exhibitor['name']); ?></h3>
                 <span class="inline-flex items-center px-2.5 py-1 mt-2 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700">
-                    <i class="fas fa-tag mr-1.5"></i> <?php echo htmlspecialchars($exhibitor['category'] ?? 'Allgemein'); ?>
+                    <i class="fas fa-tag mr-1.5"></i> <?php echo htmlspecialchars($categoryDisplay); ?>
                 </span>
             </div>
         </div>
@@ -135,7 +152,17 @@ function generateDetailsTab($exhibitor) {
         <!-- Branche -->
         <div>
             <h4 class="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-2">Branche</h4>
-            <p class="text-gray-700"><?php echo htmlspecialchars($exhibitor['category'] ?? 'Keine Angabe'); ?></p>
+            <?php if (!empty($categoryLabels)): ?>
+            <div class="flex flex-wrap gap-2">
+                <?php foreach ($categoryLabels as $cat): ?>
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm bg-emerald-50 text-emerald-700">
+                    <i class="fas fa-tag mr-2"></i><?php echo htmlspecialchars($cat); ?>
+                </span>
+                <?php endforeach; ?>
+            </div>
+            <?php else: ?>
+            <p class="text-gray-400 italic">Keine Angabe</p>
+            <?php endif; ?>
         </div>
 
         <!-- Typische Berufe/Tätigkeiten -->
@@ -195,8 +222,9 @@ function generateDetailsTab($exhibitor) {
         <?php
         // Dokumente für Schüler anzeigen (nur visible_for_students = 1)
         $db = getDB();
-        $stmtDocs = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 ORDER BY uploaded_at DESC");
-        $stmtDocs->execute([$exhibitor['id']]);
+        $activeEditionId = getActiveEditionId();
+        $stmtDocs = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 AND exhibitor_documents.edition_id = ? ORDER BY uploaded_at DESC");
+        $stmtDocs->execute([$exhibitor['id'], $activeEditionId]);
         $visibleDocuments = $stmtDocs->fetchAll();
         if (!empty($visibleDocuments)):
         ?>
@@ -289,10 +317,17 @@ function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
 
         <!-- Kategorie (wenn sichtbar) -->
         <?php if ($isVisible('category') && $exhibitor['category']): ?>
-        <div>
+        <?php
+            $catRaw2 = $exhibitor['category'];
+            $catArr2 = json_decode($catRaw2, true);
+            $catArr2 = is_array($catArr2) ? $catArr2 : [$catRaw2];
+        ?>
+        <div class="flex flex-wrap gap-2">
+            <?php foreach ($catArr2 as $cat2): ?>
             <span class="inline-flex items-center px-4 py-2 rounded-full text-sm bg-purple-100 text-purple-800">
-                <i class="fas fa-tag mr-2"></i><?php echo htmlspecialchars($exhibitor['category']); ?>
+                <i class="fas fa-tag mr-2"></i><?php echo htmlspecialchars($cat2); ?>
             </span>
+            <?php endforeach; ?>
         </div>
         <?php endif; ?>
 
@@ -342,8 +377,9 @@ function generateInfoTab($exhibitor, $registeredCount, $totalCapacity) {
 
 function generateDocumentsTab($exhibitorId) {
     $db = getDB();
-    $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 ORDER BY uploaded_at DESC");
-    $stmt->execute([$exhibitorId]);
+    $activeEditionId = getActiveEditionId();
+    $stmt = $db->prepare("SELECT * FROM exhibitor_documents WHERE exhibitor_id = ? AND visible_for_students = 1 AND exhibitor_documents.edition_id = ? ORDER BY uploaded_at DESC");
+    $stmt->execute([$exhibitorId, $activeEditionId]);
     $documents = $stmt->fetchAll();
     
     ob_start();

@@ -1,6 +1,10 @@
 <?php
 // Lehrer Dashboard (Issue #8)
 
+$regStatus = getRegistrationStatus();
+$regStart  = getSetting('registration_start');
+$regEnd    = getSetting('registration_end');
+
 // Alle Klassen abrufen
 $stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND class IS NOT NULL AND class != '' ORDER BY class");
 $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
@@ -13,34 +17,55 @@ $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'")
 $stats['total_students'] = $stmt->fetch()['count'];
 
 // Schüler mit vollständigen Anmeldungen (alle 3 Slots)
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT COUNT(DISTINCT user_id) as count
     FROM (
         SELECT r.user_id, COUNT(DISTINCT t.slot_number) as slot_count
         FROM registrations r
         JOIN timeslots t ON r.timeslot_id = t.id
         JOIN users u ON r.user_id = u.id
-        WHERE t.slot_number IN (1, 3, 5) AND u.role = 'student'
+        WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND r.edition_id = ?
         GROUP BY r.user_id
-        HAVING slot_count = 3
+        HAVING slot_count = " . getManagedSlotCount() . "
     ) as complete_registrations
 ");
+$stmt->execute([$activeEditionId]);
 $stats['complete_students'] = $stmt->fetch()['count'];
 
 // Schüler mit unvollständigen Anmeldungen
 $stats['incomplete_students'] = $stats['total_students'] - $stats['complete_students'];
 
 // Schüler ohne Anmeldungen
-$stmt = $db->query("
+$stmt = $db->prepare("
     SELECT COUNT(*) as count 
     FROM users u
     WHERE u.role = 'student' 
-    AND u.id NOT IN (SELECT DISTINCT user_id FROM registrations)
+    AND u.id NOT IN (SELECT DISTINCT user_id FROM registrations WHERE edition_id = ?)
 ");
+$stmt->execute([$activeEditionId]);
 $stats['no_registrations'] = $stmt->fetch()['count'];
 ?>
 
+<script>
+const REG_START  = "<?php echo htmlspecialchars(getSetting('registration_start', '')); ?>";
+const REG_END    = "<?php echo htmlspecialchars(getSetting('registration_end', '')); ?>";
+const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
+</script>
+
 <div class="space-y-6">
+<?php if ($regStatus === 'open' || $regStatus === 'upcoming'): ?>
+<div class="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg text-sm
+            <?php echo $regStatus === 'open'
+                ? 'bg-emerald-50 border border-emerald-200'
+                : 'bg-amber-50 border border-amber-200'; ?>">
+    <i class="fas fa-clock <?php echo $regStatus === 'open' ? 'text-emerald-500' : 'text-amber-500'; ?>"></i>
+    <span class="<?php echo $regStatus === 'open' ? 'text-emerald-700' : 'text-amber-700'; ?>">
+        Einschreibung <?php echo $regStatus === 'open' ? 'endet' : 'startet'; ?>
+        in <strong id="teacherCountdownValue" class="tabular-nums">…</strong>
+    </span>
+</div>
+<?php endif; ?>
+
     <!-- Header -->
     <div class="bg-white rounded-xl p-6 border-l-4 border-green-600">
         <div class="flex items-center justify-between flex-wrap gap-4">
@@ -133,12 +158,12 @@ $stats['no_registrations'] = $stmt->fetch()['count'];
                             FROM registrations r
                             JOIN timeslots t ON r.timeslot_id = t.id
                             JOIN users u ON r.user_id = u.id
-                            WHERE t.slot_number IN (1, 3, 5) AND u.role = 'student' AND u.class = ?
+                            WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND u.class = ? AND r.edition_id = ?
                             GROUP BY r.user_id
-                            HAVING slot_count = 3
+                            HAVING slot_count = " . getManagedSlotCount() . "
                         ) as complete
                     ");
-                    $stmt->execute([$class]);
+                    $stmt->execute([$class, $activeEditionId]);
                     $classComplete = $stmt->fetch()['count'];
                     
                     $percentage = $classTotal > 0 ? round(($classComplete / $classTotal) * 100) : 0;
@@ -252,4 +277,30 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 500);
     }
 });
+</script>
+
+<script>
+function startCountdown(targetIsoStr, elementId) {
+    function update() {
+        const diff = new Date(targetIsoStr).getTime() - Date.now();
+        const el   = document.getElementById(elementId);
+        if (!el) return;
+        if (diff <= 0) { location.reload(); return; }
+        const days  = Math.floor(diff / 86400000);
+        const hours = Math.floor((diff % 86400000) / 3600000);
+        const mins  = Math.floor((diff % 3600000) / 60000);
+        const secs  = Math.floor((diff % 60000) / 1000);
+        const showSecs = diff < 2 * 3600 * 1000;
+        let text = '';
+        if (days > 0)    text += days + 'd ';
+        if (hours > 0)   text += hours + 'h ';
+        text += mins + 'min';
+        if (showSecs)    text += ' ' + secs + 's';
+        el.textContent = text.trim();
+    }
+    update();
+    setInterval(update, 1000);
+}
+if (REG_STATUS === 'open')          startCountdown(REG_END,   'teacherCountdownValue');
+else if (REG_STATUS === 'upcoming') startCountdown(REG_START, 'teacherCountdownValue');
 </script>
