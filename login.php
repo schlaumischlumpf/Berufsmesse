@@ -5,11 +5,17 @@ require_once 'functions.php';
 // Seitenpasswort prüfen
 checkSitePassword();
 
+// Schulkontext laden (falls über /{slug}/login.php aufgerufen)
+$school = getCurrentSchool();
+$schoolSlug = $school ? $school['slug'] : null;
+
 // Wenn bereits eingeloggt, weiterleiten
 if (isLoggedIn()) {
     $redirect = $_GET['redirect'] ?? '';
     if (!empty($redirect) && preg_match('#^/[^/]#', $redirect)) {
         header('Location: ' . $redirect);
+    } elseif ($schoolSlug) {
+        header('Location: ' . BASE_URL . $schoolSlug . '/index.php');
     } else {
         header('Location: ' . BASE_URL . 'index.php');
     }
@@ -56,10 +62,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $db = getDB();
         $activeEditionId = getActiveEditionId();
-        // Admins (edition_id IS NULL) können immer einloggen;
-        // Andere Benutzer nur wenn sie zur aktiven Edition gehören
-        $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role FROM users WHERE username = ? AND (role = 'admin' OR edition_id = ?)");
-        $stmt->execute([$username, $activeEditionId]);
+        // Login-Logik: Schulspezifisch oder global
+        if ($schoolSlug && $school) {
+            // Schulspezifischer Login: Schüler, Lehrer, Orga, school_admin dieser Schule
+            $schoolEditionId = getActiveEditionIdForSchool((int)$school['id']);
+            $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role, school_id FROM users WHERE username = ? AND (role = 'admin' OR (school_id = ? AND (role = 'school_admin' OR edition_id = ?)))");
+            $stmt->execute([$username, $school['id'], $schoolEditionId]);
+        } else {
+            // Globaler Login: Admins und Aussteller (kein Schulkontext)
+            $stmt = $db->prepare("SELECT id, username, password, firstname, lastname, role, school_id FROM users WHERE username = ? AND (role IN ('admin', 'exhibitor') OR edition_id = ?)");
+            $stmt->execute([$username, $activeEditionId]);
+        }
         $user = $stmt->fetch();
         
         if ($user) {
@@ -76,6 +89,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['firstname'] = $user['firstname'];
                 $_SESSION['lastname'] = $user['lastname'];
                 $_SESSION['role'] = $user['role'];
+                $_SESSION['school_id'] = $user['school_id']; // NULL für admin/exhibitor
                 
                 logAuditAction('Login', 'Benutzer hat sich angemeldet');
                 
@@ -95,6 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $redirect = $_GET['redirect'] ?? ($_POST['redirect'] ?? '');
                 if (!empty($redirect) && preg_match('#^/[^/]#', $redirect)) {
                     header('Location: ' . $redirect);
+                } elseif ($schoolSlug) {
+                    header('Location: ' . BASE_URL . $schoolSlug . '/index.php');
                 } else {
                     header('Location: ' . BASE_URL . 'index.php');
                 }
@@ -117,7 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Berufsmesse</title>
+    <title>Login<?php if ($school): ?> — <?php echo htmlspecialchars($school['name']); ?><?php endif; ?> - Berufsmesse</title>
     
     <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

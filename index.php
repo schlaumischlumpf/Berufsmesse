@@ -1175,6 +1175,35 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <?php endif; ?>
                 <?php endif; ?>
 
+                <?php if (isExhibitor()): ?>
+                <div class="nav-group-title">Aussteller</div>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-dashboard' ? 'javascript:void(0)' : '?page=exhibitor-dashboard'; ?>" data-page="exhibitor-dashboard" class="nav-link <?php echo $currentPage === 'exhibitor-dashboard' ? 'active' : ''; ?>">
+                    <i class="fas fa-tachometer-alt"></i>
+                    <span>Dashboard</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-profile' ? 'javascript:void(0)' : '?page=exhibitor-profile'; ?>" data-page="exhibitor-profile" class="nav-link <?php echo $currentPage === 'exhibitor-profile' ? 'active' : ''; ?>">
+                    <i class="fas fa-building"></i>
+                    <span>Profil</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-slots' ? 'javascript:void(0)' : '?page=exhibitor-slots'; ?>" data-page="exhibitor-slots" class="nav-link <?php echo $currentPage === 'exhibitor-slots' ? 'active' : ''; ?>">
+                    <i class="fas fa-calendar-alt"></i>
+                    <span>Slot-Anmeldungen</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-equipment' ? 'javascript:void(0)' : '?page=exhibitor-equipment'; ?>" data-page="exhibitor-equipment" class="nav-link <?php echo $currentPage === 'exhibitor-equipment' ? 'active' : ''; ?>">
+                    <i class="fas fa-tools"></i>
+                    <span>Ausstattung</span>
+                </a>
+                
+                <a href="<?php echo $currentPage === 'exhibitor-documents' ? 'javascript:void(0)' : '?page=exhibitor-documents'; ?>" data-page="exhibitor-documents" class="nav-link <?php echo $currentPage === 'exhibitor-documents' ? 'active' : ''; ?>">
+                    <i class="fas fa-file-alt"></i>
+                    <span>Dokumente</span>
+                </a>
+                <?php endif; ?>
+
                 <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen', 'attendance_bearbeiten')): ?>
                 
                 <!-- GRUPPE: Tagesbetrieb (am häufigsten genutzt) -->
@@ -1267,6 +1296,13 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                    class="nav-link <?php echo $currentPage === 'admin-editions' ? 'active' : ''; ?>">
                     <i class="fas fa-layer-group"></i>
                     <span>Messe-Editionen</span>
+                </a>
+
+                <a href="<?php echo $currentPage === 'admin-schools' ? 'javascript:void(0)' : '?page=admin-schools'; ?>"
+                   data-page="admin-schools"
+                   class="nav-link <?php echo $currentPage === 'admin-schools' ? 'active' : ''; ?>">
+                    <i class="fas fa-school"></i>
+                    <span>Schulen</span>
                 </a>
                 <?php endif; ?>
 
@@ -1513,6 +1549,55 @@ if (!empty($_announcements)):
                         $pageLoaded = true;
                     }
                     break;
+
+                case 'admin-schools':
+                    if (isAdmin()) {
+                        include 'pages/admin-schools.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'admin-equipment':
+                    if (isAdmin() || isSchoolAdmin()) {
+                        include 'pages/admin-equipment.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-dashboard':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-dashboard.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-profile':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-profile.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-slots':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-slots.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-equipment':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-equipment.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+
+                case 'exhibitor-documents':
+                    if (isExhibitor() || isAdmin()) {
+                        include 'pages/exhibitor-documents.php';
+                        $pageLoaded = true;
+                    }
+                    break;
                 case 'qr-checkin':
                     include 'pages/qr-checkin.php';
                     $pageLoaded = true;
@@ -1521,7 +1606,9 @@ if (!empty($_announcements)):
             
             // Fallback zum Dashboard wenn keine Seite geladen wurde
             if (!$pageLoaded) {
-                if (isTeacher()) {
+                if (isExhibitor()) {
+                    include 'pages/exhibitor-dashboard.php';
+                } elseif (isTeacher()) {
                     include 'pages/teacher-dashboard.php';
                 } else {
                     include 'pages/dashboard.php';
