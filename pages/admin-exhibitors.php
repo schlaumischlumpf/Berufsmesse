@@ -2,7 +2,7 @@
 // Admin Aussteller Verwaltung
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('aussteller_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
@@ -10,7 +10,7 @@ if (!isAdmin() && !hasPermission('aussteller_sehen')) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requireCsrf();
     if (isset($_POST['add_exhibitor'])) {
-        if (!isAdmin() && !hasPermission('aussteller_erstellen')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_erstellen')) die('Keine Berechtigung');
         // Neuen Aussteller hinzufuegen
         $name = strip_tags(trim($_POST['name']));
         $shortDesc = sanitize($_POST['short_description']);
@@ -25,8 +25,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $jobs = sanitize($_POST['jobs'] ?? '');
         $features = sanitize($_POST['features'] ?? '');
         
-        // Equipment als kommaseparierter String speichern
-        $equipment = isset($_POST['equipment']) ? implode(',', $_POST['equipment']) : '';
+        // Equipment als kommaseparierter String speichern (Checkboxen + Freitext zusammenführen)
+        $equipmentChecked = isset($_POST['equipment']) ? (array)$_POST['equipment'] : [];
+        $equipmentCustom  = trim($_POST['equipment_custom'] ?? '');
+        $equipmentAll     = $equipmentChecked;
+        if ($equipmentCustom !== '') {
+            foreach (explode(',', $equipmentCustom) as $extra) {
+                $extra = trim($extra);
+                if ($extra !== '' && !in_array($extra, $equipmentAll)) {
+                    $equipmentAll[] = $extra;
+                }
+            }
+        }
+        $equipment = implode(',', $equipmentAll);
         
         // Angebotstypen als JSON speichern
         $offerSelected = isset($_POST['offer_types_selected']) ? (array)$_POST['offer_types_selected'] : [];
@@ -54,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = ['type' => 'error', 'text' => 'Fehler beim Hinzufuegen'];
         }
     } elseif (isset($_POST['edit_exhibitor'])) {
-        if (!isAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
         // Aussteller bearbeiten
         $id = intval($_POST['exhibitor_id']);
         $name = strip_tags(trim($_POST['name']));
@@ -70,8 +81,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $jobs = sanitize($_POST['jobs'] ?? '');
         $features = sanitize($_POST['features'] ?? '');
         
-        // Equipment als kommaseparierter String speichern
-        $equipment = isset($_POST['equipment']) ? implode(',', $_POST['equipment']) : '';
+        // Equipment als kommaseparierter String speichern (Checkboxen + Freitext zusammenführen)
+        $equipmentChecked = isset($_POST['equipment']) ? (array)$_POST['equipment'] : [];
+        $equipmentCustom  = trim($_POST['equipment_custom'] ?? '');
+        $equipmentAll     = $equipmentChecked;
+        if ($equipmentCustom !== '') {
+            foreach (explode(',', $equipmentCustom) as $extra) {
+                $extra = trim($extra);
+                if ($extra !== '' && !in_array($extra, $equipmentAll)) {
+                    $equipmentAll[] = $extra;
+                }
+            }
+        }
+        $equipment = implode(',', $equipmentAll);
         
         // Angebotstypen als JSON speichern
         $offerSelected = isset($_POST['offer_types_selected']) ? (array)$_POST['offer_types_selected'] : [];
@@ -90,20 +112,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $logoPath = handleLogoUpload($_FILES['logo']);
             
             // Altes Logo loeschen
-            $stmt = $db->prepare("SELECT logo FROM exhibitors WHERE id = ?");
-            $stmt->execute([$id]);
+            $stmt = $db->prepare("SELECT logo FROM exhibitors WHERE id = ? AND edition_id = ?");
+            $stmt->execute([$id, $activeEditionId]);
             $oldLogo = $stmt->fetch()['logo'];
             if ($oldLogo && file_exists('uploads/' . $oldLogo)) {
                 unlink('uploads/' . $oldLogo);
             }
-            
-            $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, 
-                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, logo = ?, offer_types = ?, jobs = ?, features = ?, equipment = ? WHERE id = ?");
-            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $equipment, $id]);
+
+            $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?,
+                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, logo = ?, offer_types = ?, jobs = ?, features = ?, equipment = ? WHERE id = ? AND edition_id = ?");
+            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $logoPath, $offerTypesJson, $jobs, $features, $equipment, $id, $activeEditionId]);
         } else {
-            $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?, 
-                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, offer_types = ?, jobs = ?, features = ?, equipment = ? WHERE id = ?");
-            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $offerTypesJson, $jobs, $features, $equipment, $id]);
+            $stmt = $db->prepare("UPDATE exhibitors SET name = ?, short_description = ?, description = ?, category = ?,
+                                  contact_person = ?, email = ?, phone = ?, website = ?, visible_fields = ?, offer_types = ?, jobs = ?, features = ?, equipment = ? WHERE id = ? AND edition_id = ?");
+            $result = $stmt->execute([$name, $shortDesc, $description, $category, $contactPerson, $email, $phone, $website, $visibleFieldsJson, $offerTypesJson, $jobs, $features, $equipment, $id, $activeEditionId]);
         }
         
         if ($result) {
@@ -113,13 +135,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = ['type' => 'error', 'text' => 'Fehler beim Aktualisieren'];
         }
     } elseif (isset($_POST['delete_exhibitor'])) {
-        if (!isAdmin() && !hasPermission('aussteller_loeschen')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_loeschen')) die('Keine Berechtigung');
         // Aussteller loeschen
         $id = intval($_POST['exhibitor_id']);
 
         // Name für Audit-Log vorab laden
-        $stmt = $db->prepare("SELECT name, logo FROM exhibitors WHERE id = ?");
-        $stmt->execute([$id]);
+        $stmt = $db->prepare("SELECT name, logo FROM exhibitors WHERE id = ? AND edition_id = ?");
+        $stmt->execute([$id, $activeEditionId]);
         $exRow = $stmt->fetch();
         $deletedName = $exRow['name'] ?? "ID $id";
         $logo = $exRow['logo'] ?? null;
@@ -179,8 +201,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        $stmt = $db->prepare("DELETE FROM exhibitors WHERE id = ?");
-        if ($stmt->execute([$id])) {
+        $stmt = $db->prepare("DELETE FROM exhibitors WHERE id = ? AND edition_id = ?");
+        if ($stmt->execute([$id, $activeEditionId])) {
             $logMsg = "Aussteller '$deletedName' (ID: $id) gelöscht";
             if ($redistributedCount > 0) {
                 $logMsg .= " - $redistributedCount Schüler umverteilt";
@@ -195,7 +217,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = ['type' => 'error', 'text' => 'Fehler beim Loeschen'];
         }
     } elseif (isset($_POST['upload_document'])) {
-        if (!isAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
         // Dokument hochladen
         $exhibitorId = intval($_POST['exhibitor_id']);
         if (isset($_FILES['document']) && $_FILES['document']['error'] === UPLOAD_ERR_OK) {
@@ -203,19 +225,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = $result;
         }
     } elseif (isset($_POST['delete_document'])) {
-        if (!isAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
         // Dokument loeschen
         $documentId = intval($_POST['document_id']);
         if (deleteFile($documentId)) {
             $message = ['success' => true, 'message' => 'Dokument erfolgreich geloescht'];
         }
     } elseif (isset($_POST['toggle_document_visibility'])) {
-        if (!isAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
         // Sichtbarkeit für Schüler umschalten
         $documentId = intval($_POST['document_id']);
         $db = getDB();
-        $stmt = $db->prepare("UPDATE exhibitor_documents SET visible_for_students = NOT visible_for_students WHERE id = ?");
-        if ($stmt->execute([$documentId])) {
+        $stmt = $db->prepare("UPDATE exhibitor_documents SET visible_for_students = NOT visible_for_students WHERE id = ? AND edition_id = ?");
+        if ($stmt->execute([$documentId, $activeEditionId])) {
             $message = ['type' => 'success', 'text' => 'Sichtbarkeit erfolgreich geändert'];
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Ändern der Sichtbarkeit'];
@@ -223,15 +245,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif (isset($_POST['delete_logo'])) {
         // Logo loeschen
         $id = intval($_POST['exhibitor_id']);
-        $stmt = $db->prepare("SELECT logo FROM exhibitors WHERE id = ?");
-        $stmt->execute([$id]);
+        $stmt = $db->prepare("SELECT logo FROM exhibitors WHERE id = ? AND edition_id = ?");
+        $stmt->execute([$id, $activeEditionId]);
         $logo = $stmt->fetch()['logo'];
         if ($logo && file_exists('uploads/' . $logo)) {
             unlink('uploads/' . $logo);
         }
-        $stmt = $db->prepare("UPDATE exhibitors SET logo = NULL WHERE id = ?");
-        if ($stmt->execute([$id])) {
+        $stmt = $db->prepare("UPDATE exhibitors SET logo = NULL WHERE id = ? AND edition_id = ?");
+        if ($stmt->execute([$id, $activeEditionId])) {
             $message = ['type' => 'success', 'text' => 'Logo erfolgreich entfernt'];
+        }
+    } elseif (isset($_POST['create_exhibitor_account'])) {
+        if (!isAdminOrSchoolAdmin()) die('Keine Berechtigung');
+
+        $exId      = intval($_POST['exhibitor_id'] ?? 0);
+        $username  = sanitize(trim($_POST['ex_username']  ?? ''));
+        $firstname = sanitize(trim($_POST['ex_firstname'] ?? ''));
+        $lastname  = sanitize(trim($_POST['ex_lastname']  ?? ''));
+        $email     = sanitize(trim($_POST['ex_email']     ?? ''));
+
+        if (!$exId || !$username || !$firstname || !$lastname) {
+            $accountMessage = ['type' => 'error',
+                'text' => 'Benutzername, Vor- und Nachname sind Pflichtfelder.'];
+        } else {
+            $result = createOrLinkExhibitorAccount($exId, $username, $firstname, $lastname, $email);
+            if ($result['success']) {
+                $inviteUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
+                    . '://' . $_SERVER['HTTP_HOST']
+                    . BASE_URL . 'exhibitor-accept.php?token=' . $result['token'];
+                logAuditAction('aussteller_account_erstellt',
+                    "Account '{$username}' für Aussteller #{$exId} erstellt, Token generiert");
+                $accountMessage = [
+                    'type'        => 'success',
+                    'text'        => 'Account erstellt. Einladungslink (30 Tage gültig):',
+                    'link'        => $inviteUrl,
+                    'exhibitor_id' => $exId,
+                ];
+            } else {
+                $accountMessage = ['type' => 'error', 'text' => $result['error']];
+            }
         }
     }
 
@@ -239,7 +291,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // Branchen Management (verschoben von admin-settings.php)
     // ============================================================
     if (isset($_POST['add_industry'])) {
-        if (!isAdmin() && !hasPermission('branchen_verwalten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('branchen_verwalten')) die('Keine Berechtigung');
         $indName = trim($_POST['industry_name'] ?? '');
         $indOrder = intval($_POST['industry_sort_order'] ?? 0);
         if ($indName === '') {
@@ -262,7 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['edit_industry'])) {
-        if (!isAdmin() && !hasPermission('branchen_verwalten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('branchen_verwalten')) die('Keine Berechtigung');
         $indId = intval($_POST['industry_id']);
         $indName = trim($_POST['industry_name'] ?? '');
         $indOrder = intval($_POST['industry_sort_order'] ?? 0);
@@ -286,7 +338,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['delete_industry'])) {
-        if (!isAdmin() && !hasPermission('branchen_verwalten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('branchen_verwalten')) die('Keine Berechtigung');
         $indId = intval($_POST['industry_id']);
         // Check if any exhibitor uses this industry
         $stmt = $db->prepare("SELECT COUNT(*) FROM exhibitors WHERE category = (SELECT name FROM industries WHERE id = ?)");
@@ -304,7 +356,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $industryMessage = ['type' => 'success', 'text' => "Branche erfolgreich gelöscht"];
         }
     } elseif (isset($_POST['add_orga_member'])) {
-        if (!isAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
         $exhibitorId = intval($_POST['exhibitor_id']);
         $userId = intval($_POST['user_id']);
 
@@ -323,7 +375,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $activeTab = 'orga-team'; // Keep orga-team tab active
         }
     } elseif (isset($_POST['remove_orga_member'])) {
-        if (!isAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_bearbeiten')) die('Keine Berechtigung');
         $exhibitorId = intval($_POST['exhibitor_id']);
         $userId = intval($_POST['user_id']);
 
@@ -348,7 +400,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $industryMessage = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_industry'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
     $name = trim($_POST['industry_name'] ?? '');
     $sortOrder = intval($_POST['industry_sort_order'] ?? 0);
     if (empty($name)) {
@@ -370,7 +422,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_industry'])) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_industry'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
     $id = intval($_POST['industry_id']);
     $name = trim($_POST['industry_name'] ?? '');
     $sortOrder = intval($_POST['industry_sort_order'] ?? 0);
@@ -388,7 +440,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_industry'])) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_industry'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('branchen_bearbeiten')) die('Keine Berechtigung');
     $id = intval($_POST['industry_id']);
     $stmt = $db->prepare("SELECT COUNT(*) FROM exhibitors WHERE category = (SELECT name FROM industries WHERE id = ?)");
     $stmt->execute([$id]);
@@ -409,13 +461,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_industry'])) {
 $orgaMessage = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
     $exhibitorId = intval($_POST['exhibitor_id']);
     $userId = intval($_POST['user_id']);
     if ($exhibitorId && $userId) {
         try {
-            $stmt = $db->prepare("INSERT IGNORE INTO exhibitor_orga_team (exhibitor_id, user_id, edition_id) VALUES (?, ?, ?)");
-            $stmt->execute([$exhibitorId, $userId, $activeEditionId]);
+            $currentSchool = getCurrentSchool();
+            $orgaSchoolId  = $currentSchool['id'] ?? null;
+            $stmt = $db->prepare(
+                "INSERT IGNORE INTO exhibitor_orga_team
+                    (exhibitor_id, user_id, edition_id, school_id)
+                 VALUES (?, ?, ?, ?)"
+            );
+            $stmt->execute([$exhibitorId, $userId, $activeEditionId, $orgaSchoolId]);
             logAuditAction('orga_zugewiesen', "Orga-Mitglied #$userId Aussteller #$exhibitorId zugewiesen");
             $orgaMessage = ['type' => 'success', 'text' => 'Orga-Mitglied erfolgreich zugewiesen'];
         } catch (PDOException $e) {
@@ -427,7 +485,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['assign_orga'])) {
 }
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['remove_orga'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('orga_team_bearbeiten')) die('Keine Berechtigung');
     $orgaId = intval($_POST['orga_id']);
     $db->prepare("DELETE FROM exhibitor_orga_team WHERE id = ?")->execute([$orgaId]);
     logAuditAction('orga_entfernt', "Orga-Zuweisung #$orgaId entfernt");
@@ -465,26 +523,40 @@ $allIndustries = $industries;
 $industryNames = array_column($industries, 'name');
 $allIndustries = $industries; // Für Branchen-Tab
 
-// Orga-Mitglieder laden (Benutzer mit Rolle 'orga')
+// Orga-Mitglieder laden (Benutzer mit Rolle 'orga', auf aktuelle Schule begrenzt)
 $orgaUsers = [];
-if (isAdmin() || hasPermission('orga_team_sehen')) {
-    $stmtOrga = $db->query("SELECT id, firstname, lastname, username FROM users WHERE role = 'orga' ORDER BY lastname, firstname");
+if (isAdminOrSchoolAdmin() || hasPermission('orga_team_sehen')) {
+    $currentSchool = getCurrentSchool();
+    $orgaSchoolId  = $currentSchool['id'] ?? null;
+    if ($orgaSchoolId) {
+        $stmtOrga = $db->prepare("SELECT id, firstname, lastname, username
+                                   FROM users WHERE role = 'orga' AND school_id = ?
+                                   ORDER BY lastname, firstname");
+        $stmtOrga->execute([$orgaSchoolId]);
+    } else {
+        $stmtOrga = $db->query("SELECT id, firstname, lastname, username
+                                 FROM users WHERE role = 'orga'
+                                 ORDER BY lastname, firstname");
+    }
     $orgaUsers = $stmtOrga->fetchAll();
 }
 
 // Orga-Zuweisungen laden
 $orgaAssignments = [];
-if (isAdmin() || hasPermission('orga_team_sehen')) {
+if (isAdminOrSchoolAdmin() || hasPermission('orga_team_sehen')) {
     try {
+        $currentSchool  = getCurrentSchool();
+        $orgaSchoolId   = $currentSchool['id'] ?? null;
         $stmtOA = $db->prepare("
             SELECT eo.id, eo.exhibitor_id, eo.user_id, eo.assigned_at,
                    u.firstname, u.lastname, u.username
             FROM exhibitor_orga_team eo
             JOIN users u ON eo.user_id = u.id
             WHERE eo.edition_id = ?
+              AND (? IS NULL OR eo.school_id = ?)
             ORDER BY eo.exhibitor_id, u.lastname
         ");
-        $stmtOA->execute([$activeEditionId]);
+        $stmtOA->execute([$activeEditionId, $orgaSchoolId, $orgaSchoolId]);
         foreach ($stmtOA->fetchAll() as $row) {
             $orgaAssignments[$row['exhibitor_id']][] = $row;
         }
@@ -497,6 +569,30 @@ if (isAdmin() || hasPermission('orga_team_sehen')) {
 
 // Aktiver Tab bestimmen
 $activeTab = $activeTab ?? ($_GET['tab'] ?? 'aussteller');
+
+// Equipment-Optionen für Checkboxen aus DB laden
+$equipmentOptions = [];
+try {
+    $currentSchoolForEq = getCurrentSchool();
+    $schoolIdForEquipment = $currentSchoolForEq['id'] ?? 1;
+    $stmtEq = $db->prepare(
+        "SELECT id, name FROM equipment_options
+         WHERE school_id = ? AND is_active = 1
+         ORDER BY sort_order, name"
+    );
+    $stmtEq->execute([$schoolIdForEquipment]);
+    $equipmentOptions = $stmtEq->fetchAll(PDO::FETCH_ASSOC);
+} catch (PDOException $e) {
+    $equipmentOptions = []; // will hit fallback below
+}
+
+// Fallback: if no options configured for this school yet, seed the six defaults
+if (empty($equipmentOptions)) {
+    $equipmentOptions = array_map(
+        fn($n) => ['id' => null, 'name' => $n],
+        ['Beamer', 'Smartboard', 'Whiteboard', 'Lautsprecher', 'WLAN', 'Steckdosen']
+    );
+}
 
 // Alle Aussteller laden mit Raum-Kapazitaet
 $stmt = $db->prepare("
@@ -530,19 +626,19 @@ $orgaUsers = $stmt->fetchAll();
     <!-- Tab-Navigation -->
     <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
         <div class="flex border-b border-gray-100 overflow-x-auto" id="exhibitorMainTabs" style="-webkit-overflow-scrolling:touch;scrollbar-width:none;">
-            <?php if (isAdmin() || hasPermission('aussteller_sehen')): ?>
+            <?php if (isAdminOrSchoolAdmin() || hasPermission('aussteller_sehen')): ?>
             <button onclick="switchExhibitorTab('aussteller')" data-tab="aussteller"
                     class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-building"></i> <span>Aussteller</span>
             </button>
             <?php endif; ?>
-            <?php if (isAdmin() || hasPermission('branchen_sehen')): ?>
+            <?php if (isAdminOrSchoolAdmin() || hasPermission('branchen_sehen')): ?>
             <button onclick="switchExhibitorTab('branchen')" data-tab="branchen"
                     class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-industry"></i> <span>Branchen</span>
             </button>
             <?php endif; ?>
-            <?php if (isAdmin() || hasPermission('orga_team_sehen')): ?>
+            <?php if (isAdminOrSchoolAdmin() || hasPermission('orga_team_sehen')): ?>
             <button onclick="switchExhibitorTab('orga-team')" data-tab="orga-team"
                     class="exhibitor-main-tab flex items-center gap-2 px-5 py-3.5 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-users-cog"></i> <span>Orga-Team</span>
@@ -633,19 +729,19 @@ $orgaUsers = $stmt->fetchAll();
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <?php if (isAdmin() || hasPermission('aussteller_bearbeiten')): ?>
+                        <?php if (isAdminOrSchoolAdmin() || hasPermission('aussteller_bearbeiten')): ?>
                         <button onclick="openEditModal(<?php echo htmlspecialchars(json_encode($exhibitor)); ?>)" 
                                 class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
                             <i class="fas fa-edit mr-1"></i>Bearbeiten
                         </button>
                         <?php endif; ?>
-                        <?php if (isAdmin() || hasPermission('aussteller_dokumente_verwalten')): ?>
+                        <?php if (isAdminOrSchoolAdmin() || hasPermission('aussteller_dokumente_verwalten')): ?>
                         <button onclick="openDocumentModal(<?php echo $exhibitor['id']; ?>, '<?php echo htmlspecialchars($exhibitor['name']); ?>')" 
                                 class="px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition">
                             <i class="fas fa-file-upload mr-1"></i>Dokumente
                         </button>
                         <?php endif; ?>
-                        <?php if (isAdmin() || hasPermission('aussteller_loeschen')): ?>
+                        <?php if (isAdminOrSchoolAdmin() || hasPermission('aussteller_loeschen')): ?>
                         <form method="POST" class="inline" onsubmit="return confirm('Wirklich loeschen?')">
                             <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                             <input type="hidden" name="exhibitor_id" value="<?php echo $exhibitor['id']; ?>">
@@ -713,6 +809,110 @@ $orgaUsers = $stmt->fetchAll();
                                 <i class="fas fa-file mr-1"></i><?php echo htmlspecialchars($doc['original_name']); ?>
                             </span>
                         <?php endforeach; ?>
+                    </div>
+                </div>
+                <?php endif; ?>
+
+                <!-- Aussteller-Zugangskonto [EXHIBITOR INVITE] -->
+                <?php if (isAdminOrSchoolAdmin()): ?>
+                <div class="mt-4 pt-4 border-t border-gray-100">
+                    <div class="p-4 rounded-xl border" style="background:var(--color-lavender-light,#ede9fe);border-color:var(--color-lavender,#c3b1e1);">
+                        <h4 class="text-sm font-semibold mb-3" style="color:var(--color-lavender-dark,#6d28d9);">
+                            <i class="fas fa-user-tie mr-1"></i> Aussteller-Zugangskonto
+                        </h4>
+
+                        <?php
+                        $linkedAccounts = [];
+                        try {
+                            $stmtAcc = $db->prepare("
+                                SELECT eu.*, u.username, u.firstname, u.lastname,
+                                       eu.invite_accepted, eu.invite_token, eu.invite_expires
+                                FROM exhibitor_users eu
+                                JOIN users u ON eu.user_id = u.id
+                                WHERE eu.exhibitor_id = ?
+                            ");
+                            $stmtAcc->execute([$exhibitor['id']]);
+                            $linkedAccounts = $stmtAcc->fetchAll();
+                        } catch (PDOException $e) {
+                            // Invite columns may not exist yet (Migration 21 not yet run)
+                            $stmtAcc = $db->prepare("
+                                SELECT eu.user_id, u.username, u.firstname, u.lastname,
+                                       0 AS invite_accepted, NULL AS invite_token, NULL AS invite_expires
+                                FROM exhibitor_users eu
+                                JOIN users u ON eu.user_id = u.id
+                                WHERE eu.exhibitor_id = ?
+                            ");
+                            $stmtAcc->execute([$exhibitor['id']]);
+                            $linkedAccounts = $stmtAcc->fetchAll();
+                        }
+                        ?>
+
+                        <?php if (!empty($linkedAccounts)): ?>
+                        <div class="mb-3 space-y-2">
+                            <?php foreach ($linkedAccounts as $acc): ?>
+                            <div class="flex items-center justify-between p-2 rounded-lg border text-sm"
+                                 style="background:var(--color-white,#fff);border-color:var(--color-border,#e5e7eb);">
+                                <div>
+                                    <span class="font-medium"><?= htmlspecialchars($acc['username']) ?></span>
+                                    <span class="text-gray-500 ml-2"><?= htmlspecialchars($acc['firstname'].' '.$acc['lastname']) ?></span>
+                                </div>
+                                <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                                    <?= $acc['invite_accepted']
+                                        ? 'style="background:var(--color-mint-light,#d4f5e4);color:var(--color-mint-dark,#065f46);"'
+                                        : 'style="background:var(--color-butter-light,#fef3c7);color:var(--color-butter-dark,#92400e);"' ?>>
+                                    <?= $acc['invite_accepted'] ? 'Aktiv' : 'Einladung ausstehend' ?>
+                                </span>
+                            </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php endif; ?>
+
+                        <form method="POST" class="space-y-2">
+                            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                            <input type="hidden" name="exhibitor_id" value="<?= $exhibitor['id'] ?>">
+                            <div class="grid grid-cols-2 gap-2">
+                                <input type="text"  name="ex_username"  placeholder="Benutzername *" required
+                                style="background:var(--color-white);color:var(--color-gray-800,#1f2937);border-color:var(--color-border,#e5e7eb);"
+                                    class="px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-400">
+                                <input type="email" name="ex_email"     placeholder="E-Mail (optional)"
+                                style="background:var(--color-white);color:var(--color-gray-800,#1f2937);border-color:var(--color-border,#e5e7eb);"
+                                    class="px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-400">
+                                <input type="text"  name="ex_firstname" placeholder="Vorname *" required
+                                style="background:var(--color-white);color:var(--color-gray-800,#1f2937);border-color:var(--color-border,#e5e7eb);"
+                                    class="px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-400">
+                                <input type="text"  name="ex_lastname"  placeholder="Nachname *" required
+                                style="background:var(--color-white);color:var(--color-gray-800,#1f2937);border-color:var(--color-border,#e5e7eb);"
+                                    class="px-3 py-1.5 text-sm border rounded-lg focus:ring-2 focus:ring-indigo-400">
+                            </div>
+                            <button type="submit" name="create_exhibitor_account" value="1"
+                                class="w-full py-1.5 bg-indigo-500 text-white text-sm font-medium rounded-lg hover:bg-indigo-600 transition">
+                                <i class="fas fa-user-plus mr-1"></i>
+                                Konto erstellen &amp; Einladungslink generieren
+                            </button>
+                        </form>
+
+                        <?php if (isset($accountMessage)
+                            && $accountMessage['type'] === 'success'
+                            && isset($accountMessage['link'])
+                            && ($accountMessage['exhibitor_id'] ?? 0) === $exhibitor['id']): ?>
+                        <div class="mt-3 p-3 rounded-lg border"
+                             style="background:var(--color-white);border-color:var(--color-mint,#a8e6cf);">
+                            <p class="text-xs font-medium mb-1" style="color:var(--color-mint-dark,#065f46);">Einladungslink (bitte sichern!):</p>
+                            <input type="text" value="<?= htmlspecialchars($accountMessage['link']) ?>"
+                                   readonly onclick="this.select()"
+                                   class="w-full px-2 py-1 text-xs font-mono border rounded"
+                                   style="background:var(--color-bg,#f8fafc);color:var(--color-gray-800,#1f2937);border-color:var(--color-border,#e5e7eb);">
+                            <p class="text-xs text-gray-400 mt-1">Gültig 30 Tage. Beim ersten Login wird ein Passwort gesetzt.</p>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if (isset($accountMessage) && $accountMessage['type'] === 'error'
+                            && isset($_POST['create_exhibitor_account'])
+                            && (int)($_POST['exhibitor_id'] ?? 0) === $exhibitor['id']): ?>
+                        <div class="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700">
+                            <i class="fas fa-exclamation-circle mr-1"></i><?= htmlspecialchars($accountMessage['text']) ?>
+                        </div>
+                        <?php endif; ?>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -1079,32 +1279,23 @@ $orgaUsers = $stmt->fetchAll();
                     <label class="block text-sm font-medium text-gray-700 mb-3">
                         <i class="fas fa-tools mr-2 text-blue-500"></i>Benötigtes technisches Equipment
                     </label>
-                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
+                        <?php foreach ($equipmentOptions as $eqOpt): ?>
                         <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
-                            <input type="checkbox" name="equipment[]" value="Beamer" class="mr-2 rounded text-blue-500 equipment-checkbox">
-                            <span class="text-sm text-gray-700">Beamer</span>
+                            <input type="checkbox"
+                                   name="equipment[]"
+                                   value="<?php echo htmlspecialchars($eqOpt['name']); ?>"
+                                   class="mr-2 rounded text-blue-500 equipment-checkbox">
+                            <span class="text-sm text-gray-700"><?php echo htmlspecialchars($eqOpt['name']); ?></span>
                         </label>
-                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
-                            <input type="checkbox" name="equipment[]" value="Smartboard" class="mr-2 rounded text-blue-500 equipment-checkbox">
-                            <span class="text-sm text-gray-700">Smartboard</span>
-                        </label>
-                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
-                            <input type="checkbox" name="equipment[]" value="Whiteboard" class="mr-2 rounded text-blue-500 equipment-checkbox">
-                            <span class="text-sm text-gray-700">Whiteboard</span>
-                        </label>
-                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
-                            <input type="checkbox" name="equipment[]" value="Lautsprecher" class="mr-2 rounded text-blue-500 equipment-checkbox">
-                            <span class="text-sm text-gray-700">Lautsprecher</span>
-                        </label>
-                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
-                            <input type="checkbox" name="equipment[]" value="WLAN" class="mr-2 rounded text-blue-500 equipment-checkbox">
-                            <span class="text-sm text-gray-700">WLAN</span>
-                        </label>
-                        <label class="flex items-center p-3 bg-blue-50 rounded-lg cursor-pointer hover:bg-blue-100 transition">
-                            <input type="checkbox" name="equipment[]" value="Steckdosen" class="mr-2 rounded text-blue-500 equipment-checkbox">
-                            <span class="text-sm text-gray-700">Steckdosen</span>
-                        </label>
+                        <?php endforeach; ?>
                     </div>
+                    <!-- Free-text for custom equipment not in the list -->
+                    <input type="text"
+                           name="equipment_custom"
+                           class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg
+                                  focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                           placeholder="Weiteres Equipment (Freitext, kommasepariert)">
                 </div>
 
                 <!-- Angebote fuer Schueler -->
@@ -1242,6 +1433,9 @@ document.getElementById('logoInput').addEventListener('change', function(e) {
     }
 });
 
+// Known equipment option names (PHP-rendered once, used by fillForm)
+const knownEquipment = <?php echo json_encode(array_column($equipmentOptions, 'name')); ?>;
+
 function openAddModal() {
     document.getElementById('modalTitle').textContent = 'Aussteller hinzufuegen';
     document.getElementById('exhibitorForm').reset();
@@ -1285,11 +1479,17 @@ function openEditModal(exhibitor) {
     
     // Equipment setzen
     document.querySelectorAll('.equipment-checkbox').forEach(cb => { cb.checked = false; });
+    const equipmentCustomField = document.querySelector('input[name="equipment_custom"]');
+    if (equipmentCustomField) equipmentCustomField.value = '';
+
     if (exhibitor.equipment) {
         const equipmentArray = exhibitor.equipment.split(',').map(e => e.trim()).filter(e => e);
         document.querySelectorAll('.equipment-checkbox').forEach(cb => {
             cb.checked = equipmentArray.includes(cb.value);
         });
+        // Any values not in the known checkbox list go to the free-text field
+        const customVals = equipmentArray.filter(e => !knownEquipment.includes(e));
+        if (equipmentCustomField) equipmentCustomField.value = customVals.join(', ');
     }
     
     // Angebotstypen setzen

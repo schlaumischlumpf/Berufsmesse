@@ -19,22 +19,21 @@ if (!isLoggedIn() || (!isAdmin() && !hasPermission('benutzer_importieren'))) {
 
 $db = getDB();
 $activeEditionId = getActiveEditionId();
+// [SCHOOL ISOLATION] null = super-admin (no filter)
+$pdfSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 
 // -------------------------------------------------------
 // Schritt 1: Alle Nutzer ohne Passwort laden
 // -------------------------------------------------------
-$stmt = $db->prepare(
-    "SELECT id, firstname, lastname, username, role, class
+$pwSql = "SELECT id, firstname, lastname, username, role, class
      FROM users
      WHERE (password IS NULL OR password = '')
-       AND edition_id = ?
-     ORDER BY
-       COALESCE(class, 'ZZZZ') ASC,
-       role ASC,
-       lastname ASC,
-       firstname ASC"
-);
-$stmt->execute([$activeEditionId]);
+       AND edition_id = ?";
+$pwParams = [$activeEditionId];
+if ($pdfSchoolId) { $pwSql .= " AND school_id = ?"; $pwParams[] = $pdfSchoolId; } // [SCHOOL ISOLATION]
+$pwSql .= " ORDER BY COALESCE(class, 'ZZZZ') ASC, role ASC, lastname ASC, firstname ASC";
+$stmt = $db->prepare($pwSql);
+$stmt->execute($pwParams);
 $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 if (empty($users)) {

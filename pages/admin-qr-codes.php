@@ -10,14 +10,21 @@ if (!isset($db)) {
 }
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('qr_codes_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('qr_codes_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
+
+// [SCHOOL ISOLATION] always derive from URL school slug
+$qrCtxSchool   = getCurrentSchool();
+$qrSchoolId    = $qrCtxSchool ? (int)$qrCtxSchool['id'] : null;
+$qrEditionId   = $qrCtxSchool
+    ? getActiveEditionIdForSchool($qrSchoolId)
+    : $activeEditionId;
 
 // Aussteller mit Räumen laden - gefiltert nach Orga-Zuordnung
 try {
     // Admins und Benutzer mit qr_codes_verwalten sehen alle Aussteller
-    if (isAdmin() || hasPermission('qr_codes_verwalten')) {
+    if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_verwalten')) {
         $stmt = $db->prepare("
             SELECT e.*, r.room_number
             FROM exhibitors e
@@ -25,7 +32,7 @@ try {
             WHERE e.active = 1 AND e.edition_id = ?
             ORDER BY e.name
         ");
-        $stmt->execute([$activeEditionId]);
+        $stmt->execute([$qrEditionId]);
         $exhibitors = $stmt->fetchAll();
     } else {
         // Exhibitor-spezifische Orga-Mitglieder sehen nur ihre zugewiesenen Aussteller
@@ -37,7 +44,7 @@ try {
             WHERE e.active = 1 AND eot.user_id = ? AND e.edition_id = ? AND eot.edition_id = ?
             ORDER BY e.name
         ");
-        $stmt->execute([$_SESSION['user_id'], $activeEditionId, $activeEditionId]);
+        $stmt->execute([$_SESSION['user_id'], $qrEditionId, $qrEditionId]);
         $exhibitors = $stmt->fetchAll();
     }
 } catch (Exception $e) {
@@ -49,7 +56,7 @@ try {
 // Alle Timeslots laden (inkl. Slots 2 und 4 für freie Wahl)
 try {
     $stmt = $db->prepare("SELECT * FROM timeslots WHERE edition_id = ? AND is_break = 0 ORDER BY start_time ASC, slot_number ASC");
-    $stmt->execute([$activeEditionId]);
+    $stmt->execute([$qrEditionId]);
     $timeslots = $stmt->fetchAll();
 } catch (Exception $e) {
     $timeslots = [];
@@ -67,7 +74,7 @@ try {
     
     // Zuerst prüfen: Sind überhaupt Tokens in der DB?
     $stmtCheck = $db->prepare("SELECT COUNT(*) as total, MIN(expires_at) as earliest, MAX(expires_at) as latest FROM qr_tokens WHERE edition_id = ?");
-    $stmtCheck->execute([$activeEditionId]);
+    $stmtCheck->execute([$qrEditionId]);
     $tokenCheck = $stmtCheck->fetch();
     $tokenCheck['current_time'] = date('Y-m-d H:i:s');
     
@@ -79,7 +86,7 @@ try {
         WHERE qt.expires_at > NOW() AND qt.edition_id = ?
         ORDER BY e.name, t.slot_number
     ");
-    $stmt->execute([$activeEditionId]);
+    $stmt->execute([$qrEditionId]);
     $existingTokens = $stmt->fetchAll();
 } catch (Exception $e) {
     $existingTokens = [];
@@ -112,10 +119,12 @@ try {
     $stmt = $db->prepare("
         SELECT a.exhibitor_id, a.timeslot_id, COUNT(*) as present_count
         FROM attendance a
+        JOIN users u ON a.user_id = u.id
         WHERE a.edition_id = ?
+        AND (? IS NULL OR u.school_id = ?)   -- [SCHOOL ISOLATION]
         GROUP BY a.exhibitor_id, a.timeslot_id
     ");
-    $stmt->execute([$activeEditionId]);
+    $stmt->execute([$qrEditionId, $qrSchoolId, $qrSchoolId]);
     $attendanceStats = [];
     foreach ($stmt->fetchAll() as $row) {
         $attendanceStats[$row['exhibitor_id'] . '_' . $row['timeslot_id']] = $row['present_count'];
@@ -135,9 +144,10 @@ try {
         JOIN users u ON r.user_id = u.id
         LEFT JOIN attendance a ON a.user_id = r.user_id AND a.exhibitor_id = r.exhibitor_id AND a.timeslot_id = r.timeslot_id
         WHERE r.timeslot_id IS NOT NULL AND r.edition_id = ?
+        AND (? IS NULL OR u.school_id = ?)   -- [SCHOOL ISOLATION]
         ORDER BY r.exhibitor_id, r.timeslot_id, u.lastname, u.firstname
     ");
-    $stmt->execute([$activeEditionId]);
+    $stmt->execute([$qrEditionId, $qrSchoolId, $qrSchoolId]);
     $attendanceDetails = [];
     foreach ($stmt->fetchAll() as $row) {
         $key = $row['exhibitor_id'] . '_' . $row['timeslot_id'];
@@ -154,11 +164,11 @@ try {
 
 // Gesamt-Statistik
 try {
-    $stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as total FROM attendance WHERE edition_id = ?");
-    $stmt->execute([$activeEditionId]);
+    $stmt = $db->prepare("SELECT COUNT(DISTINCT a.user_id) as total FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.edition_id = ? AND (? IS NULL OR u.school_id = ?)");
+    $stmt->execute([$qrEditionId, $qrSchoolId, $qrSchoolId]);
     $totalAttendees = $stmt->fetchColumn();
-    $stmt = $db->prepare("SELECT COUNT(*) as total FROM attendance WHERE edition_id = ?");
-    $stmt->execute([$activeEditionId]);
+    $stmt = $db->prepare("SELECT COUNT(*) as total FROM attendance a JOIN users u ON a.user_id = u.id WHERE a.edition_id = ? AND (? IS NULL OR u.school_id = ?)");
+    $stmt->execute([$qrEditionId, $qrSchoolId, $qrSchoolId]);
     $totalCheckins = $stmt->fetchColumn();
 } catch (Exception $e) {
     $totalAttendees = 0;
@@ -211,7 +221,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
             </h2>
             <p class="text-sm text-gray-500 mt-1">QR-Codes für die Anwesenheitsprüfung generieren und verwalten</p>
         </div>
-        <?php if (isAdmin() || hasPermission('qr_codes_erstellen')): ?>
+        <?php if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_erstellen')): ?>
         <form method="POST">
             <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
             <button type="submit" name="generate_all" value="1"
@@ -329,7 +339,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                 
                 // Registrierungen für diesen Slot zählen
                 $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE exhibitor_id = ? AND timeslot_id = ? AND registrations.edition_id = ?");
-                $stmt->execute([$exhibitor['id'], $timeslot['id'], $activeEditionId]);
+                $stmt->execute([$exhibitor['id'], $timeslot['id'], $qrEditionId]);
                 $regCount = $stmt->fetchColumn();
             ?>
             <div class="border border-gray-200 rounded-lg p-4 <?php echo $token ? 'bg-gray-50' : 'bg-yellow-50 border-yellow-200'; ?>">

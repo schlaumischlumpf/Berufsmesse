@@ -16,6 +16,8 @@ try {
 
 $db = getDB();
 $activeEditionId = getActiveEditionId();
+// [SCHOOL ISOLATION] null = super-admin (no filter)
+$pdfSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 
 // Filter
 $filterClass = $_GET['class'] ?? '';
@@ -42,6 +44,10 @@ $query = "
 ";
 
 $params = [$activeEditionId, $activeEditionId, $activeEditionId, $activeEditionId];
+if ($pdfSchoolId) {
+    $query .= " AND u.school_id = ?"; // [SCHOOL ISOLATION]
+    $params[] = $pdfSchoolId;
+}
 if ($filterClass) {
     $query .= " AND u.class = ?";
     $params[] = $filterClass;

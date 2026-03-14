@@ -11,6 +11,9 @@ try {
     $db              = getDB();
     $activeEditionId = getActiveEditionId();
 
+    // [SCHOOL ISOLATION] resolve export school context — null = super-admin (no filter)
+    $exportSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+
     $format      = in_array($_GET['format'] ?? 'csv', ['csv', 'xlsx']) ? $_GET['format'] : 'csv';
     $type        = in_array($_GET['type']   ?? 'registrations', ['registrations','attendance','unregistered'])
                    ? $_GET['type'] : 'registrations';
@@ -29,6 +32,7 @@ try {
                 LEFT JOIN rooms r ON e.room_id         = r.id
                 WHERE u.role = 'student' AND reg.edition_id = ?";
         $params = [$activeEditionId, $activeEditionId, $activeEditionId];
+        if ($exportSchoolId) { $sql .= " AND u.school_id = ?"; $params[] = $exportSchoolId; } // [SCHOOL ISOLATION]
         if ($filterClass) { $sql .= " AND u.class = ?"; $params[] = $filterClass; }
         if ($filterEid)   { $sql .= " AND reg.exhibitor_id = ?"; $params[] = $filterEid; }
         if ($filterTid)   { $sql .= " AND reg.timeslot_id  = ?"; $params[] = $filterTid; }
@@ -51,6 +55,7 @@ try {
                 JOIN timeslots t  ON a.timeslot_id  = t.id AND t.edition_id = ?
                 WHERE u.role = 'student' AND a.edition_id = ?";
         $params = [$activeEditionId, $activeEditionId, $activeEditionId];
+        if ($exportSchoolId) { $sql .= " AND u.school_id = ?"; $params[] = $exportSchoolId; } // [SCHOOL ISOLATION]
         if ($filterClass) { $sql .= " AND u.class = ?"; $params[] = $filterClass; }
         if ($filterEid)   { $sql .= " AND a.exhibitor_id = ?"; $params[] = $filterEid; }
         if ($filterTid)   { $sql .= " AND a.timeslot_id  = ?"; $params[] = $filterTid; }
@@ -63,9 +68,11 @@ try {
         $sql = "SELECT u.lastname, u.firstname, u.class, u.username
                 FROM users u
                 LEFT JOIN registrations reg ON reg.user_id = u.id AND reg.edition_id = ?
-                WHERE u.role = 'student' AND reg.id IS NULL
-                ORDER BY u.class, u.lastname, u.firstname";
-        $stmt = $db->prepare($sql); $stmt->execute([$activeEditionId]);
+                WHERE u.role = 'student' AND reg.id IS NULL";
+        $params = [$activeEditionId];
+        if ($exportSchoolId) { $sql .= " AND u.school_id = ?"; $params[] = $exportSchoolId; } // [SCHOOL ISOLATION]
+        $sql .= " ORDER BY u.class, u.lastname, u.firstname";
+        $stmt = $db->prepare($sql); $stmt->execute($params);
         $rows    = $stmt->fetchAll();
         $headers = ['Nachname','Vorname','Klasse','Benutzername'];
     }

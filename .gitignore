@@ -33,6 +33,7 @@ config.php
 
 # Github Actions
 .github
+.github/*
 
 # Claude
 .claude

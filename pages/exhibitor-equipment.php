@@ -6,14 +6,19 @@ if (!isExhibitor() && !isAdmin()) die('Keine Berechtigung');
 
 $db = getDB();
 $userId = $_SESSION['user_id'];
+$ids = isAdmin() ? [] : getExhibitorIdsForUser($userId);
 $exhibitorId = (int)($_GET['exhibitor_id'] ?? 0);
 $message = null;
 
-// Prüfen ob User Zugriff hat
-if (!isAdmin()) {
-    $ids = getExhibitorIdsForUser($userId);
-    if (!in_array($exhibitorId, $ids)) {
-        echo '<div class="p-4 bg-red-50 text-red-700 rounded-xl">Kein Zugriff auf diesen Aussteller.</div>';
+// Auto-default: if no exhibitor_id given, use the first one linked to this user
+if (!isAdmin() && !in_array($exhibitorId, $ids)) {
+    if (!empty($ids)) {
+        $defaultId = $ids[0];
+        $page = $_GET['page'] ?? 'exhibitor-equipment';
+        header("Location: ?page={$page}&exhibitor_id={$defaultId}");
+        exit;
+    } else {
+        echo '<div class="p-4 bg-red-50 text-red-700 rounded-xl">Kein Aussteller-Konto verknüpft. Bitte wende dich an den Administrator.</div>';
         return;
     }
 }

@@ -13,8 +13,12 @@ $stmt = $db->prepare("
            me.name as edition_name, me.year as edition_year, me.status as edition_status,
            s.name as school_name, s.slug as school_slug,
            r.room_number, r.room_name,
-           (SELECT COUNT(*) FROM registrations reg WHERE reg.exhibitor_id = e.id) as registration_count,
-           (SELECT COUNT(*) FROM attendance att WHERE att.exhibitor_id = e.id) as attendance_count
+           (SELECT COUNT(*) FROM registrations reg
+                WHERE reg.exhibitor_id = e.id
+                  AND reg.edition_id = e.edition_id) as registration_count,
+           (SELECT COUNT(*) FROM attendance att
+                WHERE att.exhibitor_id = e.id
+                  AND att.edition_id = e.edition_id) as attendance_count
     FROM exhibitor_users eu
     JOIN exhibitors e ON eu.exhibitor_id = e.id
     LEFT JOIN messe_editions me ON e.edition_id = me.id

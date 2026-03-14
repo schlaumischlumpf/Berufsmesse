@@ -30,13 +30,25 @@ if (!empty($token)) {
         $slotNumber = $qrToken['slot_number'];
         $isFreeSlot = in_array($slotNumber, [2, 4]);
 
+        // [EXHIBITOR ISOLATION] If the logged-in user is an exhibitor,
+        // verify they are linked to the exhibitor in this QR token
+        if (isExhibitor()) {
+            $allowedIds = getExhibitorIdsForUser($_SESSION['user_id']);
+            if (!in_array($qrToken['exhibitor_id'], $allowedIds)) {
+                $checkinResult = [
+                    'type'    => 'error',
+                    'message' => 'Dieser QR-Code gehört nicht zu deinem Aussteller.'
+                ];
+            }
+        }
+
         // Zeitfenster-Prüfung anhand der Einstellungen
         $eventDate      = getSetting('event_date');
         $validityBefore = intval(getSetting('qr_validity_before', 10));
         $validityAfter  = intval(getSetting('qr_validity_after', 15));
         $timeWindowValid = true;
 
-        if ($eventDate && !empty($qrToken['start_time']) && !empty($qrToken['end_time'])) {
+        if (!$checkinResult && $eventDate && !empty($qrToken['start_time']) && !empty($qrToken['end_time'])) {
             $now         = time();
             $tsWindowStart = strtotime("$eventDate " . $qrToken['start_time']);
             $tsWindowEnd   = strtotime("$eventDate " . $qrToken['end_time']);
@@ -55,7 +67,7 @@ if (!empty($token)) {
             }
         }
 
-        if ($timeWindowValid) {
+        if ($timeWindowValid && !$checkinResult) {
 
         // Prüfen ob der Schüler für diesen Aussteller/Slot registriert ist
         $stmt = $db->prepare("

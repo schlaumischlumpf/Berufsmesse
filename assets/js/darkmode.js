@@ -1,17 +1,18 @@
 /**
  * Darkmode Toggle-Logik
  * Speichert Präferenz in localStorage und respektiert OS-Setting als Default.
+ * Sanfter 300ms Übergang beim Umschalten.
  */
 (function() {
     'use strict';
 
-    const STORAGE_KEY = 'berufsmesse-theme';
+    var STORAGE_KEY = 'berufsmesse-theme';
 
     /**
      * Gibt 'dark' oder 'light' zurück (gespeichert oder OS-Präferenz).
      */
     function getPreferredTheme() {
-        const stored = localStorage.getItem(STORAGE_KEY);
+        var stored = localStorage.getItem(STORAGE_KEY);
         if (stored === 'dark' || stored === 'light') return stored;
         return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
@@ -23,30 +24,33 @@
         document.documentElement.classList.toggle('dark', theme === 'dark');
         document.documentElement.setAttribute('data-theme', theme);
 
-        // Icon und Text des Toggle-Buttons aktualisieren
-        const btn = document.getElementById('darkmode-toggle');
-        if (btn) {
-            const icon = btn.querySelector('i');
-            const label = btn.querySelector('span');
-            if (icon) {
-                icon.className = theme === 'dark'
-                    ? 'fas fa-sun'
-                    : 'fas fa-moon';
-            }
-            if (label) {
-                label.textContent = theme === 'dark' ? 'Hellmodus' : 'Dunkel';
-            }
+        // Label aktualisieren
+        var label = document.getElementById('darkmode-label');
+        if (label) {
+            label.textContent = theme === 'dark' ? 'Hellmodus' : 'Dunkel';
         }
     }
 
     /**
-     * Schaltet zwischen dark und light um.
+     * Schaltet zwischen dark und light um (mit Transition).
      */
     function toggleTheme() {
-        const current = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
-        const next = current === 'dark' ? 'light' : 'dark';
+        var html = document.documentElement;
+        var current = html.classList.contains('dark') ? 'dark' : 'light';
+        var next = current === 'dark' ? 'light' : 'dark';
+
+        // Sanfte Transition aktivieren
+        html.style.transition = 'background-color 300ms ease, color 300ms ease';
+        document.body.style.transition = 'background-color 300ms ease, color 300ms ease';
+
         localStorage.setItem(STORAGE_KEY, next);
         applyTheme(next);
+
+        // Transition nach Animation entfernen
+        setTimeout(function() {
+            html.style.transition = '';
+            document.body.style.transition = '';
+        }, 350);
     }
 
     // Sofort anwenden (vermeidet Flash of Unstyled Content)
@@ -62,7 +66,7 @@
     // Global verfügbar machen
     window.toggleDarkmode = toggleTheme;
 
-    // Nach DOM-Ready nochmal anwenden (für den Button)
+    // Nach DOM-Ready nochmal anwenden (für das Label)
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', function() {
             applyTheme(getPreferredTheme());

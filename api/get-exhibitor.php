@@ -30,6 +30,13 @@ if (!$exhibitor) {
     exit();
 }
 
+// [SCHOOL ISOLATION]
+$geSchoolId = isAdmin() ? null : ($_SESSION['school_id'] ?? null);
+if (!exhibitorBelongsToSchool($exhibitorId, $geSchoolId)) {
+    echo json_encode(['success' => false, 'message' => 'Aussteller nicht gefunden']);
+    exit();
+}
+
 // Raum-Kapazität abrufen
 $stmt = $db->prepare("
     SELECT r.capacity 

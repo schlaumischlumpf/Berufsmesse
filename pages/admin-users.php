@@ -2,9 +2,13 @@
 // Admin Nutzerverwaltung
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('benutzer_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('benutzer_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
+
+// [SCHOOL ISOLATION] Source of truth is getCurrentSchool() for all roles
+$ctxSchool      = getCurrentSchool();
+$schoolFilterId = $ctxSchool ? (int)$ctxSchool['id'] : null;
 
 // Datenbankverbindung holen
 $db = getDB();
@@ -13,7 +17,7 @@ $db = getDB();
 $csvImportResult = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('benutzer_importieren')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('benutzer_importieren')) die('Keine Berechtigung');
     if (!empty($_FILES['csv_file']['name'])) {
         $file = $_FILES['csv_file'];
         
@@ -79,15 +83,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     }
                     
                     // Validiere Rolle
-                    $allowedRoles = ['student', 'teacher', 'admin', 'orga'];
+                    $allowedRoles = ['student', 'teacher', 'admin', 'orga', 'school_admin'];
                     if (!in_array($role, $allowedRoles, true)) {
                         $importResult['errors'][] = "Zeile $rowNumber: Ungültige Rolle '$role'";
                         $rowNumber++;
                         continue;
                     }
-                    
-                    // Sicherheit: Nur Admins können Admin-Accounts über CSV erstellen
-                    if ($role === 'admin' && !isAdmin()) {
+
+                    // Sicherheit: Nur Admins können Admin/school_admin-Accounts über CSV erstellen
+                    if (($role === 'admin' || $role === 'school_admin') && !isAdmin()) {
                         $importResult['errors'][] = "Zeile $rowNumber: Nur Administratoren können Admin-Accounts erstellen";
                         $rowNumber++;
                         continue;
@@ -96,11 +100,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
                     // Benutzer erstellen
                     $force_password_change = $passwordProvided ? 1 : 0;
                     $csvUserEditionId = ($role === 'admin') ? null : $activeEditionId;
-                    
+                    $csvUserSchoolId = ($role === 'admin') ? null : $schoolFilterId; // [SCHOOL ISOLATION]
+                    // school_admin gets no edition_id but keeps school_id
+                    if ($role === 'school_admin') {
+                        $csvUserEditionId = null;
+                    }
+
                     try {
-                        $stmt = $db->prepare("INSERT INTO users (firstname, lastname, username, email, password, role, class, must_change_password, edition_id) 
-                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
-                        if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change, $csvUserEditionId])) {
+                        $stmt = $db->prepare("INSERT INTO users (firstname, lastname, username, email, password, role, class, must_change_password, edition_id, school_id)
+                                              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        if ($stmt->execute([$firstname, $lastname, $username, $email, $hashedPassword, $role, $class, $force_password_change, $csvUserEditionId, $csvUserSchoolId])) {
                             $importResult['imported']++;
                             // Keine generated_passwords mehr hier speichern – das macht der neue Bulk-Button
                         }
@@ -137,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['import_csv'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     requireCsrf();
     if (isset($_POST['create_user'])) {
-        if (!isAdmin() && !hasPermission('benutzer_erstellen')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('benutzer_erstellen')) die('Keine Berechtigung');
         // Neuen Benutzer erstellen
         $username = sanitize($_POST['username']);
         $email = sanitize($_POST['email']);
@@ -147,8 +156,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $class = sanitize($_POST['class'] ?? '');
         $password = $_POST['password'];
         
-        // SICHERHEIT: Nur echte Admins können Admin-Accounts erstellen
-        if ($role === 'admin' && !isAdmin()) {
+        // SICHERHEIT: Nur echte Admins können Admin/school_admin-Accounts erstellen
+        if (($role === 'admin' || $role === 'school_admin') && !isAdmin()) {
             $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts erstellen'];
         } else {
             // Prüfen ob Username in dieser Edition bereits existiert
@@ -164,7 +173,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $message = ['type' => 'error', 'text' => 'Benutzername existiert bereits'];
             } else {
                 // Validate role to avoid DB truncation/enum issues
-                $allowedRoles = ['student', 'teacher', 'admin', 'orga']; // must match app expectations
+                $allowedRoles = ['student', 'teacher', 'admin', 'orga', 'school_admin']; // must match app expectations
                 if (!in_array($role, $allowedRoles, true)) {
                     // fallback to a safe default
                     $role = 'student';
@@ -172,11 +181,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
                 $userEditionId = ($role === 'admin') ? null : $activeEditionId;
+                $userSchoolId = ($role === 'admin') ? null : $schoolFilterId; // [SCHOOL ISOLATION]
+                // school_admin gets no edition_id but keeps school_id
+                if ($role === 'school_admin') {
+                    $userEditionId = null;
+                }
                 // Force password change on first login for admin-created accounts
-                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password, edition_id) 
-                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                $stmt = $db->prepare("INSERT INTO users (username, email, password, firstname, lastname, role, class, must_change_password, edition_id, school_id)
+                                      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                 try {
-                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1, $userEditionId])) {
+                    if ($stmt->execute([$username, $email, $hashedPassword, $firstname, $lastname, $role, $class, 1, $userEditionId, $userSchoolId])) {
                         logAuditAction('benutzer_erstellt', "Benutzer '$username' ($firstname $lastname, Rolle: $role) erstellt");
                         $message = ['type' => 'success', 'text' => 'Benutzer erfolgreich erstellt'];
                     } else {
@@ -194,7 +208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['reset_password'])) {
-        if (!isAdmin() && !hasPermission('benutzer_passwort_zuruecksetzen')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('benutzer_passwort_zuruecksetzen')) die('Keine Berechtigung');
         // Passwort zurücksetzen
         $userId = intval($_POST['user_id']);
         $newPassword = $_POST['new_password'];
@@ -206,9 +220,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($targetUser && $targetUser['role'] === 'admin' && !isAdmin()) {
             $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Passwörter ändern'];
+        } elseif (isSchoolAdmin() && $targetUser) {
+            // School_admin: Zielbenutzer muss zur gleichen Schule gehören
+            $stmtSchool = $db->prepare("SELECT school_id FROM users WHERE id = ?");
+            $stmtSchool->execute([$userId]);
+            $targetSchool = $stmtSchool->fetch();
+            if (!$targetSchool || $targetSchool['school_id'] != ($_SESSION['school_id'] ?? null)) {
+                $message = ['type' => 'error', 'text' => 'Du kannst nur Passwörter von Benutzern deiner Schule ändern'];
+            } else {
+                $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
+                $stmt = $db->prepare("UPDATE users SET password = ?, must_change_password = 1 WHERE id = ?");
+                if ($stmt->execute([$hashedPassword, $userId])) {
+                    logAuditAction('passwort_zurueckgesetzt', "Passwort für Benutzer #$userId zurückgesetzt");
+                    $message = ['type' => 'success', 'text' => 'Passwort erfolgreich zurückgesetzt. Der Benutzer muss es beim nächsten Login ändern.'];
+                } else {
+                    $message = ['type' => 'error', 'text' => 'Fehler beim Zurücksetzen des Passworts'];
+                }
+            }
         } else {
             $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
-            
             $stmt = $db->prepare("UPDATE users SET password = ?, must_change_password = 1 WHERE id = ?");
             if ($stmt->execute([$hashedPassword, $userId])) {
                 logAuditAction('passwort_zurueckgesetzt', "Passwort für Benutzer #$userId zurückgesetzt");
@@ -218,7 +248,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['edit_user'])) {
-        if (!isAdmin() && !hasPermission('benutzer_bearbeiten')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('benutzer_bearbeiten')) die('Keine Berechtigung');
         $userId = intval($_POST['user_id']);
 
         // SICHERHEIT: Eigenen Account nicht bearbeiten
@@ -243,13 +273,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 // Validierung
                 $allowedRoles = ['student', 'teacher', 'orga'];
-                if (isAdmin()) $allowedRoles[] = 'admin';
+                if (isAdmin()) { $allowedRoles[] = 'admin'; $allowedRoles[] = 'school_admin'; }
                 if (!in_array($newRole, $allowedRoles, true)) {
                     $newRole = 'student';
                 }
 
-                // Nur Admins dürfen zur Admin-Rolle befördern
-                if ($newRole === 'admin' && !isAdmin()) {
+                // Nur Admins dürfen zur Admin/school_admin-Rolle befördern
+                if (($newRole === 'admin' || $newRole === 'school_admin') && !isAdmin()) {
                     $message = ['type' => 'error', 'text' => 'Nur Administratoren können die Admin-Rolle vergeben'];
                 } else {
                     // Prüfen ob neuer Benutzername in der gleichen Edition schon vergeben ist (wenn geändert)
@@ -284,7 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     } elseif (isset($_POST['delete_user'])) {
-        if (!isAdmin() && !hasPermission('benutzer_loeschen')) die('Keine Berechtigung');
+        if (!isAdminOrSchoolAdmin() && !hasPermission('benutzer_loeschen')) die('Keine Berechtigung');
         // Benutzer löschen
         $userId = intval($_POST['user_id']);
         
@@ -295,7 +325,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if ($targetUser && $targetUser['role'] === 'admin' && !isAdmin()) {
             $message = ['type' => 'error', 'text' => 'Nur Administratoren können Admin-Accounts löschen'];
-        } else {
+        } elseif (isSchoolAdmin()) {
+            // School_admin: Nur Benutzer der eigenen Schule löschen
+            $stmtSchool = $db->prepare("SELECT school_id FROM users WHERE id = ?");
+            $stmtSchool->execute([$userId]);
+            $targetSchool = $stmtSchool->fetch();
+            if (!$targetSchool || $targetSchool['school_id'] != ($_SESSION['school_id'] ?? null)) {
+                $message = ['type' => 'error', 'text' => 'Du kannst nur Benutzer deiner Schule löschen'];
+            } elseif (in_array($targetUser['role'], ['admin', 'school_admin'])) {
+                $message = ['type' => 'error', 'text' => 'Du kannst keine Admin-Accounts löschen'];
+            }
+        }
+
+        if (!isset($message)) {
             // Zunächst alle Registrierungen löschen
             $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ?");
             $stmt->execute([$userId]);
@@ -321,27 +363,66 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // Alle Benutzer laden (Admins + Benutzer der aktiven Edition)
-$stmt = $db->prepare("
-    SELECT u.*, COUNT(DISTINCT r.id) as registration_count
-    FROM users u
-    LEFT JOIN registrations r ON u.id = r.user_id
-    WHERE u.role = 'admin' OR u.edition_id = ?
-    GROUP BY u.id
-    ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
-");
-$stmt->execute([$activeEditionId]);
+// School_admins sehen nur Benutzer ihrer Schule; globale Admins immer inkludiert
+$roleOrder = "CASE u.role
+    WHEN 'admin'        THEN 1
+    WHEN 'school_admin' THEN 2
+    WHEN 'orga'         THEN 3
+    WHEN 'exhibitor'    THEN 4
+    WHEN 'teacher'      THEN 5
+    ELSE                     6
+END";
+
+if ($schoolFilterId) {
+    $stmt = $db->prepare("
+        SELECT u.*, COUNT(DISTINCT r.id) as registration_count
+        FROM users u
+        LEFT JOIN registrations r ON u.id = r.user_id
+                                  AND r.edition_id = ?
+        WHERE (u.school_id = ? AND (u.edition_id = ? OR u.role = 'school_admin'))
+           OR u.role = 'admin'
+        GROUP BY u.id
+        ORDER BY $roleOrder, u.lastname ASC, u.firstname ASC
+    ");
+    $stmt->execute([$activeEditionId, $schoolFilterId, $activeEditionId]);
+} else {
+    // No school context: global super-admin view — global admins + edition users only
+    // [SCHOOL ISOLATION] do not show school_admin rows without a school URL context
+    $stmt = $db->prepare("
+        SELECT u.*, COUNT(DISTINCT r.id) as registration_count
+        FROM users u
+        LEFT JOIN registrations r ON u.id = r.user_id
+                                  AND r.edition_id = ?
+        WHERE u.role = 'admin' OR u.edition_id = ?
+        GROUP BY u.id
+        ORDER BY $roleOrder, u.lastname ASC, u.firstname ASC
+    ");
+    $stmt->execute([$activeEditionId, $activeEditionId]);
+}
 $users = $stmt->fetchAll();
 
-// Statistiken (für aktive Edition)
+// Statistiken (für aktive Edition, gefiltert nach Schule)
 $stats = [];
-$stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
-$stats['admins'] = $stmt->fetch()['count'];
-$stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND edition_id = ?");
-$stmt->execute([$activeEditionId]);
-$stats['students'] = $stmt->fetch()['count'];
-$stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND edition_id = ?");
-$stmt->execute([$activeEditionId]);
-$stats['teachers'] = $stmt->fetch()['count'];
+if ($schoolFilterId) {
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'school_admin' AND school_id = ?");
+    $stmt->execute([$schoolFilterId]);
+    $stats['admins'] = $stmt->fetch()['count'];
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND edition_id = ? AND school_id = ?");
+    $stmt->execute([$activeEditionId, $schoolFilterId]);
+    $stats['students'] = $stmt->fetch()['count'];
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND edition_id = ? AND school_id = ?");
+    $stmt->execute([$activeEditionId, $schoolFilterId]);
+    $stats['teachers'] = $stmt->fetch()['count'];
+} else {
+    $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'admin'");
+    $stats['admins'] = $stmt->fetch()['count'];
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND edition_id = ?");
+    $stmt->execute([$activeEditionId]);
+    $stats['students'] = $stmt->fetch()['count'];
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'teacher' AND edition_id = ?");
+    $stmt->execute([$activeEditionId]);
+    $stats['teachers'] = $stmt->fetch()['count'];
+}
 ?>
 
 <div class="space-y-6">
@@ -379,7 +460,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
             <p class="text-sm text-gray-500 mt-1">Benutzer erstellen, bearbeiten und löschen</p>
         </div>
         <div class="flex gap-2">
-            <?php if (isAdmin() || hasPermission('benutzer_importieren')): ?>
+            <?php if (isAdminOrSchoolAdmin() || hasPermission('benutzer_importieren')): ?>
             <button onclick="openImportCsvModal()" class="px-5 py-2.5 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition font-medium flex items-center gap-2">
                 <i class="fas fa-file-upload"></i>
                 CSV Import
@@ -403,7 +484,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
             </a>
             <?php endif; ?>
             <?php endif; ?>
-            <?php if (isAdmin() || hasPermission('benutzer_erstellen')): ?>
+            <?php if (isAdminOrSchoolAdmin() || hasPermission('benutzer_erstellen')): ?>
             <button onclick="openCreateUserModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
                 <i class="fas fa-user-plus"></i>
                 Neuer Benutzer
@@ -505,6 +586,10 @@ $stats['teachers'] = $stmt->fetch()['count'];
                                 <span class="inline-flex items-center whitespace-nowrap px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-chalkboard-teacher mr-1"></i>Lehrer
                                 </span>
+                            <?php elseif ($user['role'] === 'school_admin'): ?>
+                                <span class="inline-flex items-center whitespace-nowrap px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-semibold">
+                                    <i class="fas fa-user-tie mr-1"></i>Schul-Admin
+                                </span>
                             <?php elseif ($user['role'] === 'orga'): ?>
                                 <span class="inline-flex items-center whitespace-nowrap px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-xs font-semibold">
                                     <i class="fas fa-users-cog mr-1"></i>Orga
@@ -531,7 +616,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
                                 $canEdit = ($user['role'] !== 'admin') || isAdmin();
                                 ?>
                                 <?php if ($canEdit): ?>
-                                    <?php if ($user['id'] !== $_SESSION['user_id'] && (isAdmin() || hasPermission('benutzer_bearbeiten'))): ?>
+                                    <?php if ($user['id'] !== $_SESSION['user_id'] && (isAdminOrSchoolAdmin() || hasPermission('benutzer_bearbeiten'))): ?>
                                     <button onclick="openEditUserModal(<?php echo htmlspecialchars(json_encode([
                                         'id' => $user['id'],
                                         'firstname' => $user['firstname'],
@@ -548,7 +633,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
                                             class="px-3 py-1 bg-yellow-100 text-yellow-700 rounded hover:bg-yellow-200 transition text-sm font-medium">
                                         <i class="fas fa-key mr-1"></i>Passwort
                                     </button>
-                                    <?php if ($user['id'] !== $_SESSION['user_id'] && (isAdmin() || hasPermission('benutzer_loeschen'))): ?>
+                                    <?php if ($user['id'] !== $_SESSION['user_id'] && (isAdminOrSchoolAdmin() || hasPermission('benutzer_loeschen'))): ?>
                                     <button onclick="confirmDeleteUser(<?php echo intval($user['id']); ?>, '<?php echo htmlspecialchars($user['firstname'] . ' ' . $user['lastname'], ENT_QUOTES); ?>', '<?php echo $user['role']; ?>')"
                                             class="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 transition text-sm font-medium">
                                         <i class="fas fa-trash mr-1"></i>Löschen
@@ -709,6 +794,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
                     <option value="teacher">Lehrer</option>
                     <option value="orga">Orga</option>
                     <?php if (isAdmin()): ?>
+                    <option value="school_admin">Schul-Admin</option>
                     <option value="admin">Administrator</option>
                     <?php endif; ?>
                 </select>
@@ -841,6 +927,7 @@ $stats['teachers'] = $stmt->fetch()['count'];
                     <option value="teacher">Lehrer</option>
                     <option value="orga">Orga</option>
                     <?php if (isAdmin()): ?>
+                    <option value="school_admin">Schul-Admin</option>
                     <option value="admin">Administrator</option>
                     <?php endif; ?>
                 </select>

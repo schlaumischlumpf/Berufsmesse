@@ -17,7 +17,7 @@ if (isLoggedIn()) {
     } elseif ($schoolSlug) {
         header('Location: ' . BASE_URL . $schoolSlug . '/index.php');
     } else {
-        header('Location: ' . BASE_URL . 'index.php');
+        header('Location: ' . BASE_URL . 'schools.php');
     }
     exit();
 }
@@ -90,8 +90,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['lastname'] = $user['lastname'];
                 $_SESSION['role'] = $user['role'];
                 $_SESSION['school_id'] = $user['school_id']; // NULL für admin/exhibitor
+                $_SESSION['user_school_id'] = $user['school_id']; // [SCHOOL ISOLATION] immutable — never overwritten
                 
-                logAuditAction('Login', 'Benutzer hat sich angemeldet');
+                logAuditAction('Login', 'Benutzer hat sich angemeldet', 'info', null); // [SCHOOL ISOLATION] null = system-wide
                 
                 // Prüfe ob Passwort erzwungen werden muss (beim ersten Login oder nach Admin-Reset)
                 $db = getDB();
@@ -112,12 +113,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } elseif ($schoolSlug) {
                     header('Location: ' . BASE_URL . $schoolSlug . '/index.php');
                 } else {
-                    header('Location: ' . BASE_URL . 'index.php');
+                    // Globaler Login (Admin/Aussteller) → zur Schulauswahl
+                    header('Location: ' . BASE_URL . 'schools.php');
                 }
                 exit();
             } else {
                 recordLoginAttempt($username, $clientIp);
-                logAuditAction('Login_Fehlgeschlagen', "Fehlgeschlagener Login für: $username", 'warning');
+                logAuditAction('Login_Fehlgeschlagen', "Fehlgeschlagener Login für: $username", 'warning', null); // [SCHOOL ISOLATION] null = system-wide
                 $error = 'Ungültiger Benutzername oder Passwort';
             }
         } else {

@@ -2,7 +2,7 @@
 // Raum-Zuteilungssystem für Admins
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('raeume_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('raeume_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
@@ -54,7 +54,7 @@ foreach ($exhibitors as $ex) {
         <i class="fas fa-hand-point-up text-blue-500 flex-shrink-0"></i>
         <span>Halte einen Aussteller gedrückt und ziehe ihn auf einen Raum. Tippen funktioniert auch!</span>
     </div>
-        <?php if (isAdmin() || hasPermission('raeume_erstellen')): ?>
+        <?php if (isAdminOrSchoolAdmin() || hasPermission('raeume_erstellen')): ?>
         <button onclick="openAddRoomModal()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium flex items-center gap-2">
             <i class="fas fa-plus"></i>
             Neuer Raum
@@ -231,14 +231,14 @@ foreach ($exhibitors as $ex) {
                                 <span class="text-sm font-semibold text-gray-600 mr-2">
                                     <?php echo isset($assignedExhibitors[$room['id']]) ? count($assignedExhibitors[$room['id']]) : 0; ?> zugeordnet
                                 </span>
-                                <?php if (isAdmin() || hasPermission('raeume_bearbeiten')): ?>
+                                <?php if (isAdminOrSchoolAdmin() || hasPermission('raeume_bearbeiten')): ?>
                                     <button onclick="openEditRoomModal(<?php echo htmlspecialchars(json_encode(['id' => $room['id'], 'room_number' => $room['room_number'], 'floor' => $room['floor'] ?? '', 'capacity' => $room['capacity'], 'equipment' => $room['equipment'] ?? '']), ENT_QUOTES); ?>)"
                                             class="text-blue-500 hover:text-blue-700 transition px-2 py-1 rounded hover:bg-blue-50"
                                             title="Raum bearbeiten">
                                         <i class="fas fa-edit"></i>
                                     </button>
                                 <?php endif; ?>
-                                <?php if ((!isset($assignedExhibitors[$room['id']]) || count($assignedExhibitors[$room['id']]) === 0) && (isAdmin() || hasPermission('raeume_loeschen'))): ?>
+                                <?php if ((!isset($assignedExhibitors[$room['id']]) || count($assignedExhibitors[$room['id']]) === 0) && (isAdminOrSchoolAdmin() || hasPermission('raeume_loeschen'))): ?>
                                     <button onclick="deleteRoom(<?php echo $room['id']; ?>, '<?php echo htmlspecialchars($room['room_number'], ENT_QUOTES); ?>')"
                                             class="text-red-500 hover:text-red-700 transition px-2 py-1 rounded hover:bg-red-50"
                                             title="Raum löschen">

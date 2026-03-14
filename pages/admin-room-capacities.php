@@ -2,7 +2,7 @@
 // Admin Room Capacity Management (Issue #4)
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('kapazitaeten_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('kapazitaeten_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 

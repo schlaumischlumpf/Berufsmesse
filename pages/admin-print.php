@@ -6,9 +6,12 @@
  */
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('berichte_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('berichte_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
+
+// [SCHOOL ISOLATION] null = super-admin (no filter)
+$printSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 
 // Verschiedene Druckoptionen
 $printType = $_GET['type'] ?? 'all';
@@ -34,6 +37,7 @@ if ($printType === 'all' || $printType === 'class') {
     ";
     
     $params = [$activeEditionId, $activeEditionId];
+    if ($printSchoolId) { $query .= " AND u.school_id = ?"; $params[] = $printSchoolId; } // [SCHOOL ISOLATION]
     if ($filterClass) {
         $query .= " AND u.class = ?";
         $params[] = $filterClass;
@@ -61,6 +65,7 @@ if ($printType === 'all' || $printType === 'class') {
     ";
 
     $params = [$activeEditionId, $activeEditionId];
+    if ($printSchoolId) { $query .= " AND u.school_id = ?"; $params[] = $printSchoolId; } // [SCHOOL ISOLATION]
     if ($filterRoom) {
         $query .= " AND r.id = ?";
         $params[] = intval($filterRoom);
@@ -85,7 +90,7 @@ if ($printType === 'all' || $printType === 'class') {
     $roomAssignments = $stmt->fetchAll();
 } elseif ($printType === 'absent') {
     // Fehlende Schüler: angemeldet aber nicht gescannt (alle Slots)
-    $stmt = $db->prepare("
+    $absentSql = "
         SELECT u.firstname, u.lastname, u.class, e.name as exhibitor_name,
                t.slot_name, t.slot_number, r.room_number
         FROM registrations reg
@@ -95,15 +100,22 @@ if ($printType === 'all' || $printType === 'class') {
         LEFT JOIN rooms r ON e.room_id = r.id
         LEFT JOIN attendance a ON a.user_id = reg.user_id AND a.exhibitor_id = reg.exhibitor_id AND a.timeslot_id = reg.timeslot_id AND a.edition_id = ?
         WHERE reg.timeslot_id IS NOT NULL AND a.id IS NULL AND u.role = 'student'
-        AND reg.edition_id = ? AND e.edition_id = ?
-        ORDER BY t.slot_number, u.class, u.lastname, u.firstname
-    ");
-    $stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId]);
+        AND reg.edition_id = ? AND e.edition_id = ?";
+    $absentParams = [$activeEditionId, $activeEditionId, $activeEditionId];
+    if ($printSchoolId) { $absentSql .= " AND u.school_id = ?"; $absentParams[] = $printSchoolId; } // [SCHOOL ISOLATION]
+    $absentSql .= " ORDER BY t.slot_number, u.class, u.lastname, u.firstname";
+    $stmt = $db->prepare($absentSql);
+    $stmt->execute($absentParams);
     $absentStudents = $stmt->fetchAll();
 }
 
 // Alle Klassen für Filter
-$stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND class IS NOT NULL AND class != '' ORDER BY class");
+if ($printSchoolId) { // [SCHOOL ISOLATION]
+    $stmt = $db->prepare("SELECT DISTINCT class FROM users WHERE role = 'student' AND class IS NOT NULL AND class != '' AND school_id = ? ORDER BY class");
+    $stmt->execute([$printSchoolId]);
+} else {
+    $stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND class IS NOT NULL AND class != '' ORDER BY class");
+}
 $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // Alle Räume für Filter
@@ -240,7 +252,7 @@ $totalRegistrations = $stmt->fetch()['total'];
     </div>
     
     <!-- Export Section -->
-    <?php if (isAdmin() || hasPermission('berichte_sehen')): ?>
+    <?php if (isAdminOrSchoolAdmin() || hasPermission('berichte_sehen')): ?>
     <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6 mb-6">
         <h2 class="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
             <i class="fas fa-download text-gray-400"></i> Datenexport

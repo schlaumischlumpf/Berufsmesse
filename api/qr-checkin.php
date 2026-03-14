@@ -43,6 +43,21 @@ try {
         echo json_encode(['success' => false, 'message' => 'Ungültiger oder abgelaufener QR-Code']);
         exit;
     }
+
+    // [SCHOOL ISOLATION] Verify exhibitor belongs to the current user's school
+    $userSchoolId = isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null;
+    if ($userSchoolId) {
+        $stmtSchool = $db->prepare("
+            SELECT 1 FROM messe_editions me
+            JOIN exhibitors e ON e.edition_id = me.id
+            WHERE e.id = ? AND me.school_id = ?
+        ");
+        $stmtSchool->execute([$qrToken['exhibitor_id'], $userSchoolId]);
+        if (!$stmtSchool->fetchColumn()) {
+            echo json_encode(['success' => false, 'error' => 'Falscher Schulkontext']);
+            exit;
+        }
+    }
     
     $userId = $_SESSION['user_id'];
     $exhibitorId = $qrToken['exhibitor_id'];

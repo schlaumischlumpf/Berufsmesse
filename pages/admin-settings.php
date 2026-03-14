@@ -2,14 +2,14 @@
 // Admin Einstellungen
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('einstellungen_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('einstellungen_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
 // Handle Settings Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_settings'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+    if (!isAdminOrSchoolAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
     $regStart = $_POST['registration_start'];
@@ -60,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_security'])) {
 // Handle QR Code URL Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+    if (!isAdminOrSchoolAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
     $qrUrl = sanitize($_POST['qr_url']);
@@ -72,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_url'])) {
 // Handle QR Code Validity Update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_validity'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+    if (!isAdminOrSchoolAdmin() && !hasPermission('einstellungen_bearbeiten')) {
         die('Keine Berechtigung');
     }
     $before = max(0, intval($_POST['qr_validity_before']));
@@ -108,7 +108,7 @@ $currentSettings = [
 // Zeitslot bearbeiten
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_timeslot'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('einstellungen_bearbeiten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('einstellungen_bearbeiten')) die('Keine Berechtigung');
     $slotId    = intval($_POST['slot_id']);
     $slotName  = trim($_POST['slot_name']);
     $startTime = trim($_POST['start_time']);
@@ -137,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_timeslot'])) {
 // Zeitslot hinzufügen
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
     requireCsrf();
-    if (!isAdmin()) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin()) die('Keine Berechtigung');
     $slotName  = trim($_POST['new_slot_name']);
     $startTime = trim($_POST['new_start_time']);
     $endTime   = trim($_POST['new_end_time']);
@@ -168,7 +168,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['add_timeslot'])) {
 // Zeitslot löschen
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_timeslot'])) {
     requireCsrf();
-    if (!isAdmin()) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin()) die('Keine Berechtigung');
     $slotId = intval($_POST['slot_id']);
     $stmtCheck = $db->prepare("
         SELECT (SELECT COUNT(*) FROM registrations WHERE timeslot_id=?) +
@@ -325,7 +325,7 @@ $allTimeslots = $stmt->fetchAll();
 
                 <!-- Speichern -->
                 <div class="pt-2">
-                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                    <?php if (isAdminOrSchoolAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
                     <button type="submit" name="save_settings"
                             class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>Einstellungen speichern
@@ -390,7 +390,7 @@ $allTimeslots = $stmt->fetchAll();
                         </div>
                     </div>
                     
-                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                    <?php if (isAdminOrSchoolAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
                     <button type="submit" name="save_qr_url"
                             class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>URL speichern
@@ -460,7 +460,7 @@ $allTimeslots = $stmt->fetchAll();
                         </div>
                     </div>
 
-                    <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                    <?php if (isAdminOrSchoolAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
                     <button type="submit" name="save_qr_validity"
                             class="w-full sm:w-auto px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition font-medium text-sm">
                         <i class="fas fa-save mr-2"></i>Gültigkeitsdauer speichern
@@ -642,13 +642,13 @@ $allTimeslots = $stmt->fetchAll();
                             </div>
                         </div>
                         <div class="flex gap-2 sm:col-span-2 justify-end">
-                            <?php if (isAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                            <?php if (isAdminOrSchoolAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
                             <button type="submit" name="save_timeslot"
                                     class="px-3 py-2 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition font-medium">
                                 <i class="fas fa-save mr-1"></i>Speichern
                             </button>
                             <?php endif; ?>
-                            <?php if (isAdmin()): ?>
+                            <?php if (isAdminOrSchoolAdmin()): ?>
                             <button type="submit" name="delete_timeslot"
                                     onclick="return confirm('Zeitslot wirklich löschen?')"
                                     class="px-3 py-2 bg-red-50 border border-red-200 text-red-600 text-xs rounded-lg hover:bg-red-100 transition font-medium">
@@ -661,7 +661,7 @@ $allTimeslots = $stmt->fetchAll();
                 <?php endforeach; ?>
             </div>
 
-            <?php if (isAdmin()): ?>
+            <?php if (isAdminOrSchoolAdmin()): ?>
             <h4 class="text-sm font-semibold text-gray-800 mb-3">Neuen Zeitslot hinzufügen</h4>
             <form method="POST" class="bg-blue-50 border border-blue-100 rounded-xl p-4">
                 <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">

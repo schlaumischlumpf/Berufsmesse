@@ -6,11 +6,15 @@
  */
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('audit_logs_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('audit_logs_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
 $db = getDB();
+
+// [SCHOOL ISOLATION] Scope to URL school
+$auditSchool   = getCurrentSchool();
+$auditSchoolId = $auditSchool ? (int)$auditSchool['id'] : null;
 
 // Filter-Parameter
 $filterUser = $_GET['filter_user'] ?? '';
@@ -24,6 +28,12 @@ $offset = ($page - 1) * $perPage;
 // Query aufbauen
 $where = [];
 $params = [];
+
+// [SCHOOL ISOLATION] Always constrain to current school context
+if ($auditSchoolId !== null) {
+    $where[] = "al.school_id = ?";
+    $params[] = $auditSchoolId;
+}
 
 if ($filterUser) {
     $where[] = "(al.username LIKE ? OR al.user_id = ?)";
@@ -80,8 +90,13 @@ $stmt = $db->prepare("
 $stmt->execute($params);
 $logs = $stmt->fetchAll();
 
-// Verfügbare Aktionen für Filter
-$actionStmt = $db->query("SELECT DISTINCT action FROM audit_logs ORDER BY action ASC");
+// Verfügbare Aktionen für Filter [SCHOOL ISOLATION]
+if ($auditSchoolId !== null) {
+    $actionStmt = $db->prepare("SELECT DISTINCT action FROM audit_logs WHERE school_id = ? ORDER BY action ASC");
+    $actionStmt->execute([$auditSchoolId]);
+} else {
+    $actionStmt = $db->query("SELECT DISTINCT action FROM audit_logs ORDER BY action ASC");
+}
 $availableActions = $actionStmt->fetchAll(PDO::FETCH_COLUMN);
 ?>
 

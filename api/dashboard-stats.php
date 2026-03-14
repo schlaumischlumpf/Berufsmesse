@@ -11,8 +11,27 @@ if (!isAdmin() && !hasPermission('berichte_sehen')) {
 }
 
 try {
-    $db              = getDB();
-    $activeEditionId = getActiveEditionId();
+    $db = getDB();
+
+    // [SCHOOL ISOLATION] use edition + school passed from the dashboard page
+    $activeEditionId = intval($_GET['edition_id'] ?? 0);
+    $statsSchoolId   = intval($_GET['school_id']  ?? 0) ?: null; // 0 → null
+
+    // Validate: ensure this edition actually belongs to the declared school
+    if ($activeEditionId > 0) {
+        $stmtChk = $db->prepare(
+            "SELECT 1 FROM messe_editions WHERE id = ? AND (? IS NULL OR school_id = ?) LIMIT 1"
+        );
+        $stmtChk->execute([$activeEditionId, $statsSchoolId, $statsSchoolId]);
+        if (!$stmtChk->fetchColumn()) {
+            echo json_encode(['timeline' => [], 'classes' => []]);
+            exit;
+        }
+    } else {
+        // No edition_id — fallback to session-scoped edition (safe for non-admin users)
+        $activeEditionId = getActiveEditionId();
+        $statsSchoolId   = isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null;
+    }
 
     // Timeline: Einschreibungen pro Tag
     $stmt = $db->prepare("
@@ -20,11 +39,13 @@ try {
                SUM(r.registration_type = 'manual')    AS manual,
                SUM(r.registration_type = 'automatic') AS auto
         FROM registrations r
+        JOIN users u ON r.user_id = u.id
         WHERE r.edition_id = ?
+        AND (? IS NULL OR u.school_id = ?)   -- [SCHOOL ISOLATION]
         GROUP BY DATE(r.registered_at)
         ORDER BY day ASC
     ");
-    $stmt->execute([$activeEditionId]);
+    $stmt->execute([$activeEditionId, $statsSchoolId, $statsSchoolId]);
     $timeline = $stmt->fetchAll();
 
     // Klassenbeteiligung
@@ -35,10 +56,11 @@ try {
         FROM users u
         LEFT JOIN registrations r ON r.user_id = u.id AND r.edition_id = ?
         WHERE u.role = 'student' AND u.class IS NOT NULL AND u.class != ''
+        AND (? IS NULL OR u.school_id = ?)   -- [SCHOOL ISOLATION]
         GROUP BY u.class
         ORDER BY u.class ASC
     ");
-    $stmt->execute([$activeEditionId]);
+    $stmt->execute([$activeEditionId, $statsSchoolId, $statsSchoolId]);
     $classRows = $stmt->fetchAll();
     $classes = array_map(function($row) {
         $row['rate'] = $row['total'] > 0 ? round($row['registered'] / $row['total'] * 100) : 0;

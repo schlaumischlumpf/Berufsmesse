@@ -89,6 +89,14 @@ function isAdmin() {
     return isset($_SESSION['role']) && $_SESSION['role'] === 'admin';
 }
 
+/**
+ * Prüft ob der User ein globaler Admin ODER ein Schul-Admin ist.
+ * Schul-Admins haben Admin-Rechte, aber nur für ihre Schule.
+ */
+function isAdminOrSchoolAdmin(): bool {
+    return isAdmin() || isSchoolAdmin();
+}
+
 function isTeacher() {
     return isset($_SESSION['role']) && $_SESSION['role'] === 'teacher';
 }
@@ -101,7 +109,13 @@ function requireLogin() {
     if (!isLoggedIn()) {
         // Aktuelle URL merken, damit nach Login dorthin zurückgeleitet wird
         $returnUrl = $_SERVER['REQUEST_URI'] ?? '';
-        $loginUrl = BASE_URL . 'login.php';
+        // Schulspezifische Login-URL wenn Slug vorhanden
+        $slug = $_GET['school_slug'] ?? null;
+        if ($slug) {
+            $loginUrl = BASE_URL . htmlspecialchars($slug) . '/login.php';
+        } else {
+            $loginUrl = BASE_URL . 'login.php';
+        }
         if (!empty($returnUrl) && $returnUrl !== '/') {
             $loginUrl .= '?redirect=' . urlencode($returnUrl);
         }
@@ -205,6 +219,7 @@ function getSetting($key, $default = null) {
     }
     try {
         $db   = getDB();
+        // NOTE: settings are currently global (not per-school). [SCHOOL ISOLATION PENDING]
         $stmt = $db->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
         $stmt->execute([$key]);
         $result = $stmt->fetch();
@@ -749,7 +764,8 @@ function getClientIp(): string {
 }
 
 // Audit Log System (Issue #21)
-function logAuditAction($action, $details = '', $severity = 'info') {
+// $schoolId: -1 = auto-detect from URL context; null = system-wide (login events); int = explicit
+function logAuditAction($action, $details = '', $severity = 'info', ?int $schoolId = -1) {
     try {
         $db = getDB();
         $userId = $_SESSION['user_id'] ?? null;
@@ -760,11 +776,22 @@ function logAuditAction($action, $details = '', $severity = 'info') {
         $allowedSeverities = ['info', 'warning', 'error'];
         $severity = in_array($severity, $allowedSeverities, true) ? $severity : 'info';
 
+        // [SCHOOL ISOLATION] Resolve school_id
+        if ($schoolId === -1) {
+            $ctxSchool = getCurrentSchool();
+            if ($ctxSchool) {
+                $schoolId = (int)$ctxSchool['id'];
+            } else {
+                $raw = $_SESSION['school_id'] ?? null;
+                $schoolId = $raw !== null ? (int)$raw : null;
+            }
+        }
+
         $stmt = $db->prepare("
-            INSERT INTO audit_logs (user_id, username, action, details, severity, ip_address, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, NOW())
+            INSERT INTO audit_logs (user_id, username, action, details, severity, ip_address, school_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NOW())
         ");
-        $stmt->execute([$userId, $username, $action, $details, $severity, $ipAddress]);
+        $stmt->execute([$userId, $username, $action, $details, $severity, $ipAddress, $schoolId]);
     } catch (Exception $e) {
         error_log('Audit Log Error: ' . $e->getMessage());
     }
@@ -1006,6 +1033,18 @@ function getActiveEditionId(): int {
     }
     try {
         $db   = getDB();
+        // Schulkontext: Edition der aktuellen Schule bevorzugen
+        $schoolId = $_SESSION['school_id'] ?? null;
+        if ($schoolId) {
+            $stmt = $db->prepare("SELECT id FROM messe_editions WHERE status = 'active' AND school_id = ? LIMIT 1");
+            $stmt->execute([$schoolId]);
+            $row = $stmt->fetch();
+            if ($row) {
+                $_SESSION['active_edition_id'] = (int)$row['id'];
+                return (int)$row['id'];
+            }
+        }
+        // Fallback: Global erste aktive Edition
         $stmt = $db->query("SELECT id FROM messe_editions WHERE status = 'active' LIMIT 1");
         $row  = $stmt->fetch();
         if ($row) {
@@ -1050,19 +1089,19 @@ function getCurrentSchool(): ?array {
     static $cache = null;
     if ($cache !== null) return $cache ?: null;
 
-    $slug = $_GET['school_slug'] ?? ($_SESSION['school_slug'] ?? null);
+    // URL ist die einzige Quelle für den Schulkontext — kein Session-Fallback
+    $slug = $_GET['school_slug'] ?? null;
     if (!$slug) {
         $cache = false;
         return null;
     }
     try {
-        $db   = getDB();
+        $db = getDB();
         $stmt = $db->prepare("SELECT * FROM schools WHERE slug = ? AND is_active = 1 LIMIT 1");
         $stmt->execute([$slug]);
         $row = $stmt->fetch();
         if ($row) {
             $_SESSION['school_slug'] = $row['slug'];
-            $_SESSION['school_id']   = (int)$row['id'];
             $cache = $row;
             return $row;
         }
@@ -1128,7 +1167,8 @@ function hasSchoolAccess(): bool {
     }
 
     // Schüler, Lehrer, Orga, school_admin
-    return (int)($_SESSION['school_id'] ?? 0) === (int)$school['id'];
+    // [SCHOOL ISOLATION] Compare against the login-time school, not the URL-derived one
+    return (int)($_SESSION['user_school_id'] ?? 0) === (int)$school['id'];
 }
 
 /**
@@ -1136,6 +1176,26 @@ function hasSchoolAccess(): bool {
  */
 function isSchoolAdmin(): bool {
     return isset($_SESSION['role']) && $_SESSION['role'] === 'school_admin';
+}
+
+/**
+ * Checks that an exhibitor belongs to the given school.
+ * Pass $schoolId = null to skip the check (super-admin bypass).
+ * Returns true if the exhibitor is valid for this school.
+ */
+function exhibitorBelongsToSchool(int $exhibitorId, ?int $schoolId): bool {
+    if ($schoolId === null) return true; // super-admin: no restriction
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("
+            SELECT 1 FROM exhibitors e
+            JOIN messe_editions me ON e.edition_id = me.id
+            WHERE e.id = ? AND me.school_id = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$exhibitorId, $schoolId]);
+        return (bool)$stmt->fetchColumn();
+    } catch (Exception $e) { return false; }
 }
 
 /**
@@ -1167,6 +1227,67 @@ function getExhibitorIdsForUser(int $userId): array {
         $stmt->execute([$userId]);
         return array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
     } catch (Exception $e) { return []; }
+}
+
+/**
+ * Creates a users row with role='exhibitor' if the username doesn't exist yet,
+ * then creates or refreshes the exhibitor_users link with an invite token.
+ * Returns ['success'=>true, 'user_id'=>N, 'token'=>'...'] or ['success'=>false, 'error'=>'...']
+ */
+function createOrLinkExhibitorAccount(
+    int    $exhibitorId,
+    string $username,
+    string $firstname,
+    string $lastname,
+    string $email = ''
+): array {
+    try {
+        $db = getDB();
+
+        // 1. Find or create the user account
+        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND role = 'exhibitor' LIMIT 1");
+        $stmt->execute([$username]);
+        $existing = $stmt->fetch();
+
+        if ($existing) {
+            $userId = (int)$existing['id'];
+        } else {
+            // Check username is not taken by any role
+            $stmt = $db->prepare("SELECT id FROM users WHERE username = ? LIMIT 1");
+            $stmt->execute([$username]);
+            if ($stmt->fetch()) {
+                return ['success' => false, 'error' => "Benutzername '$username' ist bereits vergeben."];
+            }
+            $stmt = $db->prepare(
+                "INSERT INTO users (username, firstname, lastname, email, role, password, school_id, edition_id)
+                 VALUES (?, ?, ?, ?, 'exhibitor', NULL, NULL, NULL)"
+            );
+            $stmt->execute([$username, $firstname, $lastname, $email ?: null]);
+            $userId = (int)$db->lastInsertId();
+        }
+
+        // 2. Generate invite token
+        $token   = bin2hex(random_bytes(32)); // 64 hex chars
+        $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
+
+        // 3. Upsert exhibitor_users link
+        $stmt = $db->prepare("
+            INSERT INTO exhibitor_users
+                (user_id, exhibitor_id, can_edit_profile, can_manage_documents,
+                 invite_token, invite_accepted, invite_expires)
+            VALUES (?, ?, 1, 1, ?, 0, ?)
+            ON DUPLICATE KEY UPDATE
+                invite_token    = VALUES(invite_token),
+                invite_accepted = 0,
+                invite_expires  = VALUES(invite_expires)
+        ");
+        $stmt->execute([$userId, $exhibitorId, $token, $expires]);
+
+        return ['success' => true, 'user_id' => $userId, 'token' => $token];
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'createOrLinkExhibitorAccount');
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
 }
 
 /**

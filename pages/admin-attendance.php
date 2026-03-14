@@ -3,7 +3,7 @@
  * Admin – Manuelle Anwesenheitsverwaltung
  */
 
-if (!isAdmin() && !hasPermission('qr_codes_sehen') && !hasPermission('qr_codes_erstellen') && !hasPermission('attendance_bearbeiten')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('qr_codes_sehen') && !hasPermission('qr_codes_erstellen') && !hasPermission('attendance_bearbeiten')) {
     echo '<div class="text-center py-12 text-red-500"><i class="fas fa-ban text-3xl mb-3"></i><p>Keine Berechtigung</p></div>';
     return;
 }
@@ -229,7 +229,7 @@ $totalCheckins   = $stmt->fetchColumn();
                             </div>
                         </div>
                         <div class="flex items-center gap-2 flex-shrink-0 ml-3">
-                            <?php if (isAdmin() || hasPermission('attendance_bearbeiten')): ?>
+                            <?php if (isAdminOrSchoolAdmin() || hasPermission('attendance_bearbeiten')): ?>
                             <button
                                 onclick="markAttendance(<?php echo $student['id']; ?>, <?php echo $slot['exhibitor_id']; ?>, <?php echo $slot['timeslot_id']; ?>, 'present', this)"
                                 class="attendance-btn-present px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 <?php echo $slot['is_present'] ? 'bg-emerald-500 text-white shadow-sm' : 'bg-gray-100 text-gray-600 hover:bg-emerald-100 hover:text-emerald-700'; ?>"

@@ -13,16 +13,20 @@ if (!isAdmin() && !hasPermission('benutzer_sehen')) {
 try {
     $db = getDB();
     $activeEditionId = getActiveEditionId();
-    
+
+    // [SCHOOL ISOLATION] Scope to URL school
+    $searchSchool   = getCurrentSchool();
+    $searchSchoolId = $searchSchool ? (int)$searchSchool['id'] : null;
+
     // Parameter abrufen
     $name = $_GET['name'] ?? '';
     $class = $_GET['class'] ?? '';
     $role = $_GET['role'] ?? '';
     $status = $_GET['status'] ?? '';
-    
+
     // Query aufbauen
     $query = "
-        SELECT 
+        SELECT
             u.id,
             u.username,
             u.firstname,
@@ -33,9 +37,10 @@ try {
         FROM users u
         LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = ?
         WHERE (u.role = 'admin' OR u.edition_id = ?)
+          AND (? IS NULL OR u.school_id = ?)  -- [SCHOOL ISOLATION]
     ";
-    
-    $params = [$activeEditionId, $activeEditionId];
+
+    $params = [$activeEditionId, $activeEditionId, $searchSchoolId, $searchSchoolId];
     
     // Name filtern
     if (!empty($name)) {

@@ -12,6 +12,24 @@ checkSitePassword();
 
 requireLogin();
 
+// Schulkontext über URL erzwingen — ohne Slug → zurück zur Schulauswahl
+$school = getCurrentSchool();
+if (!$school) {
+    header('Location: ' . BASE_URL . 'schools.php');
+    exit();
+}
+// Zugriffsprüfung: User muss Zugang zu dieser Schule haben
+if (!hasSchoolAccess()) {
+    header('Location: ' . BASE_URL . 'schools.php');
+    exit();
+}
+
+// Editions-Cache invalidieren wenn Schule gewechselt wurde
+if (isset($_SESSION['_prev_school_id']) && $_SESSION['_prev_school_id'] !== (int)$school['id']) {
+    invalidateEditionCache();
+}
+$_SESSION['_prev_school_id'] = (int)$school['id'];
+
 $db = getDB();
 $activeEditionId = getActiveEditionId();
 
@@ -30,7 +48,9 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
     try {
         // Verwaltete Slots (nur 1, 3, 5)
         $managedSlots = getManagedSlotNumbers();
-        
+        // [SCHOOL ISOLATION] null = super-admin (no filter)
+        $inlineSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+
         $assignedCount = 0;
         $errors = [];
         
@@ -40,18 +60,25 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
         // ============================================================
         
         // Alle Anmeldungen ohne Slot-Zuteilung laden (Priorität berücksichtigen - Issue #16)
+        $phase1Join  = $inlineSchoolId ? "JOIN users u ON r.user_id = u.id" : "";
+        $phase1Where = $inlineSchoolId ? "AND u.school_id = ?" : ""; // [SCHOOL ISOLATION]
+        $phase1Params = $inlineSchoolId
+            ? [$activeEditionId, $activeEditionId, $inlineSchoolId]
+            : [$activeEditionId, $activeEditionId];
         $stmt = $db->prepare("
             SELECT r.id as registration_id, r.user_id, r.exhibitor_id, e.name as exhibitor_name, e.room_id, COALESCE(r.priority, 2) as priority
             FROM registrations r
             JOIN exhibitors e ON r.exhibitor_id = e.id
+            $phase1Join
             WHERE r.timeslot_id IS NULL
             AND e.active = 1
             AND e.room_id IS NOT NULL
             AND r.edition_id = ?
             AND e.edition_id = ?
+            $phase1Where
             ORDER BY COALESCE(r.priority, 2) ASC, r.registered_at ASC
         ");
-        $stmt->execute([$activeEditionId, $activeEditionId]);
+        $stmt->execute($phase1Params);
         $pendingRegistrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($pendingRegistrations as $reg) {
@@ -130,6 +157,10 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
         // Alle Schüler mit weniger als 3 zugewiesenen Slots (timeslot_id NOT NULL)
         // Sortierung: Schüler die sich eingeschrieben hatten zuerst, dann nach zugewiesenen Slots absteigend
         // Schüler ohne jegliche Einschreibung kommen zuletzt
+        $phase2Where  = $inlineSchoolId ? "AND u.school_id = ?" : ""; // [SCHOOL ISOLATION]
+        $phase2Params = $inlineSchoolId
+            ? [$activeEditionId, $inlineSchoolId]
+            : [$activeEditionId];
         $stmt = $db->prepare("
             SELECT u.id,
                    COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number " . getManagedSlotsSqlIn() . " THEN 1 ELSE 0 END), 0) as assigned_count,
@@ -137,12 +168,12 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
             FROM users u
             LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = ?
             LEFT JOIN timeslots t ON r.timeslot_id = t.id
-            WHERE u.role = 'student'
+            WHERE u.role = 'student' $phase2Where
             GROUP BY u.id
             HAVING assigned_count < " . getManagedSlotCount() . "
             ORDER BY (COUNT(r.id) = 0) ASC, assigned_count DESC
         ");
-        $stmt->execute([$activeEditionId]);
+        $stmt->execute($phase2Params);
         $studentsNeedingSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         foreach ($studentsNeedingSlots as $student) {
@@ -227,10 +258,12 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
         }
         
         // Statistik erstellen - Anzahl Schüler mit unvollständigen Anmeldungen
+        $statsWhere  = $inlineSchoolId ? "AND u.school_id = ?" : ""; // [SCHOOL ISOLATION]
+        $statsParams = $inlineSchoolId ? [$inlineSchoolId, $activeEditionId] : [$activeEditionId];
         $stmt = $db->prepare("
             SELECT COUNT(*) as incomplete
             FROM users u
-            WHERE u.role = 'student'
+            WHERE u.role = 'student' $statsWhere
             AND (
                 SELECT COUNT(DISTINCT t.slot_number)
                 FROM registrations r
@@ -238,7 +271,7 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
                 WHERE r.user_id = u.id AND r.edition_id = ? AND t.slot_number " . getManagedSlotsSqlIn() . "
             ) < " . getManagedSlotCount() . "
         ");
-        $stmt->execute([$activeEditionId]);
+        $stmt->execute($statsParams);
         $incompleteStudents = $stmt->fetchColumn();
         
         $_SESSION['auto_assign_success'] = true;
@@ -391,6 +424,10 @@ $eventYear = $eventDate ? date('Y', strtotime($eventDate)) : date('Y');
 // ============================================================
 if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['export'] === 'txt') {
     if (isAdmin() || hasPermission('audit_logs_sehen')) {
+        // [SCHOOL ISOLATION] Scope to URL school
+        $expSchool   = getCurrentSchool();
+        $expSchoolId = $expSchool ? (int)$expSchool['id'] : null;
+
         // Filter-Parameter
         $expFilterUser = $_GET['filter_user'] ?? '';
         $expFilterAction = $_GET['filter_action'] ?? '';
@@ -399,6 +436,11 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
         // Query aufbauen
         $expWhere = [];
         $expParams = [];
+        // [SCHOOL ISOLATION] Always constrain to current school
+        if ($expSchoolId !== null) {
+            $expWhere[] = "al.school_id = ?";
+            $expParams[] = $expSchoolId;
+        }
         if ($expFilterUser) {
             $expWhere[] = "(al.username LIKE ? OR al.user_id = ?)";
             $expParams[] = "%$expFilterUser%";
@@ -428,6 +470,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
         echo "                    BERUFSMESSE - AUDIT LOG EXPORT\n";
         echo "================================================================================\n\n";
 
+        if ($expSchool) echo "  Schule:          " . $expSchool['name'] . "\n";
         echo "  Exportiert am:   " . date('d.m.Y H:i:s') . "\n";
         if ($expFilterUser)   echo "  Filter Benutzer: " . $expFilterUser . "\n";
         if ($expFilterAction) echo "  Filter Aktion:   " . $expFilterAction . "\n";
@@ -1116,7 +1159,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
         <!-- Navigation -->
         <div class="flex-1 overflow-y-auto sidebar-scroll px-4 py-4">
             <nav class="space-y-1">
-                <?php if (isAdmin() || isTeacher()): ?>
+                <?php if (isAdminOrSchoolAdmin() || isTeacher()): ?>
                     <?php $activeEd = getActiveEdition(); ?>
                     <div class="px-3 py-2 mb-1 rounded-lg bg-emerald-50 border border-emerald-100 text-xs">
                         <div class="text-emerald-600 font-semibold flex items-center gap-1">
@@ -1178,6 +1221,15 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <?php endif; ?>
                 <?php endif; ?>
 
+                <?php
+                // Pre-resolve default exhibitor ID for sidebar nav links
+                $_navDefaultExhibitorId = 0;
+                if (isExhibitor()) {
+                    $navIds = getExhibitorIdsForUser($_SESSION['user_id']);
+                    $_navDefaultExhibitorId = !empty($navIds) ? $navIds[0] : 0;
+                }
+                ?>
+
                 <?php if (isExhibitor()): ?>
                 <div class="nav-group-title">Aussteller</div>
                 
@@ -1186,56 +1238,56 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                     <span>Dashboard</span>
                 </a>
                 
-                <a href="<?php echo $currentPage === 'exhibitor-profile' ? 'javascript:void(0)' : '?page=exhibitor-profile'; ?>" data-page="exhibitor-profile" class="nav-link <?php echo $currentPage === 'exhibitor-profile' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'exhibitor-profile' ? 'javascript:void(0)' : '?page=exhibitor-profile&exhibitor_id=' . $_navDefaultExhibitorId; ?>" data-page="exhibitor-profile" class="nav-link <?php echo $currentPage === 'exhibitor-profile' ? 'active' : ''; ?>">
                     <i class="fas fa-building"></i>
                     <span>Profil</span>
                 </a>
                 
-                <a href="<?php echo $currentPage === 'exhibitor-slots' ? 'javascript:void(0)' : '?page=exhibitor-slots'; ?>" data-page="exhibitor-slots" class="nav-link <?php echo $currentPage === 'exhibitor-slots' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'exhibitor-slots' ? 'javascript:void(0)' : '?page=exhibitor-slots&exhibitor_id=' . $_navDefaultExhibitorId; ?>" data-page="exhibitor-slots" class="nav-link <?php echo $currentPage === 'exhibitor-slots' ? 'active' : ''; ?>">
                     <i class="fas fa-calendar-alt"></i>
                     <span>Slot-Anmeldungen</span>
                 </a>
                 
-                <a href="<?php echo $currentPage === 'exhibitor-equipment' ? 'javascript:void(0)' : '?page=exhibitor-equipment'; ?>" data-page="exhibitor-equipment" class="nav-link <?php echo $currentPage === 'exhibitor-equipment' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'exhibitor-equipment' ? 'javascript:void(0)' : '?page=exhibitor-equipment&exhibitor_id=' . $_navDefaultExhibitorId; ?>" data-page="exhibitor-equipment" class="nav-link <?php echo $currentPage === 'exhibitor-equipment' ? 'active' : ''; ?>">
                     <i class="fas fa-tools"></i>
                     <span>Ausstattung</span>
                 </a>
                 
-                <a href="<?php echo $currentPage === 'exhibitor-documents' ? 'javascript:void(0)' : '?page=exhibitor-documents'; ?>" data-page="exhibitor-documents" class="nav-link <?php echo $currentPage === 'exhibitor-documents' ? 'active' : ''; ?>">
+                <a href="<?php echo $currentPage === 'exhibitor-documents' ? 'javascript:void(0)' : '?page=exhibitor-documents&exhibitor_id=' . $_navDefaultExhibitorId; ?>" data-page="exhibitor-documents" class="nav-link <?php echo $currentPage === 'exhibitor-documents' ? 'active' : ''; ?>">
                     <i class="fas fa-file-alt"></i>
                     <span>Dokumente</span>
                 </a>
                 <?php endif; ?>
 
-                <?php if (isAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen', 'attendance_bearbeiten')): ?>
-                
+                <?php if (isAdminOrSchoolAdmin() || hasAnyPermission('dashboard_sehen', 'aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen', 'benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'berichte_sehen', 'qr_codes_sehen', 'anmeldungen_sehen', 'audit_logs_sehen', 'attendance_bearbeiten')): ?>
+
                 <!-- GRUPPE: Tagesbetrieb (am häufigsten genutzt) -->
-                <?php if (isAdmin() || hasAnyPermission('anmeldungen_sehen', 'qr_codes_sehen', 'qr_codes_erstellen', 'attendance_bearbeiten', 'berichte_sehen', 'dashboard_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasAnyPermission('anmeldungen_sehen', 'qr_codes_sehen', 'qr_codes_erstellen', 'attendance_bearbeiten', 'berichte_sehen', 'dashboard_sehen')): ?>
                 <div class="nav-group-title">Tagesbetrieb</div>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('anmeldungen_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('anmeldungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-registrations' ? 'javascript:void(0)' : '?page=admin-registrations'; ?>" data-page="admin-registrations" class="nav-link <?php echo $currentPage === 'admin-registrations' ? 'active' : ''; ?>">
                     <i class="fas fa-clipboard-list"></i>
                     <span>Einschreibungen</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('qr_codes_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-qr-codes' ? 'javascript:void(0)' : '?page=admin-qr-codes'; ?>" data-page="admin-qr-codes" class="nav-link <?php echo $currentPage === 'admin-qr-codes' ? 'active' : ''; ?>">
                     <i class="fas fa-qrcode"></i>
                     <span>QR-Anwesenheit</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('qr_codes_sehen') || hasPermission('qr_codes_erstellen') || hasPermission('attendance_bearbeiten')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_sehen') || hasPermission('qr_codes_erstellen') || hasPermission('attendance_bearbeiten')): ?>
                 <a href="<?php echo $currentPage === 'admin-attendance' ? 'javascript:void(0)' : '?page=admin-attendance'; ?>" data-page="admin-attendance" class="nav-link <?php echo $currentPage === 'admin-attendance' ? 'active' : ''; ?>">
                     <i class="fas fa-user-check"></i>
                     <span>Anwesenheit</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('berichte_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('berichte_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-print' ? 'javascript:void(0)' : '?page=admin-print'; ?>" data-page="admin-print" class="nav-link <?php echo $currentPage === 'admin-print' ? 'active' : ''; ?>">
                     <i class="fas fa-print"></i>
                     <span>Druckzentrale</span>
@@ -1243,25 +1295,25 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <?php endif; ?>
 
                 <!-- GRUPPE: Inhalte (Aussteller & Räume) -->
-                <?php if (isAdmin() || hasAnyPermission('aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasAnyPermission('aussteller_sehen', 'branchen_sehen', 'orga_team_sehen', 'raeume_sehen', 'kapazitaeten_sehen')): ?>
                 <div class="nav-group-title">Inhalte</div>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('aussteller_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('aussteller_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-exhibitors' ? 'javascript:void(0)' : '?page=admin-exhibitors'; ?>" data-page="admin-exhibitors" class="nav-link <?php echo $currentPage === 'admin-exhibitors' ? 'active' : ''; ?>">
                     <i class="fas fa-building"></i>
                     <span>Aussteller</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('raeume_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('raeume_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-rooms' ? 'javascript:void(0)' : '?page=admin-rooms'; ?>" data-page="admin-rooms" class="nav-link <?php echo $currentPage === 'admin-rooms' ? 'active' : ''; ?>">
                     <i class="fas fa-map-marker-alt"></i>
                     <span>Räume</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('kapazitaeten_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('kapazitaeten_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-room-capacities' ? 'javascript:void(0)' : '?page=admin-room-capacities'; ?>" data-page="admin-room-capacities" class="nav-link <?php echo $currentPage === 'admin-room-capacities' ? 'active' : ''; ?>">
                     <i class="fas fa-table"></i>
                     <span>Kapazitäten</span>
@@ -1269,38 +1321,40 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <?php endif; ?>
 
                 <!-- GRUPPE: Personen & System -->
-                <?php if (isAdmin() || hasAnyPermission('benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'audit_logs_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasAnyPermission('benutzer_sehen', 'berechtigungen_sehen', 'einstellungen_sehen', 'audit_logs_sehen')): ?>
                 <div class="nav-group-title">System</div>
 
-                <?php if (isAdmin() || hasPermission('dashboard_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('dashboard_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-dashboard' ? 'javascript:void(0)' : '?page=admin-dashboard'; ?>" data-page="admin-dashboard" class="nav-link <?php echo $currentPage === 'admin-dashboard' ? 'active' : ''; ?>">
                     <i class="fas fa-tachometer-alt"></i>
                     <span>Übersicht</span>
                 </a>
                 <?php endif; ?>
 
-                <?php if (isAdmin() || hasPermission('benutzer_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('benutzer_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-users' ? 'javascript:void(0)' : '?page=admin-users'; ?>" data-page="admin-users" class="nav-link <?php echo $currentPage === 'admin-users' ? 'active' : ''; ?>">
                     <i class="fas fa-users"></i>
                     <span>Benutzer</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin() || hasPermission('berechtigungen_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('berechtigungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-permissions' ? 'javascript:void(0)' : '?page=admin-permissions'; ?>" data-page="admin-permissions" class="nav-link <?php echo $currentPage === 'admin-permissions' ? 'active' : ''; ?>">
                     <i class="fas fa-shield-alt"></i>
                     <span>Berechtigungen</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin()): ?>
+                <?php if (isAdminOrSchoolAdmin()): ?>
                 <a href="<?php echo $currentPage === 'admin-editions' ? 'javascript:void(0)' : '?page=admin-editions'; ?>"
                    data-page="admin-editions"
                    class="nav-link <?php echo $currentPage === 'admin-editions' ? 'active' : ''; ?>">
                     <i class="fas fa-layer-group"></i>
                     <span>Messe-Editionen</span>
                 </a>
+                <?php endif; ?>
 
+                <?php if (isAdmin()): ?>
                 <a href="<?php echo $currentPage === 'admin-schools' ? 'javascript:void(0)' : '?page=admin-schools'; ?>"
                    data-page="admin-schools"
                    class="nav-link <?php echo $currentPage === 'admin-schools' ? 'active' : ''; ?>">
@@ -1309,14 +1363,14 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 </a>
                 <?php endif; ?>
 
-                <?php if (isAdmin() || hasPermission('einstellungen_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('einstellungen_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-settings' ? 'javascript:void(0)' : '?page=admin-settings'; ?>" data-page="admin-settings" class="nav-link <?php echo $currentPage === 'admin-settings' ? 'active' : ''; ?>">
                     <i class="fas fa-cog"></i>
                     <span>Einstellungen</span>
                 </a>
                 <?php endif; ?>
                 
-                <?php if (isAdmin()): ?>
+                <?php if (isAdminOrSchoolAdmin()): ?>
                 <a href="<?php echo $currentPage === 'admin-announcements' ? 'javascript:void(0)' : '?page=admin-announcements'; ?>"
                    data-page="admin-announcements"
                    class="nav-link <?php echo $currentPage === 'admin-announcements' ? 'active' : ''; ?>">
@@ -1336,7 +1390,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 </a>
                 <?php endif; ?>
 
-                <?php if (isAdmin() || hasPermission('audit_logs_sehen')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('audit_logs_sehen')): ?>
                 <a href="<?php echo $currentPage === 'admin-audit-logs' ? 'javascript:void(0)' : '?page=admin-audit-logs'; ?>" data-page="admin-audit-logs" class="nav-link <?php echo $currentPage === 'admin-audit-logs' ? 'active' : ''; ?>">
                     <i class="fas fa-history"></i>
                     <span>Audit Logs</span>
@@ -1350,10 +1404,14 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
         <!-- User Info with Help Button -->
         <div class="p-4 border-t border-gray-100 mt-auto bg-gradient-to-r from-gray-50 to-white">
             <!-- Darkmode Toggle -->
-            <button id="darkmode-toggle" onclick="toggleDarkmode()" class="w-full mb-2 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-gray-50 to-slate-50 text-gray-600 rounded-lg text-sm font-medium hover:from-gray-100 hover:to-slate-100 transition-all duration-300 border border-gray-200">
-                <i class="fas fa-moon"></i>
-                <span>Dunkel</span>
-            </button>
+            <div class="flex items-center justify-between mb-2 px-1">
+                <span id="darkmode-label" class="text-sm text-gray-500">Dunkel</span>
+                <button id="darkmode-toggle" onclick="toggleDarkmode()" class="darkmode-switch" aria-label="Dark mode toggle">
+                    <div class="toggle-clouds"><span></span><span></span><span></span></div>
+                    <div class="toggle-stars"><span></span><span></span><span></span><span></span><span></span></div>
+                    <div class="toggle-knob"><div class="sun-ray"></div></div>
+                </button>
+            </div>
             <!-- Help/Tour Button -->
             <button onclick="startGuidedTour()" class="w-full mb-3 flex items-center justify-center gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 text-amber-700 rounded-lg text-sm font-medium hover:from-amber-100 hover:to-orange-100 transition-all duration-300 border border-amber-200">
                 <i class="fas fa-question-circle"></i>
@@ -1472,87 +1530,87 @@ if (!empty($_announcements)):
                     }
                     break;
                 case 'admin-dashboard':
-                    if (isAdmin() || hasPermission('dashboard_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('dashboard_sehen')) {
                         include 'pages/admin-dashboard.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-exhibitors':
-                    if (isAdmin() || hasPermission('aussteller_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('aussteller_sehen')) {
                         include 'pages/admin-exhibitors.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-rooms':
-                    if (isAdmin() || hasPermission('raeume_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('raeume_sehen')) {
                         include 'pages/admin-rooms.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-room-capacities':
-                    if (isAdmin() || hasPermission('kapazitaeten_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('kapazitaeten_sehen')) {
                         include 'pages/admin-room-capacities.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-users':
-                    if (isAdmin() || hasPermission('benutzer_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('benutzer_sehen')) {
                         include 'pages/admin-users.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-permissions':
-                    if (isAdmin() || hasPermission('berechtigungen_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('berechtigungen_sehen')) {
                         include 'pages/admin-permissions.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-print':
-                    if (isAdmin() || hasPermission('berichte_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('berichte_sehen')) {
                         include 'pages/admin-print.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-settings':
-                    if (isAdmin() || hasPermission('einstellungen_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('einstellungen_sehen')) {
                         include 'pages/admin-settings.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-qr-codes':
-                    if (isAdmin() || hasPermission('qr_codes_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_sehen')) {
                         include 'pages/admin-qr-codes.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-attendance':
-                    if (isAdmin() || hasPermission('qr_codes_sehen') || hasPermission('qr_codes_erstellen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_sehen') || hasPermission('qr_codes_erstellen')) {
                         include 'pages/admin-attendance.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-registrations':
-                    if (isAdmin() || hasPermission('anmeldungen_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('anmeldungen_sehen')) {
                         include 'pages/admin-registrations.php';
                         $pageLoaded = true;
                     }
                     break;
                 case 'admin-announcements':
-                    if (isAdmin()) {
+                    if (isAdminOrSchoolAdmin()) {
                         include 'pages/admin-announcements.php';
                         $pageLoaded = true;
                     }
                     break;
 
                 case 'admin-editions':
-                    if (isAdmin()) {
+                    if (isAdminOrSchoolAdmin()) {
                         include 'pages/admin-editions.php';
                         $pageLoaded = true;
                     }
                     break;
 
                 case 'admin-audit-logs':
-                    if (isAdmin() || hasPermission('audit_logs_sehen')) {
+                    if (isAdminOrSchoolAdmin() || hasPermission('audit_logs_sehen')) {
                         include 'pages/admin-audit-logs.php';
                         $pageLoaded = true;
                     }

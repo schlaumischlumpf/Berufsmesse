@@ -6,14 +6,26 @@ $regStart  = getSetting('registration_start');
 $regEnd    = getSetting('registration_end');
 
 // Alle Klassen abrufen
-$stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND class IS NOT NULL AND class != '' ORDER BY class");
+$teacherSchoolId = $_SESSION['school_id'] ?? null;
+
+if ($teacherSchoolId) {
+    $stmt = $db->prepare("SELECT DISTINCT class FROM users WHERE role = 'student' AND class IS NOT NULL AND class != '' AND school_id = ? ORDER BY class"); // [SCHOOL ISOLATION]
+    $stmt->execute([$teacherSchoolId]);
+} else {
+    $stmt = $db->query("SELECT DISTINCT class FROM users WHERE role = 'student' AND class IS NOT NULL AND class != '' ORDER BY class");
+}
 $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
 
 // Statistiken
 $stats = [];
 
 // Gesamtzahl Schüler
-$stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
+if ($teacherSchoolId) {
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND school_id = ?"); // [SCHOOL ISOLATION]
+    $stmt->execute([$teacherSchoolId]);
+} else {
+    $stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
+}
 $stats['total_students'] = $stmt->fetch()['count'];
 
 // Schüler mit vollständigen Anmeldungen (alle 3 Slots)
@@ -25,11 +37,16 @@ $stmt = $db->prepare("
         JOIN timeslots t ON r.timeslot_id = t.id
         JOIN users u ON r.user_id = u.id
         WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND r.edition_id = ?
+        " . ($teacherSchoolId ? "AND u.school_id = ?" : "") . "   -- [SCHOOL ISOLATION]
         GROUP BY r.user_id
         HAVING slot_count = " . getManagedSlotCount() . "
     ) as complete_registrations
 ");
-$stmt->execute([$activeEditionId]);
+if ($teacherSchoolId) {
+    $stmt->execute([$activeEditionId, $teacherSchoolId]);
+} else {
+    $stmt->execute([$activeEditionId]);
+}
 $stats['complete_students'] = $stmt->fetch()['count'];
 
 // Schüler mit unvollständigen Anmeldungen
@@ -37,12 +54,17 @@ $stats['incomplete_students'] = $stats['total_students'] - $stats['complete_stud
 
 // Schüler ohne Anmeldungen
 $stmt = $db->prepare("
-    SELECT COUNT(*) as count 
+    SELECT COUNT(*) as count
     FROM users u
-    WHERE u.role = 'student' 
+    WHERE u.role = 'student'
     AND u.id NOT IN (SELECT DISTINCT user_id FROM registrations WHERE edition_id = ?)
+    " . ($teacherSchoolId ? "AND u.school_id = ?" : "") . "   -- [SCHOOL ISOLATION]
 ");
-$stmt->execute([$activeEditionId]);
+if ($teacherSchoolId) {
+    $stmt->execute([$activeEditionId, $teacherSchoolId]);
+} else {
+    $stmt->execute([$activeEditionId]);
+}
 $stats['no_registrations'] = $stmt->fetch()['count'];
 ?>
 
@@ -146,8 +168,13 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <?php foreach ($classes as $class): 
                     // Statistiken pro Klasse
-                    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND class = ?");
-                    $stmt->execute([$class]);
+                    if ($teacherSchoolId) {
+                        $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND class = ? AND school_id = ?"); // [SCHOOL ISOLATION]
+                        $stmt->execute([$class, $teacherSchoolId]);
+                    } else {
+                        $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND class = ?");
+                        $stmt->execute([$class]);
+                    }
                     $classTotal = $stmt->fetch()['count'];
                     
                     // Vollständig angemeldet
@@ -159,11 +186,16 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
                             JOIN timeslots t ON r.timeslot_id = t.id
                             JOIN users u ON r.user_id = u.id
                             WHERE t.slot_number " . getManagedSlotsSqlIn() . " AND u.role = 'student' AND u.class = ? AND r.edition_id = ?
+                            " . ($teacherSchoolId ? "AND u.school_id = ?" : "") . "   -- [SCHOOL ISOLATION]
                             GROUP BY r.user_id
                             HAVING slot_count = " . getManagedSlotCount() . "
                         ) as complete
                     ");
-                    $stmt->execute([$class, $activeEditionId]);
+                    if ($teacherSchoolId) {
+                        $stmt->execute([$class, $activeEditionId, $teacherSchoolId]);
+                    } else {
+                        $stmt->execute([$class, $activeEditionId]);
+                    }
                     $classComplete = $stmt->fetch()['count'];
                     
                     $percentage = $classTotal > 0 ? round(($classComplete / $classTotal) * 100) : 0;

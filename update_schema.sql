@@ -644,6 +644,119 @@ SET @s = IF(@uidx = 0,
     'SELECT 1');
 PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- ============================================================================
+-- Migration 20: Add school_id to audit_logs (per-school log scoping)
+-- ============================================================================
+
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='audit_logs' AND COLUMN_NAME='school_id');
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `audit_logs` ADD COLUMN `school_id` INT(11) DEFAULT NULL COMMENT \'Schule zu der der Log-Eintrag gehört (NULL = systemweit)\'',
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+SET @idx_exists = (SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='audit_logs' AND INDEX_NAME='idx_audit_school_id');
+SET @s = IF(@idx_exists = 0,
+    'ALTER TABLE `audit_logs` ADD KEY `idx_audit_school_id` (`school_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ============================================================================
+-- Migration 21: Add exhibitor invite columns to exhibitor_users
+-- ============================================================================
+
+SET @col_exists = (SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exhibitor_users' AND COLUMN_NAME = 'invite_token');
+SET @s = IF(@col_exists = 0,
+    "ALTER TABLE `exhibitor_users`
+        ADD COLUMN `invite_token`    VARCHAR(64)  DEFAULT NULL
+            COMMENT 'One-time token for exhibitor self-registration',
+        ADD COLUMN `invite_accepted` TINYINT(1)   NOT NULL DEFAULT 0
+            COMMENT '1 = exhibitor has accepted and set up their profile',
+        ADD COLUMN `invite_expires`  DATETIME     DEFAULT NULL,
+        ADD UNIQUE KEY `unique_invite_token` (`invite_token`)",
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ============================================================================
+-- Migration 22: Add school_id to exhibitor_orga_team for per-school scoping
+-- ============================================================================
+
+-- Step 1: Remove duplicate (user_id, exhibitor_id) rows keeping only the newest
+--         so the new 3-column UNIQUE KEY can be created cleanly
+SET @s0 = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'exhibitor_orga_team'
+      AND COLUMN_NAME  = 'school_id'
+);
+-- Only de-duplicate if school_id column doesn't exist yet (first run)
+SET @dedup = IF(@s0 = 0,
+    'DELETE eo1 FROM exhibitor_orga_team eo1
+     INNER JOIN exhibitor_orga_team eo2
+     WHERE eo1.user_id = eo2.user_id
+       AND eo1.exhibitor_id = eo2.exhibitor_id
+       AND eo1.id < eo2.id',
+    'SELECT 1');
+PREPARE stmt FROM @dedup; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Step 2: Add school_id column
+SET @col_exists = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'exhibitor_orga_team'
+      AND COLUMN_NAME  = 'school_id'
+);
+SET @s = IF(@col_exists = 0,
+    'ALTER TABLE `exhibitor_orga_team`
+     ADD COLUMN `school_id` INT(11) DEFAULT NULL
+     COMMENT \'Schule zu der diese Zuweisung gehört\'',
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Step 3: Backfill school_id from the exhibitor's edition
+SET @s2 = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'exhibitor_orga_team'
+      AND COLUMN_NAME  = 'school_id'
+);
+SET @backfill = IF(@s2 > 0,
+    'UPDATE exhibitor_orga_team eo
+     JOIN exhibitors e ON eo.exhibitor_id = e.id
+     JOIN messe_editions me ON e.edition_id = me.id
+     SET eo.school_id = me.school_id
+     WHERE eo.school_id IS NULL',
+    'SELECT 1');
+PREPARE stmt FROM @backfill; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Step 4: Drop old UNIQUE constraint
+SET @idx_exists = (
+    SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'exhibitor_orga_team'
+      AND INDEX_NAME   = 'unique_user_exhibitor'
+);
+SET @s3 = IF(@idx_exists > 0,
+    'ALTER TABLE `exhibitor_orga_team` DROP INDEX `unique_user_exhibitor`',
+    'SELECT 1');
+PREPARE stmt FROM @s3; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- Step 5: Add new school-scoped UNIQUE constraint
+SET @idx2_exists = (
+    SELECT COUNT(*) FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME   = 'exhibitor_orga_team'
+      AND INDEX_NAME   = 'unique_user_exhibitor_school'
+);
+SET @s4 = IF(@idx2_exists = 0,
+    'ALTER TABLE `exhibitor_orga_team`
+     ADD UNIQUE KEY `unique_user_exhibitor_school`
+     (`user_id`, `exhibitor_id`, `school_id`)',
+    'SELECT 1');
+PREPARE stmt FROM @s4; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

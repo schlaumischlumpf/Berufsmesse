@@ -30,6 +30,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
         $exhibitorId = intval($_POST['exhibitor_id']);
         $priority = isset($_POST['priority']) ? max(1, min(3, intval($_POST['priority']))) : 2;
 
+        // [SCHOOL ISOLATION] Verify exhibitor belongs to current school
+        $regSchoolId = isAdmin() ? null : ($_SESSION['school_id'] ?? null);
+        if (!exhibitorBelongsToSchool($exhibitorId, $regSchoolId)) {
+            $message = ['type' => 'error', 'text' => 'Ungültiger Aussteller.'];
+        } else {
+
         // Prüfen ob User bereits für diesen Aussteller registriert ist
         $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = ?");
         $stmt->execute([$_SESSION['user_id'], $exhibitorId, $activeEditionId]);
@@ -66,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
                 }
             }
         }
+        } // [SCHOOL ISOLATION] end school check
     }
 }
 
@@ -73,17 +80,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
     requireCsrf();
     $exhibitorId = intval($_POST['exhibitor_id']);
-    
+
+    // [SCHOOL ISOLATION] Verify exhibitor belongs to current school
+    $unregSchoolId = isAdmin() ? null : ($_SESSION['school_id'] ?? null);
+    if (!exhibitorBelongsToSchool($exhibitorId, $unregSchoolId)) {
+        $message = ['type' => 'error', 'text' => 'Ungültiger Aussteller.'];
+    } else {
+
     // Prüfen ob die Registrierung dem User gehört
     $stmt = $db->prepare("SELECT * FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = ?");
     $stmt->execute([$_SESSION['user_id'], $exhibitorId, $activeEditionId]);
     $registration = $stmt->fetch();
-    
+
     if ($registration && $canModify) {
         $stmt = $db->prepare("DELETE FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = ?");
         if ($stmt->execute([$_SESSION['user_id'], $exhibitorId, $activeEditionId])) {
             $message = ['type' => 'success', 'text' => 'Erfolgreich abgemeldet'];
-            
+
             // Counter aktualisieren
             $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
             $stmt->execute([$_SESSION['user_id'], $activeEditionId]);
@@ -94,6 +107,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
     } elseif (!$canModify) {
         $message = ['type' => 'error', 'text' => 'Die Einschreibung ist geschlossen. Nur Admins können Änderungen vornehmen.'];
     }
+    } // [SCHOOL ISOLATION] end school check
 }
 
 // Prüfe für jeden Aussteller ob der User bereits registriert ist

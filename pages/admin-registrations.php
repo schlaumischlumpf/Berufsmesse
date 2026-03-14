@@ -5,12 +5,18 @@
  */
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('anmeldungen_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('anmeldungen_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
-// Alle Schüler laden
-$stmt = $db->query("SELECT id, username, firstname, lastname, class FROM users WHERE role = 'student' ORDER BY lastname, firstname");
+// Alle Schüler laden (gefiltert nach Schule für school_admins)
+$regSchoolId = isSchoolAdmin() ? ($_SESSION['school_id'] ?? null) : null;
+if ($regSchoolId) {
+    $stmt = $db->prepare("SELECT id, username, firstname, lastname, class FROM users WHERE role = 'student' AND school_id = ? ORDER BY lastname, firstname");
+    $stmt->execute([$regSchoolId]);
+} else {
+    $stmt = $db->query("SELECT id, username, firstname, lastname, class FROM users WHERE role = 'student' ORDER BY lastname, firstname");
+}
 $students = $stmt->fetchAll();
 
 // Alle aktiven Aussteller laden
@@ -23,11 +29,20 @@ $maxRegistrations = intval(getSetting('max_registrations_per_student', 3));
 // Handle: Admin meldet Schüler an
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('anmeldungen_erstellen')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('anmeldungen_erstellen')) die('Keine Berechtigung');
     $studentId = intval($_POST['student_id']);
     $exhibitorId = intval($_POST['exhibitor_id']);
     $priority = max(1, min(3, intval($_POST['priority'] ?? 2)));
-    
+
+    // [SCHOOL ISOLATION] Verify student belongs to current school
+    if ($regSchoolId) {
+        $stmtChk = $db->prepare("SELECT 1 FROM users WHERE id = ? AND school_id = ?");
+        $stmtChk->execute([$studentId, $regSchoolId]);
+        if (!$stmtChk->fetchColumn()) {
+            $message = ['type' => 'error', 'text' => 'Schüler gehört nicht zu dieser Schule'];
+        }
+    }
+    if (!isset($message)) {
     // Prüfen ob bereits registriert
     $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND exhibitor_id = ? AND registrations.edition_id = ?");
     $stmt->execute([$studentId, $exhibitorId, $activeEditionId]);
@@ -38,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
         $stmt = $db->prepare("SELECT COUNT(*) FROM registrations WHERE user_id = ? AND registrations.edition_id = ?");
         $stmt->execute([$studentId, $activeEditionId]);
         $regCount = $stmt->fetchColumn();
-        
+
         if ($regCount >= $maxRegistrations) {
             $message = ['type' => 'error', 'text' => 'Schüler hat bereits die maximale Anzahl an Anmeldungen erreicht (' . $maxRegistrations . ').'];
         } else {
@@ -65,25 +80,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_register'])) {
             }
         }
     }
+    } // end school-check guard
 }
 
 // Handle: Admin nimmt Einschreibung zurück
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['admin_unregister'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('anmeldungen_loeschen')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('anmeldungen_loeschen')) die('Keine Berechtigung');
     $registrationId = intval($_POST['registration_id']);
+    // [SCHOOL ISOLATION] Verify school ownership before delete
+    if ($regSchoolId) {
+        $stmtChk = $db->prepare("SELECT r.id FROM registrations r JOIN users u ON r.user_id = u.id WHERE r.id = ? AND r.edition_id = ? AND u.school_id = ?");
+        $stmtChk->execute([$registrationId, $activeEditionId, $regSchoolId]);
+        if (!$stmtChk->fetch()) {
+            $message = ['type' => 'error', 'text' => 'Keine Berechtigung'];
+        }
+    }
+    if (!isset($message)) {
     // Für Audit-Log vor dem Löschen lesen
     $stmtN = $db->prepare("SELECT u.firstname, u.lastname, u.class, e.name as ename FROM registrations r JOIN users u ON r.user_id = u.id JOIN exhibitors e ON r.exhibitor_id = e.id WHERE r.id = ? AND r.edition_id = ?");
     $stmtN->execute([$registrationId, $activeEditionId]);
     $logR = $stmtN->fetch();
-    $stmt = $db->prepare("DELETE FROM registrations WHERE id = ?");
-    if ($stmt->execute([$registrationId])) {
+    $stmt = $db->prepare("DELETE FROM registrations WHERE id = ? AND edition_id = ?");
+    if ($stmt->execute([$registrationId, $activeEditionId])) {
         $logDesc = $logR ? "Einschreibung von '{$logR['firstname']} {$logR['lastname']}' (Klasse {$logR['class']}) bei '{$logR['ename']}' zurückgenommen" : "Einschreibung #$registrationId gelöscht";
         logAuditAction('einschreibung_zurueckgenommen', $logDesc);
         $message = ['type' => 'success', 'text' => 'Einschreibung erfolgreich zurückgenommen.'];
     } else {
         $message = ['type' => 'error', 'text' => 'Fehler beim Zurücknehmen der Einschreibung.'];
     }
+    } // end school-check guard
 }
 
 // Suchfilter
@@ -101,6 +127,11 @@ $query = "
     WHERE u.role = 'student' AND r.edition_id = ? AND e.edition_id = ?
 ";
 $params = [$activeEditionId, $activeEditionId];
+
+if ($regSchoolId) {
+    $query .= " AND u.school_id = ?"; // [SCHOOL ISOLATION]
+    $params[] = $regSchoolId;
+}
 
 if (!empty($filterStudent)) {
     $query .= " AND (u.firstname LIKE ? OR u.lastname LIKE ? OR u.username LIKE ? OR u.class LIKE ?)";
@@ -146,7 +177,7 @@ $registrations = $stmt->fetchAll();
     <?php endif; ?>
 
     <!-- Schüler einschreiben -->
-    <?php if (isAdmin() || hasPermission('anmeldungen_erstellen')): ?>
+    <?php if (isAdminOrSchoolAdmin() || hasPermission('anmeldungen_erstellen')): ?>
     <div class="bg-white rounded-xl border border-gray-100 p-5">
         <h3 class="font-semibold text-gray-800 text-sm mb-4">
             <i class="fas fa-user-plus text-emerald-500 mr-2"></i>
@@ -266,7 +297,7 @@ $registrations = $stmt->fetchAll();
                         </td>
                         <td class="px-4 py-3 text-xs text-gray-400 capitalize"><?php echo htmlspecialchars($reg['registration_type'] ?? 'manual'); ?></td>
                         <td class="px-4 py-3 text-right">
-                            <?php if (isAdmin() || hasPermission('anmeldungen_loeschen')): ?>
+                            <?php if (isAdminOrSchoolAdmin() || hasPermission('anmeldungen_loeschen')): ?>
                             <form method="POST" class="inline">
                                 <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="registration_id" value="<?php echo $reg['id']; ?>">

@@ -1,5 +1,5 @@
 <?php
-if (!isAdmin()) die('Keine Berechtigung');
+if (!isAdminOrSchoolAdmin()) die('Keine Berechtigung');
 
 $db      = getDB();
 $message = null;
@@ -13,11 +13,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_announcement']
     $targetRole = in_array($_POST['target_role'] ?? '', ['all','student','teacher','admin']) ? $_POST['target_role'] : 'all';
     $expiresRaw = trim($_POST['expires_at'] ?? '');
     $expiresAt  = !empty($expiresRaw) ? date('Y-m-d H:i:s', strtotime($expiresRaw)) : null;
+    $annSchoolId = $_SESSION['school_id'] ?? null;
     if (empty($title)) {
         $message = ['type' => 'error', 'text' => 'Titel darf nicht leer sein.'];
     } else {
-        $db->prepare("INSERT INTO announcements (title,body,type,target_role,expires_at,is_active,created_by) VALUES (?,?,?,?,?,1,?)")
-           ->execute([$title, $body, $type, $targetRole, $expiresAt, $_SESSION['user_id']]);
+        $db->prepare("INSERT INTO announcements (title,body,type,target_role,expires_at,is_active,created_by,school_id) VALUES (?,?,?,?,?,1,?,?)")
+           ->execute([$title, $body, $type, $targetRole, $expiresAt, $_SESSION['user_id'], $annSchoolId]);
         logAuditAction('ankuendigung_erstellt', "\"$title\" für: $targetRole");
         $message = ['type' => 'success', 'text' => 'Ankündigung erstellt.'];
     }
@@ -43,12 +44,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_announcement']
 
 // Daten laden
 try {
-    $allAnnouncements = $db->query("
-        SELECT a.*, u.firstname, u.lastname
-        FROM   announcements a
-        LEFT JOIN users u ON a.created_by = u.id
-        ORDER BY a.created_at DESC
-    ")->fetchAll();
+    $annFilterSchoolId = isSchoolAdmin() ? ($_SESSION['school_id'] ?? null) : null;
+    if ($annFilterSchoolId) {
+        $allAnnouncements = $db->prepare("
+            SELECT a.*, u.firstname, u.lastname
+            FROM   announcements a
+            LEFT JOIN users u ON a.created_by = u.id
+            WHERE  a.school_id = ?
+            ORDER BY a.created_at DESC
+        ");
+        $allAnnouncements->execute([$annFilterSchoolId]);
+        $allAnnouncements = $allAnnouncements->fetchAll();
+    } else {
+        $allAnnouncements = $db->query("
+            SELECT a.*, u.firstname, u.lastname
+            FROM   announcements a
+            LEFT JOIN users u ON a.created_by = u.id
+            ORDER BY a.created_at DESC
+        ")->fetchAll();
+    }
 } catch (Exception $e) {
     $allAnnouncements = [];
     $message = ['type' => 'error', 'text' => 'Ankündigungs-Tabelle noch nicht vorhanden. Bitte Setup ausführen.'];

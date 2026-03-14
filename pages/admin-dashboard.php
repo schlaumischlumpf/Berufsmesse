@@ -3,7 +3,7 @@
 // Admin Dashboard mit Statistiken
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('dashboard_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('dashboard_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
@@ -29,24 +29,41 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'done') {
 
 // Statistiken berechnen
 $stats = [];
+// [SCHOOL ISOLATION] Source of truth is getCurrentSchool() for all roles
+$dashCtxSchool     = getCurrentSchool();
+$dashboardSchoolId = $dashCtxSchool ? (int)$dashCtxSchool['id'] : null;
+$dashEditionId     = $dashCtxSchool
+    ? getActiveEditionIdForSchool($dashboardSchoolId)
+    : $activeEditionId;
 
 // Gesamtzahl Schüler
-$stmt = $db->query("SELECT COUNT(*) as count FROM users WHERE role = 'student'");
+if ($dashboardSchoolId) {
+    $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE role = 'student' AND school_id = ?");
+    $stmt->execute([$dashboardSchoolId]);
+} else {
+    // No school context — show 0 to avoid cross-school leak
+    $stmt = $db->query("SELECT 0 as count");
+}
 $stats['total_students'] = $stmt->fetch()['count'];
 
 // Gesamtzahl Aussteller
 $stmt = $db->prepare("SELECT COUNT(*) as count FROM exhibitors WHERE active = 1 AND edition_id = ?");
-$stmt->execute([$activeEditionId]);
+$stmt->execute([$dashEditionId]);
 $stats['total_exhibitors'] = $stmt->fetch()['count'];
 
 // Gesamtzahl Anmeldungen
 $stmt = $db->prepare("SELECT COUNT(*) as count FROM registrations WHERE edition_id = ?");
-$stmt->execute([$activeEditionId]);
+$stmt->execute([$dashEditionId]);
 $stats['total_registrations'] = $stmt->fetch()['count'];
 
 // Schüler mit Anmeldungen (nur role='student', nicht Lehrer/Admins - Issue #14)
-$stmt = $db->prepare("SELECT COUNT(DISTINCT r.user_id) as count FROM registrations r JOIN users u ON r.user_id = u.id WHERE u.role = 'student' AND r.edition_id = ?");
-$stmt->execute([$activeEditionId]);
+if ($dashboardSchoolId) {
+    $stmt = $db->prepare("SELECT COUNT(DISTINCT r.user_id) as count FROM registrations r JOIN users u ON r.user_id = u.id WHERE u.role = 'student' AND u.school_id = ? AND r.edition_id = ?");
+    $stmt->execute([$dashboardSchoolId, $dashEditionId]);
+} else {
+    // No school context — show 0 to avoid cross-school leak
+    $stmt = $db->query("SELECT 0 as count");
+}
 $stats['students_registered'] = $stmt->fetch()['count'];
 
 // Schüler ohne Anmeldungen
@@ -62,7 +79,7 @@ $stmt = $db->prepare("
     ORDER BY registrations DESC
     LIMIT 5
 ");
-$stmt->execute([$activeEditionId, $activeEditionId]);
+$stmt->execute([$dashEditionId, $dashEditionId]);
 $topExhibitors = $stmt->fetchAll();
 
 // Registrierungen pro Zeitslot
@@ -79,7 +96,7 @@ $stmt = $db->prepare("
     GROUP BY t.id, t.slot_name, t.slot_number, t.start_time, t.end_time
     ORDER BY t.slot_number ASC
 ");
-$stmt->execute([$activeEditionId, $activeEditionId]);
+$stmt->execute([$dashEditionId, $dashEditionId]);
 $slotStats = $stmt->fetchAll();
 
 // Letzte Registrierungen
@@ -90,10 +107,11 @@ $stmt = $db->prepare("
     JOIN exhibitors e ON r.exhibitor_id = e.id
     JOIN timeslots t ON r.timeslot_id = t.id
     WHERE r.edition_id = ? AND e.edition_id = ?
+    AND (? IS NULL OR u.school_id = ?)   -- [SCHOOL ISOLATION]
     ORDER BY r.registered_at DESC
     LIMIT 10
 ");
-$stmt->execute([$activeEditionId, $activeEditionId]);
+$stmt->execute([$dashEditionId, $dashEditionId, $dashboardSchoolId, $dashboardSchoolId]);
 $recentRegistrations = $stmt->fetchAll();
 ?>
 
@@ -255,7 +273,7 @@ $recentRegistrations = $stmt->fetchAll();
                             </span>
                         </div>
                     </div>
-                    <?php if (isAdmin() || hasPermission('zuteilung_ausfuehren')): ?>
+                    <?php if (isAdminOrSchoolAdmin() || hasPermission('zuteilung_ausfuehren')): ?>
                     <div class="flex-shrink-0">
                         <form method="POST" action="api/auto-assign.php" style="display:inline" onsubmit="return confirm('Automatische Zuteilung wirklich starten?')">
                             <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
@@ -517,7 +535,7 @@ let statsLoaded = false;
 function loadDashboardStats() {
     if (statsLoaded) return;
     statsLoaded = true;
-    fetch('api/dashboard-stats.php')
+    fetch('api/dashboard-stats.php?edition_id=<?php echo (int)$dashEditionId; ?>&school_id=<?php echo (int)($dashboardSchoolId ?? 0); ?>')
         .then(r => r.json())
         .then(data => {
             renderTimelineChart(data.timeline || []);

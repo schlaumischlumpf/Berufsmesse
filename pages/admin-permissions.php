@@ -2,7 +2,7 @@
 // Admin Berechtigungsverwaltung (Issue #10, #26)
 
 // Berechtigungsprüfung
-if (!isAdmin() && !hasPermission('berechtigungen_sehen')) {
+if (!isAdminOrSchoolAdmin() && !hasPermission('berechtigungen_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
@@ -12,7 +12,7 @@ $db = getDB();
 // Handle Permission Changes (mit Gruppen-Support)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userId = intval($_POST['user_id']);
     $permissions = $_POST['permissions'] ?? [];
     $groupIds = $_POST['group_ids'] ?? [];
@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
     if ($userId === intval($_SESSION['user_id'])) {
         $message = ['type' => 'error', 'text' => 'Du kannst deine eigenen Berechtigungen nicht ändern'];
     } else {
-        if (isAdmin()) {
+        if (isAdminOrSchoolAdmin()) {
             // 1. Gruppen-Zuordnungen aktualisieren
             $db->prepare("DELETE FROM user_permission_groups WHERE user_id = ?")->execute([$userId]);
             foreach ($groupIds as $groupId) {
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_permissions'])) 
 // Handle Bulk Permission Changes (mehrere Benutzer gleichzeitig)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_save_permissions'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userIds    = array_map('intval', $_POST['user_ids'] ?? []);
     $permissions = $_POST['permissions'] ?? [];
     $groupIds    = $_POST['group_ids'] ?? [];
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_save_permissions
     $affectedCount = 0;
     foreach ($userIds as $uid) {
         if ($uid === intval($_SESSION['user_id'])) continue; // Eigene Berechtigungen nicht ändern
-        if (isAdmin()) {
+        if (isAdminOrSchoolAdmin()) {
             $db->prepare("DELETE FROM user_permission_groups WHERE user_id = ?")->execute([$uid]);
             foreach ($groupIds as $gid) {
                 $db->prepare("INSERT IGNORE INTO user_permission_groups (user_id, group_id) VALUES (?, ?)")->execute([$uid, intval($gid)]);
@@ -96,7 +96,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['bulk_save_permissions
 // Handle Apply Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('berechtigungen_vergeben')) die('Keine Berechtigung');
     $userId = intval($_POST['user_id']);
     $groupId = intval($_POST['group_id']);
 
@@ -116,7 +116,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['apply_group'])) {
 // Handle Create Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
     $groupName = trim($_POST['group_name'] ?? '');
     $groupDescription = trim($_POST['group_description'] ?? '');
     $groupPermissions = $_POST['group_permissions'] ?? [];
@@ -146,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['create_group'])) {
 // Handle Edit Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_group'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
     $groupId = intval($_POST['edit_group_id']);
     $groupName = trim($_POST['edit_group_name'] ?? '');
     $groupDescription = trim($_POST['edit_group_description'] ?? '');
@@ -185,7 +185,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_group'])) {
 // Handle Delete Permission Group
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
     requireCsrf();
-    if (!isAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
+    if (!isAdminOrSchoolAdmin() && !hasPermission('berechtigungsgruppen_verwalten')) die('Keine Berechtigung');
     $groupId = intval($_POST['group_id']);
     try {
         $stmt = $db->prepare("SELECT name FROM permission_groups WHERE id = ?");
@@ -201,33 +201,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['delete_group'])) {
     }
 }
 
-// Alle Benutzer laden - DEBUG VERSION
-// Erstmal ALLE Benutzer holen, ohne WHERE
-$stmt = $db->query("
-    SELECT u.*,
-           (SELECT COUNT(*) FROM user_permissions WHERE user_id = u.id) as permission_count
-    FROM users u
-    ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
-");
-$allUsersDebug = $stmt->fetchAll();
+// Alle Benutzer laden
+// [SCHOOL ISOLATION] Source of truth is getCurrentSchool() for all roles
+$permSchool   = getCurrentSchool();
+$permSchoolId = $permSchool ? (int)$permSchool['id'] : null;
 
-// Jetzt mit Filter
-$stmt = $db->query("
-    SELECT u.*,
-           (SELECT COUNT(*) FROM user_permissions WHERE user_id = u.id) as permission_count
-    FROM users u
-    WHERE LOWER(u.role) IN ('admin', 'teacher', 'orga')
-    ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
-");
-$users = $stmt->fetchAll();
-
-// Debug-Ausgabe (nur für Test)
-if (empty($users)) {
-    error_log("DEBUG: No users found with role filter. Total users: " . count($allUsersDebug));
-    error_log("DEBUG: All roles: " . json_encode(array_column($allUsersDebug, 'role')));
-    // Fallback: Zeige alle Benutzer
-    $users = $allUsersDebug;
+if ($permSchoolId !== null) {
+    $stmt = $db->prepare("
+        SELECT u.*,
+               (SELECT COUNT(*) FROM user_permissions WHERE user_id = u.id) as permission_count
+        FROM users u
+        WHERE LOWER(u.role) IN ('admin', 'school_admin', 'teacher', 'orga')
+          AND u.school_id = ?    -- [SCHOOL ISOLATION]
+        ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
+    ");
+    $stmt->execute([$permSchoolId]);
+    $users = $stmt->fetchAll();
+} else {
+    // No school context: global super-admin view
+    $stmt = $db->query("
+        SELECT u.*,
+               (SELECT COUNT(*) FROM user_permissions WHERE user_id = u.id) as permission_count
+        FROM users u
+        WHERE LOWER(u.role) IN ('admin', 'school_admin', 'teacher', 'orga')
+        ORDER BY u.role ASC, u.lastname ASC, u.firstname ASC
+    ");
+    $users = $stmt->fetchAll();
 }
+// [SCHOOL ISOLATION] Removed $allUsersDebug fallback — do not leak cross-school users
 
 // Verfügbare Berechtigungen (gruppiert)
 $availablePermissions = getAvailablePermissions();
@@ -235,7 +236,7 @@ $allPermissions = getAllPermissionKeys();
 $permissionDependencies = getPermissionDependencies();
 
 // Berechtigungen des aktuellen Nutzers (für Einschränkung im Modal)
-$currentUserPermissions = isAdmin() ? array_keys($allPermissions) : getUserPermissions($_SESSION['user_id']);
+$currentUserPermissions = isAdminOrSchoolAdmin() ? array_keys($allPermissions) : getUserPermissions($_SESSION['user_id']);
 
 // Berechtigungsgruppen laden
 $permissionGroups = getPermissionGroups();
@@ -452,7 +453,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
                     <i class="fas fa-layer-group mr-3"></i>
                     Berechtigungsgruppen
                 </h3>
-                <?php if (isAdmin() || hasPermission('berechtigungsgruppen_verwalten')): ?>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('berechtigungsgruppen_verwalten')): ?>
                 <button onclick="document.getElementById('createGroupModal').classList.remove('hidden');document.getElementById('createGroupModal').classList.add('flex')" 
                         class="px-4 py-2 bg-white/20 text-white rounded-lg hover:bg-white/30 transition text-sm font-medium">
                     <i class="fas fa-plus mr-1"></i>Neue Gruppe
@@ -639,7 +640,7 @@ $stats['total_permissions'] = $stmt->fetch()['count'];
 <div id="bulkSelectionBar" class="hidden fixed bottom-6 left-1/2 transform -translate-x-1/2 bg-purple-700 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-4 z-40 transition-all">
     <i class="fas fa-users text-purple-200"></i>
     <span class="font-semibold"><span id="selectedCount">0</span> Benutzer ausgewählt</span>
-    <?php if (isAdmin() || hasPermission('berechtigungen_vergeben')): ?>
+    <?php if (isAdminOrSchoolAdmin() || hasPermission('berechtigungen_vergeben')): ?>
     <button onclick="openBulkPermissionModal()"
             class="px-4 py-2 bg-white text-purple-700 rounded-lg font-semibold hover:bg-purple-50 transition text-sm">
         <i class="fas fa-shield-alt mr-2"></i>Berechtigungen vergeben

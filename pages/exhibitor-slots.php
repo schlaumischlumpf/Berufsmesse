@@ -6,19 +6,34 @@ if (!isExhibitor() && !isAdmin()) die('Keine Berechtigung');
 
 $db = getDB();
 $userId = $_SESSION['user_id'];
+$ids = isAdmin() ? [] : getExhibitorIdsForUser($userId);
 $exhibitorId = (int)($_GET['exhibitor_id'] ?? 0);
 
-// Prüfen ob User Zugriff auf diesen Aussteller hat
-if (!isAdmin()) {
-    $ids = getExhibitorIdsForUser($userId);
-    if (!in_array($exhibitorId, $ids)) {
-        echo '<div class="p-4 bg-red-50 text-red-700 rounded-xl">Kein Zugriff auf diesen Aussteller.</div>';
+// Auto-default: if no exhibitor_id given, use the first one linked to this user
+if (!isAdmin() && !in_array($exhibitorId, $ids)) {
+    if (!empty($ids)) {
+        $defaultId = $ids[0];
+        $page = $_GET['page'] ?? 'exhibitor-slots';
+        header("Location: ?page={$page}&exhibitor_id={$defaultId}");
+        exit;
+    } else {
+        echo '<div class="p-4 bg-red-50 text-red-700 rounded-xl">Kein Aussteller-Konto verknüpft. Bitte wende dich an den Administrator.</div>';
         return;
     }
 }
 
 // Aussteller laden
-$stmt = $db->prepare("SELECT e.*, me.name as edition_name FROM exhibitors e LEFT JOIN messe_editions me ON e.edition_id = me.id WHERE e.id = ?");
+$stmt = $db->prepare("
+    SELECT e.*,
+           r.room_number, r.room_name,
+           me.name as edition_name, me.year as edition_year,
+           s.name as school_name
+    FROM exhibitors e
+    LEFT JOIN rooms r ON e.room_id = r.id
+    LEFT JOIN messe_editions me ON e.edition_id = me.id
+    LEFT JOIN schools s ON me.school_id = s.id
+    WHERE e.id = ?
+");
 $stmt->execute([$exhibitorId]);
 $exhibitor = $stmt->fetch();
 
@@ -32,17 +47,25 @@ $stmt = $db->prepare("SELECT t.* FROM timeslots t WHERE t.edition_id = ? ORDER B
 $stmt->execute([$exhibitor['edition_id']]);
 $timeslots = $stmt->fetchAll();
 
-// Registrierungen pro Slot laden
-$stmt = $db->prepare("
-    SELECT r.*, t.slot_name, t.start_time, t.end_time, t.slot_number,
-           u.firstname, u.lastname, u.class
-    FROM registrations r
-    JOIN timeslots t ON r.timeslot_id = t.id
-    JOIN users u ON r.user_id = u.id
-    WHERE r.exhibitor_id = ?
-    ORDER BY t.slot_number, u.class, u.lastname
-");
-$stmt->execute([$exhibitorId]);
+// Registrierungen pro Slot laden (nur Admins erhalten Namen/Klasse)
+if (isAdminOrSchoolAdmin()) {
+    $regSql = "SELECT r.*, t.slot_name, t.start_time, t.end_time, t.slot_number,
+                      u.firstname, u.lastname, u.class
+               FROM registrations r
+               JOIN timeslots t ON r.timeslot_id = t.id
+               JOIN users u ON r.user_id = u.id
+               WHERE r.exhibitor_id = ? AND r.edition_id = ?
+               ORDER BY t.slot_number, u.class, u.lastname";
+} else {
+    $regSql = "SELECT r.user_id, r.timeslot_id,
+                      t.slot_name, t.start_time, t.end_time, t.slot_number
+               FROM registrations r
+               JOIN timeslots t ON r.timeslot_id = t.id
+               WHERE r.exhibitor_id = ? AND r.edition_id = ?
+               ORDER BY t.slot_number";
+}
+$stmt = $db->prepare($regSql);
+$stmt->execute([$exhibitorId, $exhibitor['edition_id']]);
 $registrations = $stmt->fetchAll();
 
 // Nach Slot gruppieren
@@ -52,8 +75,8 @@ foreach ($registrations as $reg) {
 }
 
 // Anwesenheit laden
-$stmt = $db->prepare("SELECT user_id, timeslot_id FROM attendance WHERE exhibitor_id = ?");
-$stmt->execute([$exhibitorId]);
+$stmt = $db->prepare("SELECT user_id, timeslot_id FROM attendance WHERE exhibitor_id = ? AND edition_id = ?");
+$stmt->execute([$exhibitorId, $exhibitor['edition_id']]);
 $attended = [];
 foreach ($stmt->fetchAll() as $att) {
     $attended[$att['user_id'] . '-' . $att['timeslot_id']] = true;
@@ -70,7 +93,7 @@ foreach ($stmt->fetchAll() as $att) {
             Slot-Anmeldungen — <?php echo htmlspecialchars($exhibitor['name']); ?>
         </h2>
     </div>
-    <p class="text-sm text-gray-500"><?php echo htmlspecialchars($exhibitor['edition_name'] ?? ''); ?> · <?php echo count($registrations); ?> Anmeldungen</p>
+    <p class="text-sm text-gray-500"><?php echo htmlspecialchars($exhibitor['school_name'] ?? 'Unbekannte Schule'); ?> · <?php echo htmlspecialchars($exhibitor['edition_name'] ?? ''); ?> · <?php echo count($registrations); ?> Anmeldungen</p>
 </div>
 
 <?php foreach ($timeslots as $ts): ?>
@@ -89,7 +112,8 @@ foreach ($stmt->fetchAll() as $att) {
     
     <?php if (empty($slotRegs)): ?>
         <p class="text-sm text-gray-400 italic">Keine Anmeldungen für diesen Slot.</p>
-    <?php else: ?>
+    <?php elseif (isAdminOrSchoolAdmin()): ?>
+        <!-- Full table: only admins see names -->
         <div class="overflow-x-auto">
             <table class="w-full text-sm">
                 <thead class="bg-gray-50 border-b">
@@ -117,6 +141,30 @@ foreach ($stmt->fetchAll() as $att) {
                 </tbody>
             </table>
         </div>
+    <?php else: ?>
+        <!-- Exhibitor view: counts only, no names -->
+        <?php
+        $presentCount = count(array_filter($slotRegs, fn($r) => isset($attended[$r['user_id'] . '-' . $ts['id']])));
+        $totalCount   = count($slotRegs);
+        ?>
+        <div class="flex items-center gap-6 py-2">
+            <div class="text-center">
+                <p class="text-2xl font-bold text-gray-800"><?php echo $totalCount; ?></p>
+                <p class="text-xs text-gray-400 mt-0.5">Angemeldet</p>
+            </div>
+            <div class="text-center">
+                <p class="text-2xl font-bold text-emerald-600"><?php echo $presentCount; ?></p>
+                <p class="text-xs text-gray-400 mt-0.5">Anwesend</p>
+            </div>
+            <div class="text-center">
+                <p class="text-2xl font-bold text-amber-500"><?php echo $totalCount - $presentCount; ?></p>
+                <p class="text-xs text-gray-400 mt-0.5">Ausstehend</p>
+            </div>
+        </div>
+        <p class="text-xs text-gray-400 mt-1 italic">
+            <i class="fas fa-lock mr-1"></i>
+            Schülernamen sind nur für Administratoren sichtbar.
+        </p>
     <?php endif; ?>
 </div>
 <?php endforeach; ?>

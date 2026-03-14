@@ -1,11 +1,23 @@
 <?php
-// Kategorien fuer Filter aus DB laden (Fallback: DISTINCT aus exhibitors)
+// Kategorien fuer Filter aus DB laden (Fallback: DISTINCT aus exhibitors, JSON-aware)
 $industryList = getIndustries();
-$__catStmt = $db->prepare("SELECT DISTINCT category FROM exhibitors WHERE active = 1 AND exhibitors.edition_id = ? AND category IS NOT NULL AND category != '' ORDER BY category");
+$__catStmt = $db->prepare("SELECT category FROM exhibitors WHERE active = 1 AND edition_id = ? AND category IS NOT NULL AND category != ''");
 $__catStmt->execute([$activeEditionId]);
-$categories = !empty($industryList) 
+$__rawCats = $__catStmt->fetchAll(PDO::FETCH_COLUMN);
+$__decodedCats = [];
+foreach ($__rawCats as $__raw) {
+    $__arr = json_decode($__raw, true);
+    if (is_array($__arr)) {
+        $__decodedCats = array_merge($__decodedCats, $__arr);
+    } elseif (!empty($__raw)) {
+        $__decodedCats[] = $__raw;
+    }
+}
+$__decodedCats = array_values(array_unique(array_filter($__decodedCats)));
+sort($__decodedCats);
+$categories = !empty($industryList)
     ? array_column($industryList, 'name')
-    : $__catStmt->fetchAll(PDO::FETCH_COLUMN);
+    : $__decodedCats;
 ?>
 
 <!-- Aussteller-Übersicht -->

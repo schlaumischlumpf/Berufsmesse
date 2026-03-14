@@ -22,6 +22,8 @@ requireCsrf();
 
 $db = getDB();
 $activeEditionId = getActiveEditionId();
+// [SCHOOL ISOLATION] null = super-admin (no filter)
+$autoAssignSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 
 try {
     // Verwaltete Slots (nur 1, 3, 5)
@@ -35,17 +37,25 @@ try {
     //          → Slots bei ihren gewählten Ausstellern zuweisen
     // ============================================================
     
+    $schoolJoin  = $autoAssignSchoolId ? "JOIN users u ON r.user_id = u.id" : "";
+    $schoolWhere = $autoAssignSchoolId ? "AND u.school_id = ?" : ""; // [SCHOOL ISOLATION]
+    $phase1Params = $autoAssignSchoolId
+        ? [$activeEditionId, $activeEditionId, $autoAssignSchoolId]
+        : [$activeEditionId, $activeEditionId];
+
     $stmt = $db->prepare("
         SELECT r.id as registration_id, r.user_id, r.exhibitor_id, e.name as exhibitor_name, e.room_id, COALESCE(r.priority, 2) as priority
         FROM registrations r
         JOIN exhibitors e ON r.exhibitor_id = e.id
+        $schoolJoin
         WHERE r.timeslot_id IS NULL
         AND e.active = 1
         AND e.room_id IS NOT NULL
         AND r.edition_id = ? AND e.edition_id = ?
+        $schoolWhere
         ORDER BY COALESCE(r.priority, 2) ASC, r.registered_at ASC
     ");
-    $stmt->execute([$activeEditionId, $activeEditionId]);
+    $stmt->execute($phase1Params);
     $pendingRegistrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($pendingRegistrations as $reg) {
@@ -111,18 +121,23 @@ try {
     // PHASE 2: Schüler ohne vollständige Slots verteilen
     // ============================================================
     
+    $schoolWhere2 = $autoAssignSchoolId ? "AND u.school_id = ?" : ""; // [SCHOOL ISOLATION]
+    $phase2Params = $autoAssignSchoolId
+        ? [$activeEditionId, $activeEditionId, $autoAssignSchoolId]
+        : [$activeEditionId, $activeEditionId];
+
     $stmt = $db->prepare("
         SELECT u.id,
                COALESCE(SUM(CASE WHEN r.timeslot_id IS NOT NULL AND t.slot_number " . getManagedSlotsSqlIn() . " THEN 1 ELSE 0 END), 0) as assigned_count
         FROM users u
         LEFT JOIN registrations r ON u.id = r.user_id AND r.edition_id = ?
         LEFT JOIN timeslots t ON r.timeslot_id = t.id AND t.edition_id = ?
-        WHERE u.role = 'student'
+        WHERE u.role = 'student' $schoolWhere2
         GROUP BY u.id
         HAVING assigned_count < " . getManagedSlotCount() . "
         ORDER BY assigned_count DESC
     ");
-    $stmt->execute([$activeEditionId, $activeEditionId]);
+    $stmt->execute($phase2Params);
     $studentsNeedingSlots = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($studentsNeedingSlots as $student) {
@@ -187,7 +202,12 @@ try {
     }
     
     // Statistik erstellen
-    $stmt = $db->query("SELECT COUNT(*) FROM users WHERE role = 'student'");
+    if ($autoAssignSchoolId) { // [SCHOOL ISOLATION]
+        $stmt = $db->prepare("SELECT COUNT(*) FROM users WHERE role = 'student' AND school_id = ?");
+        $stmt->execute([$autoAssignSchoolId]);
+    } else {
+        $stmt = $db->query("SELECT COUNT(*) FROM users WHERE role = 'student'");
+    }
     $totalStudents = $stmt->fetchColumn();
     
     $stmt = $db->prepare("

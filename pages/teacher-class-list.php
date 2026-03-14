@@ -9,8 +9,18 @@ if (empty($class)) {
 }
 
 // Schüler dieser Klasse laden
-$stmt = $db->prepare("SELECT * FROM users WHERE role = 'student' AND class = ? ORDER BY lastname, firstname");
-$stmt->execute([$class]);
+$teacherSchoolId = $_SESSION['school_id'] ?? null;
+
+if ($teacherSchoolId) {
+    $stmt = $db->prepare("SELECT * FROM users WHERE role = 'student'
+                          AND class = ? AND school_id = ?  -- [SCHOOL ISOLATION]
+                          ORDER BY lastname, firstname");
+    $stmt->execute([$class, $teacherSchoolId]);
+} else {
+    $stmt = $db->prepare("SELECT * FROM users WHERE role = 'student'
+                          AND class = ? ORDER BY lastname, firstname");
+    $stmt->execute([$class]);
+}
 $students = $stmt->fetchAll();
 
 // Für jeden Schüler die Anmeldungen laden

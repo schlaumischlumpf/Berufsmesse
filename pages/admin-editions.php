@@ -1,14 +1,29 @@
 <?php
-if (!isAdmin()) die('Keine Berechtigung');
+if (!isAdminOrSchoolAdmin()) die('Keine Berechtigung');
 $db      = getDB();
 $message = null;
+$edSchoolId = isSchoolAdmin() ? ($_SESSION['school_id'] ?? null) : null;
 
 // Edition aktivieren
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'activate') {
     requireCsrf();
     $edId = intval($_POST['edition_id']);
-    $db->exec("UPDATE messe_editions SET status = 'archived'");
-    $db->prepare("UPDATE messe_editions SET status = 'active' WHERE id = ?")->execute([$edId]);
+    if ($edSchoolId) {
+        // School_admin: nur Editionen der eigenen Schule archivieren/aktivieren
+        $db->prepare("UPDATE messe_editions SET status = 'archived' WHERE school_id = ?")->execute([$edSchoolId]);
+        $db->prepare("UPDATE messe_editions SET status = 'active' WHERE id = ? AND school_id = ?")->execute([$edId, $edSchoolId]);
+    } else {
+        // Global admin: alle Editionen dieser Schule archivieren
+        $stmt = $db->prepare("SELECT school_id FROM messe_editions WHERE id = ?");
+        $stmt->execute([$edId]);
+        $targetSchoolId = $stmt->fetchColumn();
+        if ($targetSchoolId) {
+            $db->prepare("UPDATE messe_editions SET status = 'archived' WHERE school_id = ?")->execute([$targetSchoolId]);
+        } else {
+            $db->exec("UPDATE messe_editions SET status = 'archived' WHERE school_id IS NULL");
+        }
+        $db->prepare("UPDATE messe_editions SET status = 'active' WHERE id = ?")->execute([$edId]);
+    }
     invalidateEditionCache();
     logAuditAction('edition_aktiviert', "Edition #$edId aktiviert", 'warning');
     header('Location: ?page=admin-editions'); exit();
@@ -24,11 +39,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $regE    = trim($_POST['registration_end']   ?? '') ?: null;
     $maxReg  = intval($_POST['max_registrations_per_student'] ?? 3);
     $copyExhibitors = !empty($_POST['copy_exhibitors']);
+    $newSchoolId = $edSchoolId ?: (intval($_POST['school_id'] ?? 0) ?: null);
+
     if (empty($name) || $year < 2000) {
         $message = ['type' => 'error', 'text' => 'Name und Jahr sind Pflichtfelder.'];
     } else {
-        $db->prepare("INSERT INTO messe_editions (name,year,status,event_date,registration_start,registration_end,max_registrations_per_student) VALUES (?,?,'archived',?,?,?,?)")
-           ->execute([$name, $year, $evDate, $regS, $regE, $maxReg]);
+        $db->prepare("INSERT INTO messe_editions (name,year,status,event_date,registration_start,registration_end,max_registrations_per_student,school_id) VALUES (?,?,'archived',?,?,?,?,?)")
+           ->execute([$name, $year, $evDate, $regS, $regE, $maxReg, $newSchoolId]);
         $newEditionId = (int)$db->lastInsertId();
         $sourceEditionId = getActiveEditionId();
         $copied = 0;
@@ -64,27 +81,59 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
     requireCsrf();
     $edId = intval($_POST['edition_id']);
-    $stmtChk = $db->prepare("SELECT (SELECT COUNT(*) FROM registrations WHERE edition_id=?) + (SELECT COUNT(*) FROM exhibitors WHERE edition_id=?) + (SELECT COUNT(*) FROM attendance WHERE edition_id=?) AS total");
-    $stmtChk->execute([$edId, $edId, $edId]);
-    $total = (int)$stmtChk->fetchColumn();
-    if ($total > 0) {
-        $message = ['type' => 'error', 'text' => "Edition hat noch $total verknüpfte Datensätze und kann nicht gelöscht werden."];
-    } else {
-        $db->prepare("DELETE FROM messe_editions WHERE id = ? AND status = 'archived'")->execute([$edId]);
-        logAuditAction('edition_geloescht', "Edition #$edId gelöscht", 'warning');
-        $message = ['type' => 'success', 'text' => 'Edition gelöscht.'];
+
+    // School_admin darf nur eigene Schul-Editionen löschen
+    if ($edSchoolId) {
+        $stmtOwn = $db->prepare("SELECT COUNT(*) FROM messe_editions WHERE id = ? AND school_id = ?");
+        $stmtOwn->execute([$edId, $edSchoolId]);
+        if ($stmtOwn->fetchColumn() == 0) {
+            $message = ['type' => 'error', 'text' => 'Keine Berechtigung für diese Edition.'];
+        }
+    }
+
+    if (!isset($message)) {
+        $stmtChk = $db->prepare("SELECT (SELECT COUNT(*) FROM registrations WHERE edition_id=?) + (SELECT COUNT(*) FROM exhibitors WHERE edition_id=?) + (SELECT COUNT(*) FROM attendance WHERE edition_id=?) AS total");
+        $stmtChk->execute([$edId, $edId, $edId]);
+        $total = (int)$stmtChk->fetchColumn();
+        if ($total > 0) {
+            $message = ['type' => 'error', 'text' => "Edition hat noch $total verknüpfte Datensätze und kann nicht gelöscht werden."];
+        } else {
+            $db->prepare("DELETE FROM messe_editions WHERE id = ? AND status = 'archived'")->execute([$edId]);
+            logAuditAction('edition_geloescht', "Edition #$edId gelöscht", 'warning');
+            $message = ['type' => 'success', 'text' => 'Edition gelöscht.'];
+        }
     }
 }
 
-// Daten laden
-$editions = $db->query("
-    SELECT e.*,
-           (SELECT COUNT(*) FROM exhibitors    WHERE edition_id = e.id) AS cnt_exhibitors,
-           (SELECT COUNT(*) FROM registrations WHERE edition_id = e.id) AS cnt_registrations,
-           (SELECT COUNT(*) FROM attendance    WHERE edition_id = e.id) AS cnt_checkins
-    FROM messe_editions e
-    ORDER BY e.year DESC, e.id DESC
-")->fetchAll();
+// Daten laden (gefiltert nach Schule für school_admins)
+if ($edSchoolId) {
+    $stmt = $db->prepare("
+        SELECT e.*,
+               (SELECT COUNT(*) FROM exhibitors    WHERE edition_id = e.id) AS cnt_exhibitors,
+               (SELECT COUNT(*) FROM registrations WHERE edition_id = e.id) AS cnt_registrations,
+               (SELECT COUNT(*) FROM attendance    WHERE edition_id = e.id) AS cnt_checkins
+        FROM messe_editions e
+        WHERE e.school_id = ?
+        ORDER BY e.year DESC, e.id DESC
+    ");
+    $stmt->execute([$edSchoolId]);
+    $editions = $stmt->fetchAll();
+} else {
+    $editions = $db->query("
+        SELECT e.*,
+               (SELECT COUNT(*) FROM exhibitors    WHERE edition_id = e.id) AS cnt_exhibitors,
+               (SELECT COUNT(*) FROM registrations WHERE edition_id = e.id) AS cnt_registrations,
+               (SELECT COUNT(*) FROM attendance    WHERE edition_id = e.id) AS cnt_checkins
+        FROM messe_editions e
+        ORDER BY e.year DESC, e.id DESC
+    ")->fetchAll();
+}
+
+// Für globale Admins: Schulen laden für Dropdown
+$schools = [];
+if (!$edSchoolId) {
+    $schools = $db->query("SELECT id, name FROM schools WHERE is_active = 1 ORDER BY name")->fetchAll();
+}
 ?>
 
 <div class="p-4 sm:p-6">
@@ -94,9 +143,9 @@ $editions = $db->query("
 
     <div class="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
         <i class="fas fa-exclamation-triangle mr-2"></i>
-        <strong>Achtung:</strong> Das Aktivieren einer Edition wechselt die <strong>gesamte Anwendung</strong>
+        <strong>Achtung:</strong> Das Aktivieren einer Edition wechselt <?php echo $edSchoolId ? 'Ihre Schule' : 'die Anwendung'; ?>
         in diesen Datenbereich. Anmeldungen, Check-ins und andere Daten sind editionsspezifisch.
-        Benutzerkonten (Admins, Schüler, Lehrer) bleiben erhalten, haben aber in der neuen Edition
+        Benutzerkonten bleiben erhalten, haben aber in der neuen Edition
         keine Anmeldungen. Aussteller und Zeitslots können beim Erstellen übernommen werden.
     </div>
 
@@ -138,8 +187,8 @@ $editions = $db->query("
                     <td class="px-4 py-3">
                         <div class="flex gap-2 justify-end">
                             <?php if ($ed['status'] !== 'active'): ?>
-                            <form method="POST" onsubmit="return confirm('Achtung: Alle Ansichten wechseln zur Edition &quot;<?php echo htmlspecialchars($ed['name'], ENT_QUOTES); ?>
-                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">&quot;.\n\nAnmeldungen und Check-ins sind editionsspezifisch.\nBenutzerkonten bleiben erhalten.\n\nFortfahren?')">
+                            <form method="POST" onsubmit="return confirm('Achtung: Alle Ansichten wechseln zur Edition &quot;<?php echo htmlspecialchars($ed['name'], ENT_QUOTES); ?>&quot;.\n\nAnmeldungen und Check-ins sind editionsspezifisch.\nBenutzerkonten bleiben erhalten.\n\nFortfahren?')">
+                                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
                                 <input type="hidden" name="action" value="activate">
                                 <input type="hidden" name="edition_id" value="<?php echo $ed['id']; ?>">
                                 <button type="submit" class="px-3 py-1 bg-emerald-500 text-white text-xs rounded-lg hover:bg-emerald-600 transition font-medium">
@@ -183,6 +232,17 @@ $editions = $db->query("
                 <input type="number" name="year" required value="<?php echo date('Y') + 1; ?>" min="2020" max="2099"
                        class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500">
             </div>
+            <?php if (!$edSchoolId && !empty($schools)): ?>
+            <div>
+                <label class="block text-xs font-medium text-gray-600 mb-1">Schule</label>
+                <select name="school_id" class="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500">
+                    <option value="">-- Schule wählen --</option>
+                    <?php foreach ($schools as $school): ?>
+                    <option value="<?php echo $school['id']; ?>"><?php echo htmlspecialchars($school['name']); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <?php endif; ?>
             <div>
                 <label class="block text-xs font-medium text-gray-600 mb-1">Messe-Datum</label>
                 <input type="date" name="event_date"

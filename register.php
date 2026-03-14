@@ -7,7 +7,7 @@ checkSitePassword();
 
 // Prüfen ob Registrierungsseite aktiviert ist
 if (getSetting('registration_page_enabled', '0') !== '1') {
-    header('Location: login.php');
+    header('Location: ' . schoolUrl('login.php'));
     exit();
 }
 
@@ -41,11 +41,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $message = 'Benutzername bereits vergeben';
             $messageType = 'error';
         } else {
-            // Benutzer anlegen (mit edition_id)
+            // Benutzer anlegen (mit edition_id und school_id)
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-            $stmt = $db->prepare("INSERT INTO users (username, password, firstname, lastname, class, role, edition_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            
-            if ($stmt->execute([$username, $hashedPassword, $firstname, $lastname, $class, $role, $activeEditionId])) {
+            $school = getCurrentSchool();
+            $schoolId = $school ? (int)$school['id'] : null;
+            $stmt = $db->prepare("INSERT INTO users (username, password, firstname, lastname, class, role, edition_id, school_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+
+            if ($stmt->execute([$username, $hashedPassword, $firstname, $lastname, $class, $role, $activeEditionId, $schoolId])) {
                 $message = "Benutzer erfolgreich angelegt! Du kannst dich jetzt mit '$username' anmelden.";
                 $messageType = 'success';
                 
@@ -318,10 +320,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 <div class="mt-8 pt-6 border-t border-gray-100">
                     <p class="text-sm text-gray-500 mb-4 font-semibold">Schnellzugriff:</p>
                     <div class="flex gap-3">
-                        <a href="login.php" class="flex-1 text-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 text-blue-700 px-4 py-3 rounded-xl hover:shadow-lg transition-all duration-300 font-semibold">
+                        <a href="<?php echo schoolUrl('login.php'); ?>" class="flex-1 text-center bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 text-blue-700 px-4 py-3 rounded-xl hover:shadow-lg transition-all duration-300 font-semibold">
                             <i class="fas fa-sign-in-alt mr-2"></i>Zum Login
                         </a>
-                        <a href="index.php" class="flex-1 text-center bg-gradient-to-r from-primary-50 to-emerald-50 border border-primary-100 text-primary-700 px-4 py-3 rounded-xl hover:shadow-lg transition-all duration-300 font-semibold">
+                        <a href="<?php echo schoolUrl('index.php'); ?>" class="flex-1 text-center bg-gradient-to-r from-primary-50 to-emerald-50 border border-primary-100 text-primary-700 px-4 py-3 rounded-xl hover:shadow-lg transition-all duration-300 font-semibold">
                             <i class="fas fa-home mr-2"></i>Zur App
                         </a>
                     </div>

@@ -456,6 +456,118 @@ try {
     $errors[] = "Fehler Migration 17 (timeslots.is_break): " . $e->getMessage();
 }
 
+// Migration 18: schools Tabelle erstellen (Multi-Schulen-Architektur)
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `schools` (
+        `id`            INT(11)      NOT NULL AUTO_INCREMENT,
+        `name`          VARCHAR(200) NOT NULL,
+        `slug`          VARCHAR(100) NOT NULL,
+        `address`       VARCHAR(300) DEFAULT NULL,
+        `contact_email` VARCHAR(200) DEFAULT NULL,
+        `contact_phone` VARCHAR(50)  DEFAULT NULL,
+        `logo`          VARCHAR(255) DEFAULT NULL,
+        `is_active`     TINYINT(1)   NOT NULL DEFAULT 1,
+        `created_by`    INT(11)      DEFAULT NULL,
+        `created_at`    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `unique_slug` (`slug`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Schulen (Mandanten)'");
+
+    // Standardschule anlegen falls noch keine existiert
+    $cnt = $db->query("SELECT COUNT(*) FROM schools")->fetchColumn();
+    if ($cnt == 0) {
+        $db->exec("INSERT INTO schools (name, slug, is_active) VALUES ('Standardschule', 'standard', 1)");
+        $success[] = "Tabelle 'schools' erstellt und Standardschule angelegt";
+    } else {
+        $success[] = "Tabelle 'schools' existiert bereits";
+    }
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 18 (schools): " . $e->getMessage();
+}
+
+// Migration 19: school_id zu relevanten Tabellen hinzufügen
+$schoolIdTables = ['messe_editions', 'users', 'settings', 'announcements'];
+foreach ($schoolIdTables as $tbl) {
+    try {
+        $cols = $db->query("SHOW COLUMNS FROM `$tbl` LIKE 'school_id'")->fetchAll();
+        if (empty($cols)) {
+            $db->exec("ALTER TABLE `$tbl` ADD COLUMN `school_id` INT(11) DEFAULT NULL, ADD KEY `idx_school_id` (`school_id`)");
+            // Assign existing data to default school (ID 1)
+            if ($tbl === 'users') {
+                $db->exec("UPDATE `$tbl` SET school_id = 1 WHERE role NOT IN ('admin') AND school_id IS NULL");
+            } else {
+                $db->exec("UPDATE `$tbl` SET school_id = 1 WHERE school_id IS NULL");
+            }
+            $success[] = "school_id zu $tbl hinzugefügt";
+        } else {
+            $success[] = "school_id in $tbl bereits vorhanden";
+        }
+    } catch (PDOException $e) {
+        $errors[] = "Fehler Migration 19 ($tbl.school_id): " . $e->getMessage();
+    }
+}
+
+// Migration 20: exhibitor_users Tabelle (Aussteller-Account-Verknüpfung)
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `exhibitor_users` (
+        `id`                  INT(11)    NOT NULL AUTO_INCREMENT,
+        `user_id`             INT(11)    NOT NULL,
+        `exhibitor_id`        INT(11)    NOT NULL,
+        `can_edit_profile`    TINYINT(1) NOT NULL DEFAULT 1,
+        `can_manage_documents` TINYINT(1) NOT NULL DEFAULT 1,
+        `assigned_at`         TIMESTAMP  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `unique_user_exhibitor` (`user_id`, `exhibitor_id`),
+        KEY `idx_user_id` (`user_id`),
+        KEY `idx_exhibitor_id` (`exhibitor_id`),
+        FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`exhibitor_id`) REFERENCES `exhibitors`(`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Verknüpfung: Aussteller-User zu Unternehmen'");
+    $success[] = "Tabelle 'exhibitor_users' OK";
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 20 (exhibitor_users): " . $e->getMessage();
+}
+
+// Migration 21: equipment_options Tabelle (Ausstattungsoptionen pro Schule)
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `equipment_options` (
+        `id`         INT(11)      NOT NULL AUTO_INCREMENT,
+        `school_id`  INT(11)      NOT NULL,
+        `name`       VARCHAR(150) NOT NULL,
+        `description` VARCHAR(500) DEFAULT NULL,
+        `sort_order` INT(11)      NOT NULL DEFAULT 0,
+        `is_active`  TINYINT(1)   NOT NULL DEFAULT 1,
+        `created_at` TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_school_active` (`school_id`, `is_active`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Ausstattungsoptionen pro Schule'");
+    $success[] = "Tabelle 'equipment_options' OK";
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 21 (equipment_options): " . $e->getMessage();
+}
+
+// Migration 22: exhibitor_equipment_requests Tabelle
+try {
+    $db->exec("CREATE TABLE IF NOT EXISTS `exhibitor_equipment_requests` (
+        `id`                  INT(11)   NOT NULL AUTO_INCREMENT,
+        `exhibitor_id`        INT(11)   NOT NULL,
+        `edition_id`          INT(11)   NOT NULL,
+        `equipment_option_id` INT(11)   DEFAULT NULL,
+        `custom_text`         TEXT      DEFAULT NULL,
+        `quantity`            INT(11)   DEFAULT 1,
+        `status`              ENUM('pending','approved','denied') NOT NULL DEFAULT 'pending',
+        `admin_notes`         TEXT      DEFAULT NULL,
+        `requested_by`        INT(11)   DEFAULT NULL,
+        `created_at`          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `updated_at`          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        KEY `idx_exhibitor_edition` (`exhibitor_id`, `edition_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci COMMENT='Ausstattungsanfragen von Ausstellern'");
+    $success[] = "Tabelle 'exhibitor_equipment_requests' OK";
+} catch (PDOException $e) {
+    $errors[] = "Fehler Migration 22 (exhibitor_equipment_requests): " . $e->getMessage();
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="de">
