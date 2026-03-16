@@ -17,6 +17,9 @@ requireCsrf();
 
 $db = getDB();
 $activeEditionId = getActiveEditionId();
+// [SCHOOL ISOLATION] Schulkontext für Validierung
+// [SCHOOL ISOLATION] Immer auf Schulkontext beschränken (auch für Super-Admins)
+$qrTokenSchoolId = isset($_SESSION['_prev_school_id']) ? (int)$_SESSION['_prev_school_id'] : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 $data = json_decode(file_get_contents('php://input'), true);
 $action = $data['action'] ?? $_GET['action'] ?? 'generate';
 
@@ -30,6 +33,11 @@ try {
         $validityAfter = intval(getSetting('qr_validity_after', 15));
 
         if ($exhibitorId && $timeslotId) {
+            // [SCHOOL ISOLATION] Aussteller muss zur Schule gehören
+            if (!exhibitorBelongsToSchool($exhibitorId, $qrTokenSchoolId ? (int)$qrTokenSchoolId : null)) {
+                echo json_encode(['success' => false, 'message' => 'Aussteller gehört nicht zu dieser Schule']);
+                exit;
+            }
             // Einzelnen Token generieren (32 Zeichen)
             $token = bin2hex(random_bytes(16));
 
@@ -90,17 +98,19 @@ try {
             echo json_encode(['success' => true, 'generated' => $generated]);
         }
     } elseif ($action === 'list') {
-        // Alle Tokens abrufen
+        // Alle Tokens abrufen — [SCHOOL ISOLATION] via edition_id (school-scoped)
         $stmt = $db->prepare("
             SELECT qt.*, e.name as exhibitor_name, t.slot_name, t.slot_number
             FROM qr_tokens qt
             JOIN exhibitors e ON qt.exhibitor_id = e.id
             JOIN timeslots t ON qt.timeslot_id = t.id
+            JOIN messe_editions me ON e.edition_id = me.id
             WHERE e.active = 1
             AND qt.edition_id = ? AND e.edition_id = ? AND t.edition_id = ?
+            AND (? IS NULL OR me.school_id = ?)
             ORDER BY e.name, t.slot_number
         ");
-        $stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId]);
+        $stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId, $qrTokenSchoolId, $qrTokenSchoolId]);
         $tokens = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         echo json_encode(['success' => true, 'tokens' => $tokens]);

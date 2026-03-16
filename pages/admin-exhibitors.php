@@ -216,6 +216,78 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $message = ['type' => 'error', 'text' => 'Fehler beim Loeschen'];
         }
+    } elseif (isset($_POST['cancel_exhibitor_school'])) {
+        // Schule möchte Aussteller entfernen (mit Bestätigungspflicht innerhalb 1 Woche)
+        if (!isAdminOrSchoolAdmin()) die('Keine Berechtigung');
+        $exId = intval($_POST['exhibitor_id']);
+        $euUserId = intval($_POST['eu_user_id']);
+        $reason = sanitize(trim($_POST['cancel_reason'] ?? ''));
+
+        $schoolCtx = getCurrentSchool();
+        $schoolId = $schoolCtx ? (int)$schoolCtx['id'] : null;
+
+        $result = createCancellationRequest($exId, $euUserId, $schoolId, 'school', $reason);
+        if ($result['success']) {
+            if ($result['requires_confirmation']) {
+                $message = ['type' => 'info', 'text' => "Absage-Antrag für '{$result['name']}' wurde an den Aussteller gesendet und wartet auf Bestätigung."];
+            } else {
+                $msg = "Aussteller '{$result['name']}' wurde entfernt.";
+                if (($result['redistributed'] ?? 0) > 0) $msg .= " {$result['redistributed']} Schüler wurden umverteilt.";
+                $message = ['type' => 'success', 'text' => $msg];
+            }
+        } else {
+            $message = ['type' => 'error', 'text' => $result['error']];
+        }
+    } elseif (isset($_POST['confirm_cancellation'])) {
+        // Absage-Antrag bestätigen/ablehnen
+        if (!isAdminOrSchoolAdmin()) die('Keine Berechtigung');
+        $reqId = intval($_POST['request_id']);
+        $approve = isset($_POST['approve']);
+
+        $result = confirmCancellationRequest($reqId, $_SESSION['user_id'], $approve);
+        if ($result['success']) {
+            if ($approve) {
+                $message = ['type' => 'success', 'text' => 'Absage wurde bestätigt.'];
+            } else {
+                $message = ['type' => 'info', 'text' => 'Absage wurde abgelehnt.'];
+            }
+        } else {
+            $message = ['type' => 'error', 'text' => $result['error']];
+        }
+    } elseif (isset($_POST['resend_invite'])) {
+        // Neuen Einladungslink senden (statt Reaktivierung)
+        if (!isAdminOrSchoolAdmin()) die('Keine Berechtigung');
+        $exId = intval($_POST['exhibitor_id']);
+        $euUserId = intval($_POST['eu_user_id']);
+
+        // Hole User-Daten
+        $stmt = $db->prepare("SELECT username, firstname, lastname, email FROM users WHERE id = ?");
+        $stmt->execute([$euUserId]);
+        $user = $stmt->fetch();
+
+        if ($user) {
+            // Lösche alte abgesagte Verknüpfung
+            $db->prepare("DELETE FROM exhibitor_users WHERE exhibitor_id = ? AND user_id = ?")->execute([$exId, $euUserId]);
+
+            // Erstelle neuen Einladungslink
+            $result = createOrLinkExhibitorAccount($exId, $user['username'], $user['firstname'], $user['lastname'], $user['email'] ?? '');
+            if ($result['success'] && !empty($result['token'])) {
+                $inviteUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
+                    . '://' . $_SERVER['HTTP_HOST']
+                    . BASE_URL . 'exhibitor-accept.php?token=' . $result['token'];
+                logAuditAction('einladung_erneuert', "Neuer Einladungslink für User '{$user['username']}' (Aussteller #$exId) erstellt");
+                $accountMessage = [
+                    'type' => 'success',
+                    'text' => 'Neuer Einladungslink erstellt (30 Tage gültig):',
+                    'link' => $inviteUrl,
+                    'exhibitor_id' => $exId,
+                ];
+            } else {
+                $accountMessage = ['type' => 'error', 'text' => 'Fehler beim Erstellen des Einladungslinks.'];
+            }
+        } else {
+            $accountMessage = ['type' => 'error', 'text' => 'Benutzer nicht gefunden.'];
+        }
     } elseif (isset($_POST['upload_document'])) {
         if (!isAdminOrSchoolAdmin() && !hasPermission('aussteller_dokumente_verwalten')) die('Keine Berechtigung');
         // Dokument hochladen
@@ -264,7 +336,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $lastname  = sanitize(trim($_POST['ex_lastname']  ?? ''));
         $email     = sanitize(trim($_POST['ex_email']     ?? ''));
 
-        if (!$exId || !$username || !$firstname || !$lastname) {
+        // [SCHOOL ISOLATION] Aussteller muss zur aktuellen Schule gehören
+        $exAccCtxSchool = getCurrentSchool();
+        $exAccSchoolId  = $exAccCtxSchool ? (int)$exAccCtxSchool['id'] : null;
+        if ($exId && !exhibitorBelongsToSchool($exId, $exAccSchoolId)) {
+            $accountMessage = ['type' => 'error', 'text' => 'Aussteller gehört nicht zu dieser Schule.'];
+        } elseif (!$exId || !$username || !$firstname || !$lastname) {
             $accountMessage = ['type' => 'error',
                 'text' => 'Benutzername, Vor- und Nachname sind Pflichtfelder.'];
         } else {
@@ -273,14 +350,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $inviteUrl = (isset($_SERVER['HTTPS']) ? 'https' : 'http')
                     . '://' . $_SERVER['HTTP_HOST']
                     . BASE_URL . 'exhibitor-accept.php?token=' . $result['token'];
-                logAuditAction('aussteller_account_erstellt',
-                    "Account '{$username}' für Aussteller #{$exId} erstellt, Token generiert");
-                $accountMessage = [
-                    'type'        => 'success',
-                    'text'        => 'Account erstellt. Einladungslink (30 Tage gültig):',
-                    'link'        => $inviteUrl,
-                    'exhibitor_id' => $exId,
-                ];
+
+                if (!empty($result['already_active'])) {
+                    // Account existiert bereits mit Passwort — Bestätigung erforderlich
+                    logAuditAction('aussteller_einladung_erneut',
+                        "Bestehender Account '{$username}' für Aussteller #{$exId} erneut eingeladen (Bestätigung erforderlich)");
+                    $accountMessage = [
+                        'type'         => 'info',
+                        'text'         => "Account '{$username}' wurde eingeladen. Der Aussteller muss die Einladung in seinem Dashboard bestätigen. Alternativ kann der folgende Link verwendet werden:",
+                        'link'         => $inviteUrl,
+                        'exhibitor_id' => $exId,
+                    ];
+                } else {
+                    // Neuer Account erstellt
+                    logAuditAction('aussteller_account_erstellt',
+                        "Account '{$username}' für Aussteller #{$exId} erstellt, Token generiert");
+                    $accountMessage = [
+                        'type'        => 'success',
+                        'text'        => 'Account erstellt. Der Aussteller muss den Einladungslink öffnen, ein Passwort setzen und die Einladung bestätigen (30 Tage gültig):',
+                        'link'        => $inviteUrl,
+                        'exhibitor_id' => $exId,
+                    ];
+                }
             } else {
                 $accountMessage = ['type' => 'error', 'text' => $result['error']];
             }
@@ -594,16 +685,78 @@ if (empty($equipmentOptions)) {
     );
 }
 
-// Alle Aussteller laden mit Raum-Kapazitaet
-$stmt = $db->prepare("
-    SELECT e.*, r.capacity as room_capacity
-    FROM exhibitors e
-    LEFT JOIN rooms r ON e.room_id = r.id
-    WHERE e.edition_id = ?
-    ORDER BY e.name ASC
-");
-$stmt->execute([$activeEditionId]);
-$allExhibitors = $stmt->fetchAll();
+// Alle Aussteller laden mit Raum-Kapazitaet und Einladungsstatus
+try {
+    $stmt = $db->prepare("
+        SELECT e.*, r.capacity as room_capacity,
+            (SELECT GROUP_CONCAT(
+                CONCAT(eu2.invite_accepted, ':', IFNULL(eu2.status, 'active'))
+                SEPARATOR ','
+            ) FROM exhibitor_users eu2 WHERE eu2.exhibitor_id = e.id) as invite_info
+        FROM exhibitors e
+        LEFT JOIN rooms r ON e.room_id = r.id
+        WHERE e.edition_id = ?
+        ORDER BY e.name ASC
+    ");
+    $stmt->execute([$activeEditionId]);
+    $allExhibitors = $stmt->fetchAll();
+} catch (PDOException $e) {
+    // Fallback: status-Spalte existiert noch nicht (Migration 23)
+    try {
+        $stmt = $db->prepare("
+            SELECT e.*, r.capacity as room_capacity,
+                (SELECT GROUP_CONCAT(
+                    CONCAT(eu2.invite_accepted, ':active')
+                    SEPARATOR ','
+                ) FROM exhibitor_users eu2 WHERE eu2.exhibitor_id = e.id) as invite_info
+            FROM exhibitors e
+            LEFT JOIN rooms r ON e.room_id = r.id
+            WHERE e.edition_id = ?
+            ORDER BY e.name ASC
+        ");
+        $stmt->execute([$activeEditionId]);
+        $allExhibitors = $stmt->fetchAll();
+    } catch (PDOException $e2) {
+        // Ultimativer Fallback: Keine invite-Spalten
+        $stmt = $db->prepare("
+            SELECT e.*, r.capacity as room_capacity, NULL as invite_info
+            FROM exhibitors e
+            LEFT JOIN rooms r ON e.room_id = r.id
+            WHERE e.edition_id = ?
+            ORDER BY e.name ASC
+        ");
+        $stmt->execute([$activeEditionId]);
+        $allExhibitors = $stmt->fetchAll();
+    }
+}
+
+// Aussteller in 3 Gruppen aufteilen
+$confirmedExhibitors = [];   // Zugesagt (invite_accepted=1 und status=active)
+$pendingExhibitors = [];     // Eingeladen aber noch nicht zugesagt
+$uninvitedExhibitors = [];   // Noch nicht eingeladen
+
+foreach ($allExhibitors as $ex) {
+    $info = $ex['invite_info'];
+    if (empty($info)) {
+        $uninvitedExhibitors[] = $ex;
+    } else {
+        $hasAccepted = false;
+        $hasPending = false;
+        foreach (explode(',', $info) as $entry) {
+            [$accepted, $status] = explode(':', $entry);
+            if ($accepted === '1' && $status === 'active') $hasAccepted = true;
+            if ($accepted === '0' && $status === 'active') $hasPending = true;
+        }
+        if ($hasAccepted) {
+            $confirmedExhibitors[] = $ex;
+        } elseif ($hasPending) {
+            $pendingExhibitors[] = $ex;
+        } else {
+            // Alle Verknüpfungen abgesagt/entfernt
+            $uninvitedExhibitors[] = $ex;
+        }
+    }
+}
 
 // Orga-Benutzer laden (Rolle 'orga' oder mit qr_codes_verwalten Berechtigung)
 $stmt = $db->query("
@@ -671,31 +824,76 @@ $orgaUsers = $stmt->fetchAll();
     </div>
     <?php endif; ?>
 
-    <!-- Add Button -->
-        <!-- Add Button -->
-    <div class="flex justify-end mb-4">
-        <button onclick="openAddModal()" class="bg-emerald-500 text-white px-5 py-2.5 rounded-lg hover:bg-emerald-600 transition font-medium">
-            <i class="fas fa-plus mr-2"></i>Neuer Aussteller
-        </button>
+    <!-- Suchfeld + Add Button -->
+    <div class="flex items-center justify-between gap-4 mb-4">
+        <div class="flex-1 max-w-md relative">
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-search text-gray-400"></i>
+            </div>
+            <input type="text" id="exhibitorSearch" placeholder="Aussteller suchen..."
+                   oninput="filterExhibitors(this.value)"
+                   class="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-400 focus:outline-none text-sm">
+        </div>
+        <div class="flex items-center gap-2">
+            <select id="exhibitorStatusFilter" onchange="filterExhibitors(document.getElementById('exhibitorSearch').value)"
+                    class="px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 focus:outline-none">
+                <option value="all">Alle</option>
+                <option value="confirmed">Zugesagt (<?php echo count($confirmedExhibitors); ?>)</option>
+                <option value="pending">Eingeladen (<?php echo count($pendingExhibitors); ?>)</option>
+                <option value="uninvited">Nicht eingeladen (<?php echo count($uninvitedExhibitors); ?>)</option>
+            </select>
+            <button onclick="openAddModal()" class="bg-emerald-500 text-white px-5 py-2.5 rounded-lg hover:bg-emerald-600 transition font-medium whitespace-nowrap">
+                <i class="fas fa-plus mr-2"></i>Neuer Aussteller
+            </button>
+        </div>
+    </div>
+
+    <!-- Gruppen-Badges -->
+    <div class="flex flex-wrap gap-2 mb-4 text-xs">
+        <span class="px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium">
+            <i class="fas fa-check-circle mr-1"></i>Zugesagt: <?php echo count($confirmedExhibitors); ?>
+        </span>
+        <span class="px-3 py-1 rounded-full bg-amber-50 text-amber-700 font-medium">
+            <i class="fas fa-clock mr-1"></i>Eingeladen: <?php echo count($pendingExhibitors); ?>
+        </span>
+        <span class="px-3 py-1 rounded-full bg-gray-100 text-gray-600 font-medium">
+            <i class="fas fa-question-circle mr-1"></i>Nicht eingeladen: <?php echo count($uninvitedExhibitors); ?>
+        </span>
     </div>
 
     <!-- Exhibitors List -->
-    <div class="grid grid-cols-1 gap-4">
-        <?php foreach ($allExhibitors as $exhibitor): 
+    <div class="grid grid-cols-1 gap-4" id="exhibitorsList">
+        <?php foreach ($allExhibitors as $exhibitor):
+            // Status-Klasse bestimmen
+            $exInviteStatus = 'uninvited';
+            $info = $exhibitor['invite_info'] ?? '';
+            if (!empty($info)) {
+                foreach (explode(',', $info) as $entry) {
+                    $parts = explode(':', $entry);
+                    if (($parts[0] ?? '') === '1' && ($parts[1] ?? '') === 'active') { $exInviteStatus = 'confirmed'; break; }
+                    if (($parts[0] ?? '') === '0' && ($parts[1] ?? '') === 'active') { $exInviteStatus = 'pending'; }
+                }
+            }
+
             // Raum-basierte Kapazitaet berechnen
             $roomCapacity = $exhibitor['room_capacity'] ? intval($exhibitor['room_capacity']) : 0;
             $totalCapacity = $roomCapacity > 0 ? floor($roomCapacity / 3) * 3 : 0;
             
             // Registrierungen zaehlen (alle Plaetze in verwalteten Slots)
+            // [SCHOOL ISOLATION] nur Schüler der aktuellen Schule zählen
+            $exRegCtxSchool = getCurrentSchool();
+            $exRegSchoolId  = $exRegCtxSchool ? (int)$exRegCtxSchool['id'] : null;
             $stmt = $db->prepare("
-                SELECT COUNT(*) as count 
+                SELECT COUNT(*) as count
                 FROM registrations r
                 JOIN timeslots t ON r.timeslot_id = t.id
-                WHERE r.exhibitor_id = ? 
-                AND r.edition_id = ? 
-                AND t.slot_number " . getManagedSlotsSqlIn()
+                JOIN users u ON r.user_id = u.id
+                WHERE r.exhibitor_id = ?
+                AND r.edition_id = ?
+                AND t.slot_number " . getManagedSlotsSqlIn() . "
+                AND (? IS NULL OR u.school_id = ?)"
             );
-            $stmt->execute([$exhibitor['id'], $activeEditionId]);
+            $stmt->execute([$exhibitor['id'], $activeEditionId, $exRegSchoolId, $exRegSchoolId]);
             $regCount = $stmt->fetch()['count'];
             
             // Dokumente laden
@@ -703,7 +901,9 @@ $orgaUsers = $stmt->fetchAll();
             $stmt->execute([$exhibitor['id'], $activeEditionId]);
             $documents = $stmt->fetchAll();
         ?>
-        <div class="bg-white rounded-xl border border-gray-100 overflow-hidden">
+        <div class="bg-white rounded-xl border border-gray-100 overflow-hidden exhibitor-card"
+             data-name="<?php echo htmlspecialchars(strtolower($exhibitor['name'])); ?>"
+             data-status="<?php echo $exInviteStatus; ?>">
             <!-- Header -->
             <div class="px-5 py-4 border-b border-gray-100">
                 <div class="flex items-center justify-between">
@@ -711,15 +911,24 @@ $orgaUsers = $stmt->fetchAll();
                         <!-- Logo -->
                         <div class="w-12 h-12 rounded-lg bg-gray-50 border border-gray-100 flex items-center justify-center overflow-hidden flex-shrink-0">
                             <?php if ($exhibitor['logo']): ?>
-                                <img src="<?php echo BASE_URL . 'uploads/' . $exhibitor['logo']; ?>" 
-                                     alt="<?php echo htmlspecialchars($exhibitor['name']); ?>" 
+                                <img src="<?php echo BASE_URL . 'uploads/' . $exhibitor['logo']; ?>"
+                                     alt="<?php echo htmlspecialchars($exhibitor['name']); ?>"
                                      class="w-10 h-10 object-contain">
                             <?php else: ?>
                                 <i class="fas fa-building text-gray-300 text-lg"></i>
                             <?php endif; ?>
                         </div>
                         <div>
-                            <h3 class="text-base font-semibold text-gray-800"><?php echo htmlspecialchars($exhibitor['name']); ?></h3>
+                            <div class="flex items-center gap-2">
+                                <h3 class="text-base font-semibold text-gray-800"><?php echo htmlspecialchars($exhibitor['name']); ?></h3>
+                                <?php if ($exInviteStatus === 'confirmed'): ?>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-emerald-50 text-emerald-700"><i class="fas fa-check-circle mr-0.5"></i>Zugesagt</span>
+                                <?php elseif ($exInviteStatus === 'pending'): ?>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-50 text-amber-700"><i class="fas fa-clock mr-0.5"></i>Eingeladen</span>
+                                <?php else: ?>
+                                    <span class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-gray-100 text-gray-500"><i class="fas fa-question-circle mr-0.5"></i>Nicht eingeladen</span>
+                                <?php endif; ?>
+                            </div>
                             <p class="text-sm text-gray-500">
                                 <?php echo $regCount; ?> / <?php echo $totalCapacity; ?> Plaetze belegt
                                 <?php if ($totalCapacity === 0): ?>
@@ -849,19 +1058,68 @@ $orgaUsers = $stmt->fetchAll();
 
                         <?php if (!empty($linkedAccounts)): ?>
                         <div class="mb-3 space-y-2">
-                            <?php foreach ($linkedAccounts as $acc): ?>
-                            <div class="flex items-center justify-between p-2 rounded-lg border text-sm"
-                                 style="background:var(--color-white,#fff);border-color:var(--color-border,#e5e7eb);">
-                                <div>
+                            <?php foreach ($linkedAccounts as $acc):
+                                $accStatus = $acc['status'] ?? 'active';
+                                $accIsCancelled = !in_array($accStatus, ['active']);
+                            ?>
+                            <div class="flex items-center justify-between p-2 rounded-lg border text-sm <?php echo $accIsCancelled ? 'opacity-60' : ''; ?>"
+                                 style="background:var(--color-white,#fff);border-color:<?php echo $accIsCancelled ? '#fca5a5' : 'var(--color-border,#e5e7eb)'; ?>;">
+                                <div class="flex-1 min-w-0">
                                     <span class="font-medium"><?= htmlspecialchars($acc['username']) ?></span>
                                     <span class="text-gray-500 ml-2"><?= htmlspecialchars($acc['firstname'].' '.$acc['lastname']) ?></span>
+                                    <?php if ($accIsCancelled && !empty($acc['cancel_reason'])): ?>
+                                        <p class="text-xs text-red-500 mt-0.5 truncate" title="<?= htmlspecialchars($acc['cancel_reason']) ?>">
+                                            <i class="fas fa-comment mr-1"></i><?= htmlspecialchars($acc['cancel_reason']) ?>
+                                        </p>
+                                    <?php endif; ?>
                                 </div>
-                                <span class="px-2 py-0.5 rounded-full text-xs font-medium"
-                                    <?= $acc['invite_accepted']
-                                        ? 'style="background:var(--color-mint-light,#d4f5e4);color:var(--color-mint-dark,#065f46);"'
-                                        : 'style="background:var(--color-butter-light,#fef3c7);color:var(--color-butter-dark,#92400e);"' ?>>
-                                    <?= $acc['invite_accepted'] ? 'Aktiv' : 'Einladung ausstehend' ?>
-                                </span>
+                                <div class="flex items-center gap-2 flex-shrink-0">
+                                    <?php if ($accIsCancelled): ?>
+                                        <span class="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-600">
+                                            <?php
+                                            $statusMap = [
+                                                'cancelled_by_exhibitor' => 'Abgesagt',
+                                                'cancelled_by_school' => 'Entfernt',
+                                                'removed_by_admin' => 'Admin-entfernt',
+                                            ];
+                                            echo $statusMap[$accStatus] ?? $accStatus;
+                                            ?>
+                                        </span>
+                                        <form method="POST" class="inline">
+                                            <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                                            <input type="hidden" name="exhibitor_id" value="<?= $exhibitor['id'] ?>">
+                                            <input type="hidden" name="eu_user_id" value="<?= $acc['user_id'] ?>">
+                                            <button type="submit" name="resend_invite" class="px-2 py-0.5 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 transition"
+                                                    title="Neuen Einladungslink senden (erfordert erneute Bestätigung)">
+                                                <i class="fas fa-envelope mr-1"></i>Neu einladen
+                                            </button>
+                                        </form>
+                                    <?php else: ?>
+                                        <span class="px-2 py-0.5 rounded-full text-xs font-medium"
+                                            <?= $acc['invite_accepted']
+                                                ? 'style="background:var(--color-mint-light,#d4f5e4);color:var(--color-mint-dark,#065f46);"'
+                                                : 'style="background:var(--color-butter-light,#fef3c7);color:var(--color-butter-dark,#92400e);"' ?>>
+                                            <?= $acc['invite_accepted'] ? 'Aktiv' : 'Einladung ausstehend' ?>
+                                        </span>
+                                        <!-- Aussteller von Schule entfernen -->
+                                        <details class="inline-block">
+                                            <summary class="px-2 py-0.5 text-xs text-red-500 cursor-pointer hover:text-red-700 rounded hover:bg-red-50 transition">
+                                                <i class="fas fa-user-minus"></i>
+                                            </summary>
+                                            <form method="POST" class="absolute right-0 mt-1 p-3 bg-white border border-red-200 rounded-lg shadow-lg z-10 w-64"
+                                                  onsubmit="return confirm('Aussteller wirklich entfernen? Schüler werden umverteilt.')">
+                                                <input type="hidden" name="csrf_token" value="<?= generateCsrfToken() ?>">
+                                                <input type="hidden" name="exhibitor_id" value="<?= $exhibitor['id'] ?>">
+                                                <input type="hidden" name="eu_user_id" value="<?= $acc['user_id'] ?>">
+                                                <textarea name="cancel_reason" placeholder="Grund (optional)" rows="2"
+                                                    class="w-full px-2 py-1 text-xs border border-gray-200 rounded mb-2"></textarea>
+                                                <button type="submit" name="cancel_exhibitor_school" class="w-full py-1 bg-red-500 text-white text-xs rounded hover:bg-red-600 transition">
+                                                    <i class="fas fa-user-minus mr-1"></i>Entfernen
+                                                </button>
+                                            </form>
+                                        </details>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                             <?php endforeach; ?>
                         </div>
@@ -920,6 +1178,19 @@ $orgaUsers = $stmt->fetchAll();
         </div>
         <?php endforeach; ?>
     </div>
+<script>
+function filterExhibitors(searchTerm) {
+    const filter = document.getElementById('exhibitorStatusFilter').value;
+    const search = searchTerm.toLowerCase().trim();
+    document.querySelectorAll('.exhibitor-card').forEach(card => {
+        const name = card.dataset.name || '';
+        const status = card.dataset.status || '';
+        const matchesSearch = !search || name.includes(search);
+        const matchesFilter = filter === 'all' || status === filter;
+        card.style.display = (matchesSearch && matchesFilter) ? '' : 'none';
+    });
+}
+</script>
 </div><!-- Ende Tab Aussteller -->
 
 <!-- ============================================================ -->

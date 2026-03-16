@@ -25,23 +25,32 @@ $qrEditionId   = $qrCtxSchool
 try {
     // Admins und Benutzer mit qr_codes_verwalten sehen alle Aussteller
     if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_verwalten')) {
+        // [SCHOOL ISOLATION] Nur Aussteller anzeigen, deren Einladung bestätigt wurde
         $stmt = $db->prepare("
             SELECT e.*, r.room_number
             FROM exhibitors e
             LEFT JOIN rooms r ON e.room_id = r.id
             WHERE e.active = 1 AND e.edition_id = ?
+              AND EXISTS (
+                SELECT 1 FROM exhibitor_users eu
+                WHERE eu.exhibitor_id = e.id AND eu.invite_accepted = 1
+              )
             ORDER BY e.name
         ");
         $stmt->execute([$qrEditionId]);
         $exhibitors = $stmt->fetchAll();
     } else {
-        // Exhibitor-spezifische Orga-Mitglieder sehen nur ihre zugewiesenen Aussteller
+        // Exhibitor-spezifische Orga-Mitglieder sehen nur ihre zugewiesenen Aussteller (bestätigt)
         $stmt = $db->prepare("
             SELECT e.*, r.room_number
             FROM exhibitors e
             LEFT JOIN rooms r ON e.room_id = r.id
             INNER JOIN exhibitor_orga_team eot ON e.id = eot.exhibitor_id
             WHERE e.active = 1 AND eot.user_id = ? AND e.edition_id = ? AND eot.edition_id = ?
+              AND EXISTS (
+                SELECT 1 FROM exhibitor_users eu
+                WHERE eu.exhibitor_id = e.id AND eu.invite_accepted = 1
+              )
             ORDER BY e.name
         ");
         $stmt->execute([$_SESSION['user_id'], $qrEditionId, $qrEditionId]);

@@ -10,8 +10,9 @@ if (!isAdminOrSchoolAdmin() && !hasPermission('berichte_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
-// [SCHOOL ISOLATION] null = super-admin (no filter)
-$printSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+// [SCHOOL ISOLATION] Immer auf URL-Schulkontext beschränken (auch für Super-Admins)
+$printCtxSchool = getCurrentSchool();
+$printSchoolId  = $printCtxSchool ? (int)$printCtxSchool['id'] : null;
 
 // Verschiedene Druckoptionen
 $printType = $_GET['type'] ?? 'all';
@@ -123,13 +124,21 @@ $stmt = $db->prepare("SELECT id, room_number FROM rooms WHERE edition_id = ? ORD
 $stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
-// Statistiken
-$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) as students FROM registrations WHERE edition_id = ?");
-$stmt->execute([$activeEditionId]);
+// Statistiken — [SCHOOL ISOLATION] nur Schüler der aktuellen Schule
+$stmt = $db->prepare("
+    SELECT COUNT(DISTINCT reg.user_id) as students FROM registrations reg
+    JOIN users u ON reg.user_id = u.id
+    WHERE reg.edition_id = ? AND (? IS NULL OR u.school_id = ?)
+");
+$stmt->execute([$activeEditionId, $printSchoolId, $printSchoolId]);
 $totalStudents = $stmt->fetch()['students'];
 
-$stmt = $db->prepare("SELECT COUNT(*) as total FROM registrations WHERE edition_id = ?");
-$stmt->execute([$activeEditionId]);
+$stmt = $db->prepare("
+    SELECT COUNT(*) as total FROM registrations reg
+    JOIN users u ON reg.user_id = u.id
+    WHERE reg.edition_id = ? AND (? IS NULL OR u.school_id = ?)
+");
+$stmt->execute([$activeEditionId, $printSchoolId, $printSchoolId]);
 $totalRegistrations = $stmt->fetch()['total'];
 ?>
 

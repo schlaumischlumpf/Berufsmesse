@@ -48,8 +48,8 @@ if (isset($_GET['auto_assign']) && $_GET['auto_assign'] === 'run' && (isAdmin() 
     try {
         // Verwaltete Slots (nur 1, 3, 5)
         $managedSlots = getManagedSlotNumbers();
-        // [SCHOOL ISOLATION] null = super-admin (no filter)
-        $inlineSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+        // [SCHOOL ISOLATION] Immer auf URL-Schulkontext beschränken (auch für Super-Admins)
+        $inlineSchoolId = $school ? (int)$school['id'] : null;
 
         $assignedCount = 0;
         $errors = [];
@@ -398,8 +398,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['generate_single']) &&
     exit;
 }
 
-// Aussteller laden
-$stmt = $db->prepare("SELECT * FROM exhibitors WHERE active = 1 AND edition_id = ? ORDER BY name ASC");
+// Aussteller laden — [SCHOOL ISOLATION] nur bestätigte Aussteller (invite_accepted = 1)
+$stmt = $db->prepare("
+    SELECT * FROM exhibitors e WHERE e.active = 1 AND e.edition_id = ?
+      AND (
+        NOT EXISTS (SELECT 1 FROM exhibitor_users eu WHERE eu.exhibitor_id = e.id)
+        OR EXISTS (SELECT 1 FROM exhibitor_users eu WHERE eu.exhibitor_id = e.id AND eu.invite_accepted = 1)
+      )
+    ORDER BY e.name ASC
+");
 $stmt->execute([$activeEditionId]);
 $exhibitors = $stmt->fetchAll();
 
@@ -1136,6 +1143,8 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     </style>
 </head>
 <body class="bg-gray-50">
+    <?php include 'components/notifications-modal.php'; ?>
+
     <!-- Mobile Overlay -->
     <div id="mobileOverlay" class="lg:hidden fixed inset-0 bg-black/50 z-30 hidden transition-opacity duration-300 opacity-0"></div>
 
@@ -1171,9 +1180,9 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                         </div>
                     </div>
                 <?php endif; ?>
-                <?php if (!isTeacher()): ?>
+                <?php if (!isTeacher() && !isExhibitor()): ?>
                 <div class="nav-group-title">Übersicht</div>
-                
+
                 <!-- Dashboard als Startseite -->
                 <a href="<?php echo $currentPage === 'dashboard' ? 'javascript:void(0)' : '?page=dashboard'; ?>" data-page="dashboard" class="nav-link <?php echo $currentPage === 'dashboard' ? 'active' : ''; ?>">
                     <i class="fas fa-home"></i>

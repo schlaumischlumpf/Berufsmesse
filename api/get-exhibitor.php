@@ -30,8 +30,8 @@ if (!$exhibitor) {
     exit();
 }
 
-// [SCHOOL ISOLATION]
-$geSchoolId = isAdmin() ? null : ($_SESSION['school_id'] ?? null);
+// [SCHOOL ISOLATION] Immer auf Schulkontext beschränken (auch für Super-Admins)
+$geSchoolId = isset($_SESSION['_prev_school_id']) ? (int)$_SESSION['_prev_school_id'] : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 if (!exhibitorBelongsToSchool($exhibitorId, $geSchoolId)) {
     echo json_encode(['success' => false, 'message' => 'Aussteller nicht gefunden']);
     exit();

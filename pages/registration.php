@@ -30,8 +30,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['register'])) {
         $exhibitorId = intval($_POST['exhibitor_id']);
         $priority = isset($_POST['priority']) ? max(1, min(3, intval($_POST['priority']))) : 2;
 
-        // [SCHOOL ISOLATION] Verify exhibitor belongs to current school
-        $regSchoolId = isAdmin() ? null : ($_SESSION['school_id'] ?? null);
+        // [SCHOOL ISOLATION] Immer auf URL-Schulkontext beschränken (auch für Super-Admins)
+        $regCtxSchool = getCurrentSchool();
+        $regSchoolId  = $regCtxSchool ? (int)$regCtxSchool['id'] : null;
         if (!exhibitorBelongsToSchool($exhibitorId, $regSchoolId)) {
             $message = ['type' => 'error', 'text' => 'Ungültiger Aussteller.'];
         } else {
@@ -81,8 +82,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['unregister'])) {
     requireCsrf();
     $exhibitorId = intval($_POST['exhibitor_id']);
 
-    // [SCHOOL ISOLATION] Verify exhibitor belongs to current school
-    $unregSchoolId = isAdmin() ? null : ($_SESSION['school_id'] ?? null);
+    // [SCHOOL ISOLATION] Immer auf URL-Schulkontext beschränken (auch für Super-Admins)
+    $unregCtxSchool = getCurrentSchool();
+    $unregSchoolId  = $unregCtxSchool ? (int)$unregCtxSchool['id'] : null;
     if (!exhibitorBelongsToSchool($exhibitorId, $unregSchoolId)) {
         $message = ['type' => 'error', 'text' => 'Ungültiger Aussteller.'];
     } else {

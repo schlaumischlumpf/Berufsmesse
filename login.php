@@ -95,25 +95,61 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 logAuditAction('Login', 'Benutzer hat sich angemeldet', 'info', null); // [SCHOOL ISOLATION] null = system-wide
                 
                 // Prüfe ob Passwort erzwungen werden muss (beim ersten Login oder nach Admin-Reset)
-                $db = getDB();
-                $stmt = $db->prepare("SELECT must_change_password FROM users WHERE id = ?");
-                $stmt->execute([$user['id']]);
-                $userData = $stmt->fetch();
-                
-                if ($userData && $userData['must_change_password']) {
-                    $_SESSION['force_password_change'] = true;
-                    header('Location: ' . BASE_URL . 'change-password.php');
-                    exit();
+                // Aussteller sind ausgenommen — sie setzen ihr Passwort über exhibitor-accept.php
+                if ($user['role'] !== 'exhibitor') {
+                    $db = getDB();
+                    $stmt = $db->prepare("SELECT must_change_password FROM users WHERE id = ?");
+                    $stmt->execute([$user['id']]);
+                    $userData = $stmt->fetch();
+
+                    if ($userData && $userData['must_change_password']) {
+                        $_SESSION['force_password_change'] = true;
+                        header('Location: ' . BASE_URL . 'change-password.php');
+                        exit();
+                    }
                 }
                 
+                // Login-Benachrichtigungen laden und in Session speichern
+                try {
+                    $notifStmt = $db->prepare("
+                        SELECT * FROM login_notifications
+                        WHERE user_id = ? AND read_at IS NULL
+                        ORDER BY created_at DESC
+                    ");
+                    $notifStmt->execute([$user['id']]);
+                    $notifications = $notifStmt->fetchAll();
+                    if (!empty($notifications)) {
+                        $_SESSION['pending_notifications'] = $notifications;
+                    }
+                } catch (PDOException $e) {
+                    // Tabelle existiert noch nicht - Migration 25 nicht ausgeführt
+                }
+
                 // Nach Login zur ursprünglichen Seite zurückkehren (z.B. QR-Checkin)
                 $redirect = $_GET['redirect'] ?? ($_POST['redirect'] ?? '');
                 if (!empty($redirect) && preg_match('#^/[^/]#', $redirect)) {
                     header('Location: ' . $redirect);
                 } elseif ($schoolSlug) {
                     header('Location: ' . BASE_URL . $schoolSlug . '/index.php');
+                } elseif ($user['role'] === 'exhibitor') {
+                    // Aussteller: direkt zur ersten zugeordneten Schule weiterleiten
+                    $exSchoolStmt = $db->prepare("
+                        SELECT s.slug FROM exhibitor_users eu
+                        JOIN exhibitors e ON eu.exhibitor_id = e.id
+                        JOIN messe_editions me ON e.edition_id = me.id
+                        JOIN schools s ON me.school_id = s.id
+                        WHERE eu.user_id = ? AND eu.invite_accepted = 1 AND s.is_active = 1
+                        ORDER BY me.status = 'active' DESC, me.year DESC LIMIT 1
+                    ");
+                    $exSchoolStmt->execute([$user['id']]);
+                    $exSchoolSlug = $exSchoolStmt->fetchColumn();
+                    if ($exSchoolSlug) {
+                        header('Location: ' . BASE_URL . $exSchoolSlug . '/index.php?page=exhibitor-dashboard');
+                    } else {
+                        header('Location: ' . BASE_URL . 'schools.php');
+                    }
                 } else {
-                    // Globaler Login (Admin/Aussteller) → zur Schulauswahl
+                    // Globaler Login (Admin) → zur Schulauswahl
                     header('Location: ' . BASE_URL . 'schools.php');
                 }
                 exit();

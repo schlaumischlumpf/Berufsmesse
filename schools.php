@@ -65,11 +65,20 @@ try {
             <?php endif; ?>
         </div>
         
-        <!-- Link für Admins/Aussteller zum globalen Login -->
-        <div class="text-center mt-8">
-            <a href="<?= BASE_URL ?>login.php" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
-                Admin / Aussteller Login →
-            </a>
+        <!-- Link für Admins/Aussteller -->
+        <div class="text-center mt-8 space-y-2">
+            <?php if (isLoggedIn() && isAdmin()): ?>
+            <div>
+                <a href="<?= BASE_URL ?>global-admin.php" class="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors">
+                    <i class="fas fa-shield-alt"></i> Globale Verwaltung
+                </a>
+            </div>
+            <?php endif; ?>
+            <div>
+                <a href="<?= BASE_URL ?>login.php" class="text-sm text-gray-500 hover:text-gray-700 transition-colors">
+                    Admin / Aussteller Login →
+                </a>
+            </div>
         </div>
     </div>
 </body>

@@ -757,6 +757,79 @@ SET @s4 = IF(@idx2_exists = 0,
     'SELECT 1');
 PREPARE stmt FROM @s4; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
+-- ============================================================================
+-- Migration 23: Add status + cancellation fields to exhibitor_users
+-- ============================================================================
+
+SET @col_exists = (
+    SELECT COUNT(*) FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'exhibitor_users' AND COLUMN_NAME = 'status');
+SET @s = IF(@col_exists = 0,
+    "ALTER TABLE `exhibitor_users`
+        ADD COLUMN `status` ENUM('active','cancelled_by_exhibitor','cancelled_by_school','removed_by_admin')
+            NOT NULL DEFAULT 'active'
+            COMMENT 'Teilnahmestatus der Verknüpfung',
+        ADD COLUMN `cancelled_at` DATETIME DEFAULT NULL
+            COMMENT 'Zeitpunkt der Absage/Entfernung',
+        ADD COLUMN `cancel_reason` VARCHAR(500) DEFAULT NULL
+            COMMENT 'Begründung der Absage'",
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ============================================================================
+-- Migration 24: Cancellation requests table (two-step cancellation process)
+-- ============================================================================
+
+SET @table_exists = (
+    SELECT COUNT(*) FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cancellation_requests');
+SET @s = IF(@table_exists = 0,
+    "CREATE TABLE `cancellation_requests` (
+        `id` INT(11) AUTO_INCREMENT PRIMARY KEY,
+        `exhibitor_id` INT(11) NOT NULL,
+        `user_id` INT(11) NOT NULL COMMENT 'Aussteller-User bei exhibitor-Absage',
+        `school_id` INT(11) NOT NULL COMMENT 'Betroffene Schule',
+        `requested_by` ENUM('exhibitor','school') NOT NULL COMMENT 'Wer hat die Absage beantragt',
+        `reason` VARCHAR(500) DEFAULT NULL COMMENT 'Begründung',
+        `status` ENUM('pending','confirmed','rejected') NOT NULL DEFAULT 'pending',
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `confirmed_at` DATETIME DEFAULT NULL,
+        `confirmed_by` INT(11) DEFAULT NULL COMMENT 'User-ID der bestätigenden Person',
+        FOREIGN KEY (`exhibitor_id`) REFERENCES `exhibitors`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`school_id`) REFERENCES `schools`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`confirmed_by`) REFERENCES `users`(`id`) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    COMMENT='Absage-Anträge mit Bestätigungspflicht'",
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
+-- ============================================================================
+-- Migration 25: Login notifications table
+-- ============================================================================
+
+SET @table_exists = (
+    SELECT COUNT(*) FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'login_notifications');
+SET @s = IF(@table_exists = 0,
+    "CREATE TABLE `login_notifications` (
+        `id` INT(11) AUTO_INCREMENT PRIMARY KEY,
+        `user_id` INT(11) NOT NULL COMMENT 'Empfänger der Benachrichtigung',
+        `school_id` INT(11) DEFAULT NULL COMMENT 'Betroffene Schule (NULL = alle Schulen des Users)',
+        `message` TEXT NOT NULL COMMENT 'Nachrichtentext',
+        `type` ENUM('exhibitor_cancelled','school_cancelled','cancellation_request','info') NOT NULL,
+        `related_id` INT(11) DEFAULT NULL COMMENT 'ID des verknüpften Datensatzes (z.B. exhibitor_id oder cancellation_request_id)',
+        `action_url` VARCHAR(500) DEFAULT NULL COMMENT 'Link zur Aktion (optional)',
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        `read_at` DATETIME DEFAULT NULL,
+        FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+        FOREIGN KEY (`school_id`) REFERENCES `schools`(`id`) ON DELETE CASCADE,
+        INDEX `idx_user_unread` (`user_id`, `read_at`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    COMMENT='Login-Benachrichtigungen für User'",
+    'SELECT 1');
+PREPARE stmt FROM @s; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+
 COMMIT;
 
 /*!40101 SET CHARACTER_SET_CLIENT=@OLD_CHARACTER_SET_CLIENT */;

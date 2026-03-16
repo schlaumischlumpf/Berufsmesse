@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(curl:*)",
-      "Bash(docker compose exec db mysql:*)"
+      "Bash(docker compose exec db mysql:*)",
+      "Bash(cd:*)",
+      "Bash(where php:*)",
+      "Read(//c/xampp/php/**)",
+      "Read(//c/wamp64/bin/**)"
     ]
   }
 }

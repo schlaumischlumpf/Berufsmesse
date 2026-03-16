@@ -6,24 +6,53 @@ if (!isAdminOrSchoolAdmin() && !hasPermission('raeume_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
-// Alle Räume abrufen  
+// [SCHOOL ISOLATION] Schulkontext
+$roomCtxSchool = getCurrentSchool();
+$roomSchoolId  = $roomCtxSchool ? (int)$roomCtxSchool['id'] : null;
+
+// Alle Räume abrufen
 $stmt = $db->prepare("SELECT * FROM rooms WHERE edition_id = ? ORDER BY room_number");
 $stmt->execute([$activeEditionId]);
 $rooms = $stmt->fetchAll();
 
-// Alle Aussteller abrufen
-$stmt = $db->prepare("
-    SELECT 
-        e.*,
-        r.room_number,
-        r.equipment as room_equipment
-    FROM exhibitors e
-    LEFT JOIN rooms r ON e.room_id = r.id
-    WHERE e.active = 1 AND e.edition_id = ?
-    ORDER BY e.name
-");
-$stmt->execute([$activeEditionId]);
-$exhibitors = $stmt->fetchAll();
+// Alle Aussteller abrufen — [SCHOOL ISOLATION] via edition + school check
+// Nur Aussteller anzeigen, die zugesagt haben (invite_accepted = 1)
+// Aussteller ohne exhibitor_users-Eintrag werden NICHT angezeigt
+try {
+    $stmt = $db->prepare("
+        SELECT
+            e.*,
+            r.room_number,
+            r.equipment as room_equipment
+        FROM exhibitors e
+        LEFT JOIN rooms r ON e.room_id = r.id
+        JOIN messe_editions me ON e.edition_id = me.id
+        WHERE e.active = 1 AND e.edition_id = ?
+          AND (? IS NULL OR me.school_id = ?)
+          AND EXISTS (
+            SELECT 1 FROM exhibitor_users eu
+            WHERE eu.exhibitor_id = e.id
+              AND eu.invite_accepted = 1
+          )
+        ORDER BY e.name
+    ");
+    $stmt->execute([$activeEditionId, $roomSchoolId, $roomSchoolId]);
+    $exhibitors = $stmt->fetchAll();
+} catch (PDOException $e) {
+    // Fallback: invite_accepted Spalte existiert noch nicht (Migration 21 nicht ausgeführt)
+    // Zeige alle Aussteller (ohne Filterung)
+    $stmt = $db->prepare("
+        SELECT e.*, r.room_number, r.equipment as room_equipment
+        FROM exhibitors e
+        LEFT JOIN rooms r ON e.room_id = r.id
+        JOIN messe_editions me ON e.edition_id = me.id
+        WHERE e.active = 1 AND e.edition_id = ?
+          AND (? IS NULL OR me.school_id = ?)
+        ORDER BY e.name
+    ");
+    $stmt->execute([$activeEditionId, $roomSchoolId, $roomSchoolId]);
+    $exhibitors = $stmt->fetchAll();
+}
 
 // Aussteller nach Zuordnung gruppieren
 $assignedExhibitors = [];

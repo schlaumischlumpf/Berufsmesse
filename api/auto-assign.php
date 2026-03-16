@@ -28,8 +28,8 @@ set_time_limit(300); // 5 Minuten Timeout
 
 $db = getDB();
 $activeEditionId = getActiveEditionId();
-// [SCHOOL ISOLATION] null = super-admin (no filter)
-$autoAssignSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+// [SCHOOL ISOLATION] Immer auf Schulkontext beschränken (auch für Super-Admins)
+$autoAssignSchoolId = isset($_SESSION['_prev_school_id']) ? (int)$_SESSION['_prev_school_id'] : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 
 try {
     // Verwaltete Slots (nur 1, 3, 5)

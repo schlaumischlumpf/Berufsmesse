@@ -1028,27 +1028,39 @@ function canAccessExhibitorQR($userId, $exhibitorId) {
 // ─── Messe-Editionen (Mehrjährigkeit) ────────────────────────────────────────
 
 function getActiveEditionId(): int {
-    if (isset($_SESSION['active_edition_id'])) {
+    // [SCHOOL ISOLATION] Effektive School-ID bestimmen:
+    // 1. URL-Kontext (getCurrentSchool) — innerhalb index.php
+    // 2. _prev_school_id — letzte besuchte Schule (für standalone APIs)
+    // 3. school_id — Login-Schule (für normale User)
+    $ctxSchool = getCurrentSchool();
+    $effectiveSchoolId = $ctxSchool
+        ? (int)$ctxSchool['id']
+        : ($_SESSION['_prev_school_id'] ?? $_SESSION['school_id'] ?? null);
+
+    // Cache nur gültig wenn für die gleiche Schule
+    if (isset($_SESSION['active_edition_id']) && isset($_SESSION['_edition_school_id'])
+        && $_SESSION['_edition_school_id'] == $effectiveSchoolId) {
         return (int)$_SESSION['active_edition_id'];
     }
+
     try {
-        $db   = getDB();
-        // Schulkontext: Edition der aktuellen Schule bevorzugen
-        $schoolId = $_SESSION['school_id'] ?? null;
-        if ($schoolId) {
+        $db = getDB();
+        if ($effectiveSchoolId) {
             $stmt = $db->prepare("SELECT id FROM messe_editions WHERE status = 'active' AND school_id = ? LIMIT 1");
-            $stmt->execute([$schoolId]);
+            $stmt->execute([$effectiveSchoolId]);
             $row = $stmt->fetch();
             if ($row) {
-                $_SESSION['active_edition_id'] = (int)$row['id'];
+                $_SESSION['active_edition_id']  = (int)$row['id'];
+                $_SESSION['_edition_school_id'] = $effectiveSchoolId;
                 return (int)$row['id'];
             }
         }
-        // Fallback: Global erste aktive Edition
+        // Fallback: Nur wenn kein Schulkontext vorhanden (sollte selten sein)
         $stmt = $db->query("SELECT id FROM messe_editions WHERE status = 'active' LIMIT 1");
         $row  = $stmt->fetch();
         if ($row) {
-            $_SESSION['active_edition_id'] = (int)$row['id'];
+            $_SESSION['active_edition_id']  = (int)$row['id'];
+            $_SESSION['_edition_school_id'] = $effectiveSchoolId;
             return (int)$row['id'];
         }
     } catch (Exception $e) { /* Tabelle existiert noch nicht */ }
@@ -1076,7 +1088,7 @@ function getActiveEdition(): array {
 }
 
 function invalidateEditionCache(): void {
-    unset($_SESSION['active_edition_id']);
+    unset($_SESSION['active_edition_id'], $_SESSION['_edition_school_id']);
 }
 
 // ─── Multi-Schulen ───────────────────────────────────────────────────────────
@@ -1245,12 +1257,22 @@ function createOrLinkExhibitorAccount(
         $db = getDB();
 
         // 1. Find or create the user account
-        $stmt = $db->prepare("SELECT id FROM users WHERE username = ? AND role = 'exhibitor' LIMIT 1");
+        $stmt = $db->prepare("SELECT id, password, firstname, lastname FROM users WHERE username = ? AND role = 'exhibitor' LIMIT 1");
         $stmt->execute([$username]);
         $existing = $stmt->fetch();
 
+        $accountAlreadyActive = false;
+
         if ($existing) {
             $userId = (int)$existing['id'];
+            // Prüfen ob Vorname und Nachname übereinstimmen
+            if (strtolower(trim($existing['firstname'])) === strtolower(trim($firstname))
+                && strtolower(trim($existing['lastname'])) === strtolower(trim($lastname))) {
+                // Account existiert mit gleichen Daten — kein neues Passwort nötig
+                if ($existing['password'] !== null && $existing['password'] !== '') {
+                    $accountAlreadyActive = true;
+                }
+            }
         } else {
             // Check username is not taken by any role
             $stmt = $db->prepare("SELECT id FROM users WHERE username = ? LIMIT 1");
@@ -1266,7 +1288,7 @@ function createOrLinkExhibitorAccount(
             $userId = (int)$db->lastInsertId();
         }
 
-        // 2. Generate invite token
+        // 2. Generate invite token für ALLE Einladungen (auch Re-Invites)
         $token   = bin2hex(random_bytes(32)); // 64 hex chars
         $expires = date('Y-m-d H:i:s', strtotime('+30 days'));
 
@@ -1279,13 +1301,361 @@ function createOrLinkExhibitorAccount(
             ON DUPLICATE KEY UPDATE
                 invite_token    = VALUES(invite_token),
                 invite_accepted = 0,
-                invite_expires  = VALUES(invite_expires)
+                invite_expires  = VALUES(invite_expires),
+                status          = 'active',
+                cancelled_at    = NULL,
+                cancel_reason   = NULL
         ");
         $stmt->execute([$userId, $exhibitorId, $token, $expires]);
 
-        return ['success' => true, 'user_id' => $userId, 'token' => $token];
+        return [
+            'success' => true,
+            'user_id' => $userId,
+            'token' => $token,
+            'already_active' => $accountAlreadyActive,
+            'requires_confirmation' => true
+        ];
     } catch (Exception $e) {
         logErrorToAudit($e, 'createOrLinkExhibitorAccount');
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Verteilt alle Schüler eines Ausstellers auf alternative Aussteller mit Kapazität.
+ * Gibt die Anzahl der umverteilten Schüler zurück.
+ */
+function redistributeStudentsFromExhibitor(int $exhibitorId, int $editionId): int {
+    $db = getDB();
+    $stmt = $db->prepare("
+        SELECT r.id, r.user_id, r.timeslot_id, t.slot_number
+        FROM registrations r
+        JOIN timeslots t ON r.timeslot_id = t.id
+        WHERE r.exhibitor_id = ? AND r.timeslot_id IS NOT NULL AND r.edition_id = ?
+    ");
+    $stmt->execute([$exhibitorId, $editionId]);
+    $affectedRegistrations = $stmt->fetchAll();
+
+    $redistributedCount = 0;
+    foreach ($affectedRegistrations as $reg) {
+        $studentId = $reg['user_id'];
+        $timeslotId = $reg['timeslot_id'];
+
+        $stmt = $db->prepare("
+            SELECT e.id, e.name, e.room_id,
+                   COUNT(DISTINCT r2.user_id) as current_count
+            FROM exhibitors e
+            LEFT JOIN registrations r2 ON e.id = r2.exhibitor_id AND r2.timeslot_id = ?
+            WHERE e.active = 1 AND e.id != ? AND e.room_id IS NOT NULL AND e.edition_id = ?
+              AND e.id NOT IN (SELECT exhibitor_id FROM registrations WHERE user_id = ? AND edition_id = ?)
+            GROUP BY e.id, e.name, e.room_id
+            ORDER BY current_count ASC, RAND()
+            LIMIT 1
+        ");
+        $stmt->execute([$timeslotId, $exhibitorId, $editionId, $studentId, $editionId]);
+        $newExhibitor = $stmt->fetch();
+
+        if ($newExhibitor) {
+            $slotCapacity = getRoomSlotCapacity($newExhibitor['room_id'], $timeslotId);
+            if ($slotCapacity > 0 && $newExhibitor['current_count'] < $slotCapacity) {
+                try {
+                    $stmt = $db->prepare("UPDATE registrations SET exhibitor_id = ? WHERE id = ?");
+                    if ($stmt->execute([$newExhibitor['id'], $reg['id']])) {
+                        $redistributedCount++;
+                    }
+                } catch (PDOException $e) {
+                    logErrorToAudit($e, 'redistributeStudents');
+                }
+            }
+        }
+    }
+
+    // Verbleibende Registrierungen (ohne Umverteilung) löschen
+    $db->prepare("DELETE FROM registrations WHERE exhibitor_id = ? AND edition_id = ?")->execute([$exhibitorId, $editionId]);
+
+    return $redistributedCount;
+}
+
+/**
+ * Setzt den Status einer Aussteller-Verknüpfung (Absage/Entfernung).
+ * Deaktiviert den Aussteller und verteilt Schüler um.
+ */
+function cancelExhibitorParticipation(int $exhibitorId, int $userId, string $status, string $reason = ''): array {
+    try {
+        $db = getDB();
+
+        // Prüfe ob die Verknüpfung existiert
+        $stmt = $db->prepare("SELECT eu.id, e.name, e.edition_id FROM exhibitor_users eu JOIN exhibitors e ON eu.exhibitor_id = e.id WHERE eu.exhibitor_id = ? AND eu.user_id = ? AND eu.status = 'active'");
+        $stmt->execute([$exhibitorId, $userId]);
+        $link = $stmt->fetch();
+        if (!$link) {
+            return ['success' => false, 'error' => 'Keine aktive Verknüpfung gefunden.'];
+        }
+
+        // Status aktualisieren
+        $stmt = $db->prepare("UPDATE exhibitor_users SET status = ?, cancelled_at = NOW(), cancel_reason = ? WHERE exhibitor_id = ? AND user_id = ?");
+        $stmt->execute([$status, $reason ?: null, $exhibitorId, $userId]);
+
+        // Aussteller deaktivieren wenn keine aktiven Verknüpfungen mehr
+        $stmt = $db->prepare("SELECT COUNT(*) FROM exhibitor_users WHERE exhibitor_id = ? AND status = 'active'");
+        $stmt->execute([$exhibitorId]);
+        $activeLinks = (int)$stmt->fetchColumn();
+
+        $redistributed = 0;
+        if ($activeLinks === 0) {
+            // Aussteller deaktivieren
+            $db->prepare("UPDATE exhibitors SET active = 0 WHERE id = ?")->execute([$exhibitorId]);
+            // Schüler umverteilen
+            $redistributed = redistributeStudentsFromExhibitor($exhibitorId, (int)$link['edition_id']);
+        }
+
+        return ['success' => true, 'name' => $link['name'], 'redistributed' => $redistributed, 'deactivated' => ($activeLinks === 0)];
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'cancelExhibitorParticipation');
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Prüft ob die Messe innerhalb 1 Woche stattfindet (Bestätigungspflicht für Absagen).
+ */
+function isWithinOneWeekOfEvent(int $editionId): bool {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("SELECT start_date FROM messe_editions WHERE id = ?");
+        $stmt->execute([$editionId]);
+        $edition = $stmt->fetch();
+        if (!$edition || !$edition['start_date']) return false;
+
+        $startDate = strtotime($edition['start_date']);
+        $now = time();
+        $oneWeek = 7 * 24 * 60 * 60;
+
+        return ($startDate - $now) <= $oneWeek;
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+/**
+ * Erstellt eine Login-Benachrichtigung für einen User.
+ */
+function createLoginNotification(int $userId, string $message, string $type, ?int $schoolId = null, ?int $relatedId = null, ?string $actionUrl = null): bool {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("
+            INSERT INTO login_notifications (user_id, school_id, message, type, related_id, action_url)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        return $stmt->execute([$userId, $schoolId, $message, $type, $relatedId, $actionUrl]);
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'createLoginNotification');
+        return false;
+    }
+}
+
+/**
+ * Erstellt Benachrichtigungen für alle Admins/Orga-Team einer Schule.
+ */
+function notifySchoolAdmins(int $schoolId, string $message, string $type, ?int $relatedId = null, ?string $actionUrl = null): int {
+    try {
+        $db = getDB();
+        $stmt = $db->prepare("
+            SELECT DISTINCT u.id FROM users u
+            LEFT JOIN user_permissions up ON u.id = up.user_id
+            WHERE u.school_id = ?
+              AND u.is_active = 1
+              AND (u.role IN ('admin', 'school_admin', 'orga')
+                   OR up.permission IN ('aussteller_sehen', 'aussteller_bearbeiten'))
+        ");
+        $stmt->execute([$schoolId]);
+        $users = $stmt->fetchAll();
+
+        $count = 0;
+        foreach ($users as $user) {
+            if (createLoginNotification((int)$user['id'], $message, $type, $schoolId, $relatedId, $actionUrl)) {
+                $count++;
+            }
+        }
+        return $count;
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'notifySchoolAdmins');
+        return 0;
+    }
+}
+
+/**
+ * Erstellt einen Absage-Antrag (mit oder ohne Bestätigungspflicht).
+ * Gibt ['success' => true, 'requires_confirmation' => bool, 'request_id' => int|null] zurück.
+ */
+function createCancellationRequest(int $exhibitorId, int $userId, int $schoolId, string $requestedBy, string $reason = ''): array {
+    try {
+        $db = getDB();
+
+        // Hole Edition-ID des Ausstellers
+        $stmt = $db->prepare("SELECT edition_id, name FROM exhibitors WHERE id = ?");
+        $stmt->execute([$exhibitorId]);
+        $exhibitor = $stmt->fetch();
+        if (!$exhibitor) {
+            return ['success' => false, 'error' => 'Aussteller nicht gefunden.'];
+        }
+
+        $editionId = (int)$exhibitor['edition_id'];
+        $exhibitorName = $exhibitor['name'];
+        $requiresConfirmation = isWithinOneWeekOfEvent($editionId);
+
+        if (!$requiresConfirmation) {
+            // Direkte Absage ohne Bestätigung
+            $status = $requestedBy === 'exhibitor' ? 'cancelled_by_exhibitor' : 'cancelled_by_school';
+            $result = cancelExhibitorParticipation($exhibitorId, $userId, $status, $reason);
+
+            if ($result['success']) {
+                // Benachrichtigungen erstellen
+                if ($requestedBy === 'exhibitor') {
+                    notifySchoolAdmins($schoolId, "Aussteller '$exhibitorName' hat die Teilnahme abgesagt.", 'exhibitor_cancelled', $exhibitorId);
+                } else {
+                    createLoginNotification($userId, "Die Schule hat Ihre Teilnahme für '$exhibitorName' beendet.", 'school_cancelled', $schoolId, $exhibitorId);
+                }
+            }
+
+            return array_merge($result, ['requires_confirmation' => false, 'request_id' => null]);
+        }
+
+        // Bestätigung erforderlich - Absage-Antrag erstellen
+        $stmt = $db->prepare("
+            INSERT INTO cancellation_requests (exhibitor_id, user_id, school_id, requested_by, reason)
+            VALUES (?, ?, ?, ?, ?)
+        ");
+        $stmt->execute([$exhibitorId, $userId, $schoolId, $requestedBy, $reason ?: null]);
+        $requestId = (int)$db->lastInsertId();
+
+        // Benachrichtigungen für die Gegenseite erstellen
+        if ($requestedBy === 'exhibitor') {
+            $message = "Aussteller '$exhibitorName' möchte die Teilnahme absagen und bittet um Bestätigung.";
+            notifySchoolAdmins($schoolId, $message, 'cancellation_request', $requestId);
+        } else {
+            $message = "Die Schule möchte Ihre Teilnahme für '$exhibitorName' beenden und bittet um Bestätigung.";
+            createLoginNotification($userId, $message, 'cancellation_request', $schoolId, $requestId);
+        }
+
+        logAuditAction('absage_antrag_erstellt', "Absage-Antrag für '$exhibitorName' von $requestedBy erstellt (ID: $requestId)");
+
+        return ['success' => true, 'requires_confirmation' => true, 'request_id' => $requestId, 'name' => $exhibitorName];
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'createCancellationRequest');
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Bestätigt oder lehnt einen Absage-Antrag ab.
+ */
+function confirmCancellationRequest(int $requestId, int $confirmingUserId, bool $approve): array {
+    try {
+        $db = getDB();
+
+        $stmt = $db->prepare("
+            SELECT cr.*, e.name as exhibitor_name, e.edition_id
+            FROM cancellation_requests cr
+            JOIN exhibitors e ON cr.exhibitor_id = e.id
+            WHERE cr.id = ? AND cr.status = 'pending'
+        ");
+        $stmt->execute([$requestId]);
+        $request = $stmt->fetch();
+
+        if (!$request) {
+            return ['success' => false, 'error' => 'Absage-Antrag nicht gefunden oder bereits bearbeitet.'];
+        }
+
+        $newStatus = $approve ? 'confirmed' : 'rejected';
+        $stmt = $db->prepare("
+            UPDATE cancellation_requests
+            SET status = ?, confirmed_at = NOW(), confirmed_by = ?
+            WHERE id = ?
+        ");
+        $stmt->execute([$newStatus, $confirmingUserId, $requestId]);
+
+        if ($approve) {
+            // Absage durchführen
+            $cancelStatus = $request['requested_by'] === 'exhibitor' ? 'cancelled_by_exhibitor' : 'cancelled_by_school';
+            $result = cancelExhibitorParticipation((int)$request['exhibitor_id'], (int)$request['user_id'], $cancelStatus, $request['reason'] ?? '');
+
+            // Benachrichtigungen erstellen
+            if ($request['requested_by'] === 'exhibitor') {
+                createLoginNotification((int)$request['user_id'], "Ihre Absage für '{$request['exhibitor_name']}' wurde von der Schule bestätigt.", 'exhibitor_cancelled', (int)$request['school_id'], (int)$request['exhibitor_id']);
+            } else {
+                notifySchoolAdmins((int)$request['school_id'], "Die Absage von '{$request['exhibitor_name']}' wurde bestätigt.", 'school_cancelled', (int)$request['exhibitor_id']);
+            }
+
+            logAuditAction('absage_bestaetigt', "Absage-Antrag #{$requestId} für '{$request['exhibitor_name']}' bestätigt");
+            return array_merge($result, ['confirmed' => true]);
+        } else {
+            // Absage abgelehnt
+            if ($request['requested_by'] === 'exhibitor') {
+                createLoginNotification((int)$request['user_id'], "Ihre Absage für '{$request['exhibitor_name']}' wurde von der Schule abgelehnt.", 'info', (int)$request['school_id']);
+            } else {
+                notifySchoolAdmins((int)$request['school_id'], "Der Aussteller hat die Absage für '{$request['exhibitor_name']}' abgelehnt.", 'info');
+            }
+
+            logAuditAction('absage_abgelehnt', "Absage-Antrag #{$requestId} für '{$request['exhibitor_name']}' abgelehnt");
+            return ['success' => true, 'confirmed' => false, 'rejected' => true];
+        }
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'confirmCancellationRequest');
+        return ['success' => false, 'error' => $e->getMessage()];
+    }
+}
+
+/**
+ * Nimmt eine Einladung an (für bereits existierende Accounts ohne Passwort-Änderung).
+ * Verwendet entweder Token oder direkte Bestätigung.
+ */
+function acceptExhibitorInvitation(int $userId, int $exhibitorId, ?string $token = null): array {
+    try {
+        $db = getDB();
+
+        // Hole Einladung
+        if ($token) {
+            $stmt = $db->prepare("
+                SELECT eu.*, e.name FROM exhibitor_users eu
+                JOIN exhibitors e ON eu.exhibitor_id = e.id
+                WHERE eu.invite_token = ? AND eu.user_id = ? AND eu.exhibitor_id = ?
+                  AND (eu.invite_expires IS NULL OR eu.invite_expires > NOW())
+                LIMIT 1
+            ");
+            $stmt->execute([$token, $userId, $exhibitorId]);
+        } else {
+            $stmt = $db->prepare("
+                SELECT eu.*, e.name FROM exhibitor_users eu
+                JOIN exhibitors e ON eu.exhibitor_id = e.id
+                WHERE eu.user_id = ? AND eu.exhibitor_id = ?
+                  AND eu.invite_accepted = 0
+                LIMIT 1
+            ");
+            $stmt->execute([$userId, $exhibitorId]);
+        }
+
+        $invite = $stmt->fetch();
+        if (!$invite) {
+            return ['success' => false, 'error' => 'Einladung nicht gefunden oder abgelaufen.'];
+        }
+
+        // Einladung annehmen
+        $stmt = $db->prepare("
+            UPDATE exhibitor_users
+            SET invite_accepted = 1, invite_token = NULL, invite_expires = NULL
+            WHERE user_id = ? AND exhibitor_id = ?
+        ");
+        $stmt->execute([$userId, $exhibitorId]);
+
+        // Aussteller aktivieren
+        $db->prepare("UPDATE exhibitors SET active = 1 WHERE id = ?")->execute([$exhibitorId]);
+
+        logAuditAction('einladung_angenommen', "Aussteller '{$invite['name']}' (ID: $exhibitorId) Einladung von User #$userId angenommen");
+
+        return ['success' => true, 'name' => $invite['name']];
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'acceptExhibitorInvitation');
         return ['success' => false, 'error' => $e->getMessage()];
     }
 }

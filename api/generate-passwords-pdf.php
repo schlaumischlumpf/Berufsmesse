@@ -19,8 +19,8 @@ if (!isLoggedIn() || (!isAdmin() && !hasPermission('benutzer_importieren'))) {
 
 $db = getDB();
 $activeEditionId = getActiveEditionId();
-// [SCHOOL ISOLATION] null = super-admin (no filter)
-$pdfSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+// [SCHOOL ISOLATION] Immer auf Schulkontext beschränken (auch für Super-Admins)
+$pdfSchoolId = isset($_SESSION['_prev_school_id']) ? (int)$_SESSION['_prev_school_id'] : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 
 // -------------------------------------------------------
 // Schritt 1: Alle Nutzer ohne Passwort laden

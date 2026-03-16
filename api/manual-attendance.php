@@ -34,6 +34,22 @@ if (!$userId || !$exhibitorId || !$timeslotId) {
     exit;
 }
 
+// [SCHOOL ISOLATION] Aussteller und Schüler müssen zur eigenen Schule gehören
+// [SCHOOL ISOLATION] Immer auf Schulkontext beschränken (auch für Super-Admins)
+$maSchoolId = isset($_SESSION['_prev_school_id']) ? (int)$_SESSION['_prev_school_id'] : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+if (!exhibitorBelongsToSchool($exhibitorId, $maSchoolId ? (int)$maSchoolId : null)) {
+    echo json_encode(['success' => false, 'message' => 'Aussteller gehört nicht zu dieser Schule']);
+    exit;
+}
+if ($maSchoolId) {
+    $stmt = $db->prepare("SELECT id FROM users WHERE id = ? AND school_id = ?");
+    $stmt->execute([$userId, (int)$maSchoolId]);
+    if (!$stmt->fetch()) {
+        echo json_encode(['success' => false, 'message' => 'Schüler gehört nicht zu dieser Schule']);
+        exit;
+    }
+}
+
 try {
     if ($action === 'mark_present') {
         // Prüfen ob bereits eingetragen

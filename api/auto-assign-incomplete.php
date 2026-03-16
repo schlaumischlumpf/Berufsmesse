@@ -22,8 +22,8 @@ requireCsrf();
 
 $db = getDB();
 $activeEditionId = getActiveEditionId();
-// [SCHOOL ISOLATION] null = super-admin (no filter)
-$autoAssignSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+// [SCHOOL ISOLATION] Immer auf Schulkontext beschränken (auch für Super-Admins)
+$autoAssignSchoolId = isset($_SESSION['_prev_school_id']) ? (int)$_SESSION['_prev_school_id'] : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 
 try {
     // Verwaltete Slots (nur 1, 3, 5)
@@ -210,19 +210,28 @@ try {
     }
     $totalStudents = $stmt->fetchColumn();
     
+    // [SCHOOL ISOLATION] Statistik auf Schule beschränken
+    $statsSchoolJoin  = $autoAssignSchoolId ? "JOIN users u ON r.user_id = u.id" : "";
+    $statsSchoolWhere = $autoAssignSchoolId ? "AND u.school_id = ?" : "";
+    $statsParams      = $autoAssignSchoolId
+        ? [$activeEditionId, $activeEditionId, $autoAssignSchoolId]
+        : [$activeEditionId, $activeEditionId];
+
     $stmt = $db->prepare("
         SELECT COUNT(DISTINCT user_id) as complete
         FROM (
             SELECT r.user_id, COUNT(DISTINCT t.slot_number) as slot_count
             FROM registrations r
             JOIN timeslots t ON r.timeslot_id = t.id
+            $statsSchoolJoin
             WHERE t.slot_number " . getManagedSlotsSqlIn() . "
             AND r.edition_id = ? AND t.edition_id = ?
+            $statsSchoolWhere
             GROUP BY r.user_id
             HAVING slot_count = " . getManagedSlotCount() . "
         ) as complete_registrations
     ");
-    $stmt->execute([$activeEditionId, $activeEditionId]);
+    $stmt->execute($statsParams);
     $completeStudents = $stmt->fetchColumn();
     
     echo json_encode([

@@ -10,6 +10,10 @@ if (!isAdminOrSchoolAdmin() && !hasPermission('qr_codes_sehen') && !hasPermissio
 
 $db = getDB();
 
+// [SCHOOL ISOLATION] Schulkontext für Schüler-Filter
+$attCtxSchool = getCurrentSchool();
+$attSchoolId  = $attCtxSchool ? (int)$attCtxSchool['id'] : null;
+
 // Alle Schüler mit ihren Einschreibungen (Slots 1, 3, 5) und Anwesenheitsstatus laden
 $stmt = $db->prepare("
     SELECT
@@ -38,9 +42,10 @@ $stmt = $db->prepare("
                                AND a.timeslot_id  = r.timeslot_id
                                AND a.edition_id   = ?
     WHERE u.role = 'student'
+      AND (? IS NULL OR u.school_id = ?)
     ORDER BY u.class ASC, u.lastname ASC, u.firstname ASC, t.slot_number ASC
 ");
-$stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId]);
+$stmt->execute([$activeEditionId, $activeEditionId, $activeEditionId, $attSchoolId, $attSchoolId]);
 
 // Daten nach Schüler gruppieren
 $studentsRaw = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -73,11 +78,20 @@ foreach ($studentsRaw as $row) {
 
 // Statistiken
 $totalStudents   = count($students);
-$stmt = $db->prepare("SELECT COUNT(DISTINCT user_id) FROM attendance WHERE edition_id = ?");
-$stmt->execute([$activeEditionId]);
+// [SCHOOL ISOLATION] Attendance-Stats auf Schule einschränken
+$stmt = $db->prepare("
+    SELECT COUNT(DISTINCT a.user_id) FROM attendance a
+    JOIN users u ON a.user_id = u.id
+    WHERE a.edition_id = ? AND (? IS NULL OR u.school_id = ?)
+");
+$stmt->execute([$activeEditionId, $attSchoolId, $attSchoolId]);
 $presentStudents = $stmt->fetchColumn();
-$stmt = $db->prepare("SELECT COUNT(*) FROM attendance WHERE edition_id = ?");
-$stmt->execute([$activeEditionId]);
+$stmt = $db->prepare("
+    SELECT COUNT(*) FROM attendance a
+    JOIN users u ON a.user_id = u.id
+    WHERE a.edition_id = ? AND (? IS NULL OR u.school_id = ?)
+");
+$stmt->execute([$activeEditionId, $attSchoolId, $attSchoolId]);
 $totalCheckins   = $stmt->fetchColumn();
 ?>
 

@@ -11,8 +11,8 @@ try {
     $db              = getDB();
     $activeEditionId = getActiveEditionId();
 
-    // [SCHOOL ISOLATION] resolve export school context — null = super-admin (no filter)
-    $exportSchoolId = isAdmin() ? null : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
+    // [SCHOOL ISOLATION] Immer auf Schulkontext beschränken (auch für Super-Admins)
+    $exportSchoolId = isset($_SESSION['_prev_school_id']) ? (int)$_SESSION['_prev_school_id'] : (isset($_SESSION['school_id']) ? (int)$_SESSION['school_id'] : null);
 
     $format      = in_array($_GET['format'] ?? 'csv', ['csv', 'xlsx']) ? $_GET['format'] : 'csv';
     $type        = in_array($_GET['type']   ?? 'registrations', ['registrations','attendance','unregistered'])
