@@ -9,8 +9,9 @@ if (!isAdminOrSchoolAdmin() && !hasPermission('anmeldungen_sehen')) {
     die('Keine Berechtigung zum Anzeigen dieser Seite');
 }
 
-// Alle Schüler laden (gefiltert nach Schule für school_admins)
-$regSchoolId = isSchoolAdmin() ? ($_SESSION['school_id'] ?? null) : null;
+// Alle Schüler laden (gefiltert nach Schule — immer auf aktuellem Schulkontext basierend)
+$currentSchool = getCurrentSchool();
+$regSchoolId = $currentSchool ? (int)$currentSchool['id'] : (isSchoolAdmin() ? ($_SESSION['school_id'] ?? null) : null);
 if ($regSchoolId) {
     $stmt = $db->prepare("SELECT id, username, firstname, lastname, class FROM users WHERE role = 'student' AND school_id = ? ORDER BY lastname, firstname");
     $stmt->execute([$regSchoolId]);

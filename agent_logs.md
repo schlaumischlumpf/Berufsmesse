@@ -171,3 +171,28 @@
 - ✅ Slot-Badge kompakt auf Mobile: nur Nummer, "Slot X" ab sm
 - ✅ Pausen-Items ebenfalls responsiv gemacht
 
+---
+
+### Phase 6: Bugfix — Schulfilter für Super-Admins in Einschreibungsverwaltung
+
+#### 6.1 `pages/admin-registrations.php` — Schulfilter für alle Admin-Rollen
+
+**Problem:** `$regSchoolId` wurde nur für `school_admin`-Rollen gesetzt. Super-Admins (Rolle `admin`) erhielten `null` und sahen damit Einschreibungen **aller Schulen** schulübergreifend.
+
+**Ursache:** Die Zeile
+```php
+$regSchoolId = isSchoolAdmin() ? ($_SESSION['school_id'] ?? null) : null;
+```
+ließ Super-Admins ohne Schulfilter — weder beim Laden der Schüler noch beim Anzeigen der Einschreibungen.
+
+**Lösung:** `$regSchoolId` wird jetzt primär über `getCurrentSchool()` (URL-Kontext, d. h. den aktuellen `/{school-slug}/`-Pfad) ermittelt. Als Fallback dient weiterhin `$_SESSION['school_id']` für Schul-Admins. Dadurch sind Super-Admins auf den Schulkontext der aktuellen URL beschränkt — genau wie Schul-Admins.
+
+```php
+$currentSchool = getCurrentSchool();
+$regSchoolId = $currentSchool ? (int)$currentSchool['id'] : (isSchoolAdmin() ? ($_SESSION['school_id'] ?? null) : null);
+```
+
+- ✅ Schüler-Dropdown nur noch mit Schülern der aktuellen Schule
+- ✅ Einschreibungsliste gefiltert nach aktueller Schule
+- ✅ Schulzugehörigkeitsprüfung bei Anmelden/Abmelden gilt nun auch für Super-Admins
+
