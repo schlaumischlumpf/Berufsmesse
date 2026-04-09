@@ -54,18 +54,19 @@
     // 2. SCROLL FADE HINTS on filter rows / tab bars
     // -------------------------------------------------------------------------
     function initScrollFadeHints() {
-        // Target horizontally scrollable filter rows
         const selectors = [
             '.flex.gap-2',
             '.flex.border-b',
             '.filter-tabs',
             '.tab-bar',
+            'nav.flex.-mb-px',
+            '.overflow-x-auto',
         ];
 
         selectors.forEach(sel => {
             document.querySelectorAll(sel).forEach(el => {
                 // Only apply if the element really overflows
-                if (el.scrollWidth > el.clientWidth || el.classList.contains('overflow-x-auto')) {
+                if (el.scrollWidth > el.clientWidth || el.classList.contains('overflow-x-auto') || el.matches('nav.flex.-mb-px')) {
                     if (!el.classList.contains('mobile-scroll-fade')) {
                         el.classList.add('mobile-scroll-fade', 'scrollbar-hide');
                     }
@@ -80,6 +81,16 @@
     // pattern using a floating select panel.
     // -------------------------------------------------------------------------
     let selectedDraggable = null;
+    let resizeTimer = null;
+
+    function scheduleRefresh() {
+        clearTimeout(resizeTimer);
+        resizeTimer = window.setTimeout(() => {
+            initMobileTables();
+            initScrollFadeHints();
+            initRegistrationMobileUX();
+        }, 150);
+    }
 
     function initTouchDnD() {
         // Only activate on touch-only devices
@@ -94,6 +105,9 @@
         });
 
         draggables.forEach(el => {
+            if (el.dataset.mobileDndBound) return;
+            el.dataset.mobileDndBound = '1';
+
             el.addEventListener('click', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -120,6 +134,9 @@
         // Drop zones: tap to drop
         const dropZones = document.querySelectorAll('[data-drop-zone], .drop-zone, .room-slot');
         dropZones.forEach(zone => {
+            if (zone.dataset.mobileDropBound) return;
+            zone.dataset.mobileDropBound = '1';
+
             zone.addEventListener('click', function () {
                 if (!selectedDraggable) return;
 
@@ -178,6 +195,9 @@
     // -------------------------------------------------------------------------
     function initPdfButtonFeedback() {
         document.querySelectorAll('a[href*="generate-"], a[href*="export-"], button[onclick*="generate"]').forEach(btn => {
+            if (btn.dataset.mobilePdfBound) return;
+            btn.dataset.mobilePdfBound = '1';
+
             btn.addEventListener('click', function () {
                 const orig = btn.innerHTML;
                 // Show spinner for 3 seconds (PDF generation takes time)
@@ -224,6 +244,8 @@
     } else {
         init();
     }
+
+    window.addEventListener('resize', scheduleRefresh);
 
     // Also re-run on Turbo/page navigation events if applicable
     document.addEventListener('pageChanged', init);
