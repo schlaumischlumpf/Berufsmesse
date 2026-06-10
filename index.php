@@ -546,6 +546,7 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
     <!-- Custom Design System -->
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/design-system.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/guided-tour.css">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/tour-engine.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/easter-eggs.css">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/mobile.css">
     
@@ -1209,6 +1210,13 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                     <i class="fas fa-chalkboard-teacher"></i>
                     <span>Übersicht</span>
                 </a>
+
+                <?php if (getSchoolSetting(getCurrentSchoolId(), 'checkin_teacher_scan_enabled') === '1'): ?>
+                <a href="<?php echo $currentPage === 'teacher-scan' ? 'javascript:void(0)' : '?page=teacher-scan'; ?>" data-page="teacher-scan" class="nav-link <?php echo $currentPage === 'teacher-scan' ? 'active' : ''; ?>">
+                    <i class="fas fa-qrcode"></i>
+                    <span>Check-in Scanner</span>
+                </a>
+                <?php endif; ?>
                 
                 <a href="<?php echo $currentPage === 'exhibitors' ? 'javascript:void(0)' : '?page=exhibitors'; ?>" data-page="exhibitors" class="nav-link <?php echo $currentPage === 'exhibitors' ? 'active' : ''; ?>">
                     <i class="fas fa-building"></i>
@@ -1293,6 +1301,27 @@ if ($currentPage === 'admin-audit-logs' && isset($_GET['export']) && $_GET['expo
                 <a href="<?php echo $currentPage === 'admin-attendance' ? 'javascript:void(0)' : '?page=admin-attendance'; ?>" data-page="admin-attendance" class="nav-link <?php echo $currentPage === 'admin-attendance' ? 'active' : ''; ?>">
                     <i class="fas fa-user-check"></i>
                     <span>Anwesenheit</span>
+                </a>
+                <?php endif; ?>
+
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_sehen') || hasPermission('attendance_bearbeiten')): ?>
+                <a href="<?php echo $currentPage === 'admin-attendance-live' ? 'javascript:void(0)' : '?page=admin-attendance-live'; ?>" data-page="admin-attendance-live" class="nav-link <?php echo $currentPage === 'admin-attendance-live' ? 'active' : ''; ?>">
+                    <i class="fas fa-satellite-dish"></i>
+                    <span>Live-Anwesenheit</span>
+                </a>
+                <?php endif; ?>
+
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('aufsichtsplan_sehen')): ?>
+                <a href="<?php echo $currentPage === 'admin-supervision' ? 'javascript:void(0)' : '?page=admin-supervision'; ?>" data-page="admin-supervision" class="nav-link <?php echo $currentPage === 'admin-supervision' ? 'active' : ''; ?>">
+                    <i class="fas fa-user-shield"></i>
+                    <span>Aufsichtsplan</span>
+                </a>
+                <?php endif; ?>
+
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('berichte_sehen') || hasPermission('qr_codes_sehen')): ?>
+                <a href="<?php echo $currentPage === 'admin-attendance-report' ? 'javascript:void(0)' : '?page=admin-attendance-report'; ?>" data-page="admin-attendance-report" class="nav-link <?php echo $currentPage === 'admin-attendance-report' ? 'active' : ''; ?>">
+                    <i class="fas fa-chart-pie"></i>
+                    <span>Auswertung</span>
                 </a>
                 <?php endif; ?>
                 
@@ -1601,6 +1630,30 @@ if (!empty($_announcements)):
                 case 'admin-registrations':
                     if (isAdminOrSchoolAdmin() || hasPermission('anmeldungen_sehen')) {
                         include 'pages/admin-registrations.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+                case 'admin-supervision':
+                    if (isAdminOrSchoolAdmin() || hasPermission('aufsichtsplan_sehen')) {
+                        include 'pages/admin-supervision.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+                case 'admin-attendance-live':
+                    if (isAdminOrSchoolAdmin() || hasPermission('qr_codes_sehen') || hasPermission('attendance_bearbeiten')) {
+                        include 'pages/admin-attendance-live.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+                case 'admin-attendance-report':
+                    if (isAdminOrSchoolAdmin() || hasPermission('berichte_sehen') || hasPermission('qr_codes_sehen')) {
+                        include 'pages/admin-attendance-report.php';
+                        $pageLoaded = true;
+                    }
+                    break;
+                case 'teacher-scan':
+                    if (isTeacher() || isAdminOrSchoolAdmin()) {
+                        include 'pages/teacher-scan.php';
                         $pageLoaded = true;
                     }
                     break;
@@ -1947,5 +2000,65 @@ if (!empty($_announcements)):
             </div>
         </div>
     </div>
+
+    <!-- Interaktive Tour (Phase 5) -->
+    <?php
+    $__tourKey = 'student';
+    switch ($_SESSION['role'] ?? '') {
+        case 'teacher': $__tourKey = 'teacher'; break;
+        case 'admin':
+        case 'school_admin': $__tourKey = 'school-admin'; break;
+        case 'orga': $__tourKey = 'orga'; break;
+        case 'exhibitor': $__tourKey = 'exhibitor'; break;
+        default: $__tourKey = 'student';
+    }
+    ?>
+    <script>
+    window.TOUR_CONFIG = {
+        endpoint: '<?php echo schoolUrl('api/tour-progress.php'); ?>',
+        csrf: '<?php echo generateCsrfToken(); ?>',
+        role: '<?php echo $__tourKey; ?>'
+    };
+    </script>
+    <script src="<?php echo BASE_URL; ?>assets/js/tour-engine.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/tours/<?php echo $__tourKey; ?>.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/tour-selftest.js"></script>
+    <script>
+    (function () {
+        var KEY = window.TOUR_CONFIG.role;
+        var _old = window.startGuidedTour;
+        // "Hilfe & Tour"-Button auf die neue Engine umlenken
+        window.startGuidedTour = function () {
+            if (window.TourEngine && TourEngine.has(KEY)) { TourEngine.restart(KEY); }
+            else if (typeof _old === 'function') { _old(); }
+        };
+        document.addEventListener('DOMContentLoaded', function () {
+            if (!window.TourEngine) return;
+            TourEngine.autoResume();
+            var ep = window.TOUR_CONFIG.endpoint;
+            fetch(ep + (ep.indexOf('?') >= 0 ? '&' : '?') + 'tour=' + encodeURIComponent(KEY), { headers: { 'Accept': 'application/json' } })
+                .then(function (r) { return r.json(); })
+                .then(function (p) {
+                    if (!p || p.completed) return;
+                    if (p.current_step && p.current_step > 0) return; // Resume-Banner greift
+                    var dismissed = false; try { dismissed = localStorage.getItem('tourRec_' + KEY) === '1'; } catch (e) {}
+                    if (dismissed) return;
+                    showRecommend(KEY);
+                }).catch(function () {});
+        });
+        function showRecommend(key) {
+            if (document.getElementById('tourRecommend')) return;
+            var b = document.createElement('div');
+            b.id = 'tourRecommend'; b.className = 'tour-recommend';
+            b.innerHTML = '<div class="tour-recommend-inner"><i class="fas fa-route"></i>' +
+                '<div class="tour-recommend-text"><strong>Neu hier?</strong> Eine kurze Tour zeigt dir die wichtigsten Funktionen.</div>' +
+                '<button id="tourRecStart" class="tour-btn-pri">Tour starten</button>' +
+                '<button id="tourRecLater" class="tour-btn-text">Später</button></div>';
+            document.body.appendChild(b);
+            document.getElementById('tourRecStart').addEventListener('click', function () { b.remove(); TourEngine.restart(key); });
+            document.getElementById('tourRecLater').addEventListener('click', function () { try { localStorage.setItem('tourRec_' + key, '1'); } catch (e) {} b.remove(); });
+        }
+    })();
+    </script>
 </body>
 </html>

@@ -122,6 +122,45 @@ const REG_STATUS = "<?php echo getRegistrationStatus(); ?>";
         </div>
     </div>
 
+    <?php
+    // Mein QR-Code (nur wenn Lehrer-Check-in an der Schule aktiv ist)
+    if (($_SESSION['role'] ?? '') === 'student'
+        && getSchoolSetting(getCurrentSchoolId(), 'checkin_teacher_scan_enabled') === '1'):
+        require_once __DIR__ . '/../lib/qr.php';
+        $myToken = getOrCreateStudentToken((int)$_SESSION['user_id'], $activeEditionId);
+        $mySvg = qrSvg($myToken, 6, 4);
+        $myClassStmt = $db->prepare("SELECT class FROM users WHERE id = ?");
+        $myClassStmt->execute([$_SESSION['user_id']]);
+        $myClass = $myClassStmt->fetchColumn() ?: '';
+    ?>
+    <div class="mb-8 animate-on-scroll" data-tour="my-qr">
+        <div class="card p-6 flex flex-col sm:flex-row items-center gap-6">
+            <div class="bg-white p-3 rounded-xl border border-gray-100 shadow-sm" style="width:200px;height:200px;">
+                <?php echo $mySvg; ?>
+            </div>
+            <div class="text-center sm:text-left">
+                <h2 class="text-lg font-bold text-gray-800">
+                    <i class="fas fa-id-badge text-emerald-500 mr-2"></i>Mein QR-Code
+                </h2>
+                <p class="text-gray-700 font-medium mt-1">
+                    <?php echo htmlspecialchars($_SESSION['firstname'] . ' ' . $_SESSION['lastname']); ?>
+                    <?php if (!empty($myClass)): ?>
+                        · <?php echo htmlspecialchars($myClass); ?>
+                    <?php endif; ?>
+                </p>
+                <p class="text-sm text-gray-500 mt-2 max-w-sm">
+                    Zeige diesen Code der Aufsicht zum Einchecken. Tipp: Bildschirmhelligkeit hochdrehen,
+                    damit er gut scannbar ist.
+                </p>
+                <a href="<?php echo schoolUrl('api/generate-personal-pdf.php'); ?>" target="_blank"
+                   class="btn btn-secondary mt-3 inline-flex">
+                    <i class="fas fa-file-pdf"></i><span>Als PDF mit Stundenplan</span>
+                </a>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
     <!-- Quick Actions Grid -->
     <div class="quick-actions-grid grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <!-- Meine Termine -->

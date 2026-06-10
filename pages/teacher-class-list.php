@@ -69,7 +69,14 @@ $timeslots = $stmt->fetchAll();
                 <p class="text-gray-600"><?php echo count($students); ?> Schüler</p>
             </div>
             <div class="flex gap-3">
-                <a href="?page=admin-print&type=class&class=<?php echo urlencode($class); ?>" 
+                <?php if (getSchoolSetting(getCurrentSchoolId(), 'checkin_teacher_scan_enabled') === '1'): ?>
+                <a href="<?php echo schoolUrl('api/generate-class-qr-cards.php?class=' . urlencode($class)); ?>"
+                   target="_blank"
+                   class="px-6 py-3 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition font-semibold">
+                    <i class="fas fa-id-card mr-2"></i>QR-Karten
+                </a>
+                <?php endif; ?>
+                <a href="?page=admin-print&type=class&class=<?php echo urlencode($class); ?>"
                    target="_blank"
                    class="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition font-semibold">
                     <i class="fas fa-print mr-2"></i>Drucken

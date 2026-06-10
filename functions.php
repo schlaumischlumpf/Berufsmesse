@@ -242,6 +242,212 @@ function updateSetting($key, $value) {
     return $stmt->execute([$key, $value, $value]);
 }
 
+// ─── Pro-Schule-Einstellungen (school_settings) ──────────────────────────────
+
+/**
+ * Standardwerte für schulspezifische Einstellungen.
+ * Werden verwendet, wenn weder ein school_settings- noch ein globaler
+ * settings-Eintrag existiert.
+ */
+function getSchoolSettingDefaults(): array {
+    return [
+        // Check-in-Modi (QR 2.0)
+        'checkin_self_scan_enabled'    => '1', // Selbst-Check-in durch Schüler
+        'checkin_teacher_scan_enabled' => '0', // Check-in durch Lehrer (Feature-Toggle, Default aus)
+        // Separates Zeitfenster für Lehrer-Scans (großzügiger als Selbst-Scan)
+        'qr_validity_teacher_enabled'  => '1',
+        'qr_validity_teacher_before'   => '20', // Minuten vor Slot-Beginn
+        'qr_validity_teacher_after'    => '30', // Minuten nach Slot-Beginn
+    ];
+}
+
+/**
+ * Ermittelt die effektive school_id im aktuellen Kontext:
+ *   1. URL-Kontext (getCurrentSchool) — innerhalb index.php
+ *   2. _prev_school_id — zuletzt besuchte Schule (für standalone APIs)
+ *   3. school_id — Login-Schule
+ * Gibt null zurück, wenn keine Schule bestimmbar ist (z. B. globaler Admin
+ * ohne Kontext).
+ */
+function getCurrentSchoolId(): ?int {
+    $ctxSchool = getCurrentSchool();
+    if ($ctxSchool) {
+        return (int)$ctxSchool['id'];
+    }
+    $raw = $_SESSION['_prev_school_id'] ?? $_SESSION['school_id'] ?? null;
+    return $raw !== null ? (int)$raw : null;
+}
+
+/**
+ * Liest eine schulspezifische Einstellung.
+ * Auflösungsreihenfolge:
+ *   1. school_settings(school_id, key)
+ *   2. globale settings(key)            — Migrationspfad für noch nicht
+ *                                          isolierte Einstellungen
+ *   3. übergebener $default
+ *   4. getSchoolSettingDefaults()[$key]
+ *
+ * @param int|null $schoolId  null → automatisch via getCurrentSchoolId()
+ */
+function getSchoolSetting(?int $schoolId, string $key, $default = null) {
+    if ($schoolId === null) {
+        $schoolId = getCurrentSchoolId();
+    }
+    try {
+        $db = getDB();
+        if ($schoolId !== null) {
+            $stmt = $db->prepare("SELECT setting_value FROM school_settings WHERE school_id = ? AND setting_key = ?");
+            $stmt->execute([$schoolId, $key]);
+            $row = $stmt->fetch();
+            if ($row !== false) {
+                return $row['setting_value'];
+            }
+        }
+        // Fallback: globale settings-Tabelle
+        $stmt = $db->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
+        $stmt->execute([$key]);
+        $row = $stmt->fetch();
+        if ($row !== false) {
+            return $row['setting_value'];
+        }
+    } catch (Exception $e) {
+        // school_settings existiert evtl. noch nicht — weiter zu Default
+    }
+    if ($default !== null) {
+        return $default;
+    }
+    $defaults = getSchoolSettingDefaults();
+    return $defaults[$key] ?? null;
+}
+
+/**
+ * Schreibt/aktualisiert eine schulspezifische Einstellung.
+ * Gibt false zurück, wenn keine school_id bestimmbar ist.
+ *
+ * @param int|null $schoolId  null → automatisch via getCurrentSchoolId()
+ */
+function updateSchoolSetting(?int $schoolId, string $key, $value): bool {
+    if ($schoolId === null) {
+        $schoolId = getCurrentSchoolId();
+    }
+    if ($schoolId === null) {
+        return false;
+    }
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("INSERT INTO school_settings (school_id, setting_key, setting_value)
+                              VALUES (?, ?, ?)
+                              ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value)");
+        return $stmt->execute([$schoolId, $key, (string)$value]);
+    } catch (Exception $e) {
+        return false;
+    }
+}
+
+// ─── Schüler-QR-Tokens (Lehrer-Check-in, QR 2.0) ─────────────────────────────
+
+/**
+ * Liefert den aktiven persönlichen QR-Token eines Schülers für die Edition
+ * und erzeugt ihn bei Bedarf (Lazy-Generierung). Format: 'S-' + 32 Hex-Zeichen.
+ */
+function getOrCreateStudentToken(int $userId, ?int $editionId = null): string {
+    $editionId = $editionId ?? getActiveEditionId();
+    $db = getDB();
+    $stmt = $db->prepare("SELECT token FROM student_qr_tokens
+                          WHERE user_id = ? AND edition_id = ? AND revoked = 0
+                          ORDER BY id DESC LIMIT 1");
+    $stmt->execute([$userId, $editionId]);
+    $existing = $stmt->fetchColumn();
+    if ($existing) {
+        return $existing;
+    }
+    for ($i = 0; $i < 5; $i++) {
+        $token = 'S-' . bin2hex(random_bytes(16));
+        try {
+            $ins = $db->prepare("INSERT INTO student_qr_tokens (user_id, edition_id, token) VALUES (?, ?, ?)");
+            $ins->execute([$userId, $editionId, $token]);
+            return $token;
+        } catch (PDOException $e) {
+            // 23000 = Integritätsverletzung (Token-Kollision) → erneut versuchen
+            if ($e->getCode() !== '23000') {
+                throw $e;
+            }
+        }
+    }
+    throw new RuntimeException('Schüler-Token konnte nicht erzeugt werden');
+}
+
+/**
+ * Löst einen gescannten Schüler-Token zu einem Benutzer auf.
+ * Gibt die User-Row zurück oder null (ungültig/gesperrt/falsche Edition).
+ */
+function getStudentByToken(string $token, ?int $editionId = null): ?array {
+    $editionId = $editionId ?? getActiveEditionId();
+    $db = getDB();
+    $stmt = $db->prepare("SELECT u.* FROM student_qr_tokens st
+                          JOIN users u ON st.user_id = u.id
+                          WHERE st.token = ? AND st.revoked = 0 AND st.edition_id = ?
+                          LIMIT 1");
+    $stmt->execute([$token, $editionId]);
+    $row = $stmt->fetch();
+    return $row ?: null;
+}
+
+// ─── Rate-Limiting für Check-in-Scans (QR 2.0) ───────────────────────────────
+
+/**
+ * Prüft, ob zu viele fehlgeschlagene Scan-Versuche vorliegen
+ * (Standard: 30 Fehlversuche pro 60 s, je User oder IP).
+ */
+function isCheckinRateLimited(?int $userId, string $ip, int $maxFails = 30, int $windowSec = 60): bool {
+    $windowSec = max(1, (int)$windowSec);
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("SELECT COUNT(*) FROM checkin_attempts
+                              WHERE success = 0
+                                AND attempted_at > (NOW() - INTERVAL $windowSec SECOND)
+                                AND (user_id <=> ? OR ip_address = ?)");
+        $stmt->execute([$userId, $ip]);
+        return (int)$stmt->fetchColumn() >= $maxFails;
+    } catch (Exception $e) {
+        return false; // Tabelle fehlt o. Ä. → nicht blockieren
+    }
+}
+
+/**
+ * Protokolliert einen Scan-Versuch (für Rate-Limiting).
+ */
+function recordCheckinAttempt(?int $userId, string $ip, bool $success): void {
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("INSERT INTO checkin_attempts (user_id, ip_address, success) VALUES (?, ?, ?)");
+        $stmt->execute([$userId, $ip, $success ? 1 : 0]);
+    } catch (Exception $e) {
+        // still tolerieren
+    }
+}
+
+/**
+ * Erzeugt eine In-App-Benachrichtigung an Lehrkräfte (über das announcements-System).
+ * Gekapselt, damit später ein E-Mail-Kanal ohne Umbau andocken kann.
+ *
+ * @param int $expiresInDays Gültigkeitsdauer der Ankündigung
+ */
+function notifyTeachers(string $title, string $body, ?int $schoolId = null, int $expiresInDays = 2): bool {
+    $schoolId = $schoolId ?? getCurrentSchoolId();
+    try {
+        $db   = getDB();
+        $stmt = $db->prepare("INSERT INTO announcements
+            (title, body, type, target_role, is_active, created_by, school_id, expires_at)
+            VALUES (?, ?, 'info', 'teacher', 1, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))");
+        $stmt->execute([$title, $body, $_SESSION['user_id'] ?? null, $schoolId, max(1, $expiresInDays)]);
+        return true;
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'notifyTeachers');
+        return false;
+    }
+}
+
 function isRegistrationOpen() {
     $start = getSetting('registration_start');
     $end = getSetting('registration_end');
@@ -469,6 +675,8 @@ function getPermissionDependencies() {
         'branchen_bearbeiten'             => ['branchen_sehen'],
         // Anwesenheit
         'attendance_bearbeiten'           => ['qr_codes_sehen'],
+        // Aufsichtsplan (QR 2.0)
+        'aufsichtsplan_verwalten'         => ['aufsichtsplan_sehen'],
         'aussteller_dokumente_verwalten'  => ['aussteller_sehen'],
         // Branchen (in Aussteller-Tab)
         'branchen_verwalten'              => ['branchen_sehen'],
@@ -620,6 +828,10 @@ function getAvailablePermissions() {
         ],
         'Anwesenheit' => [
             'attendance_bearbeiten' => 'Anwesenheit manuell eintragen/entfernen (erfordert: qr_codes_sehen)',
+        ],
+        'Aufsichtsplan (Check-in 2.0)' => [
+            'aufsichtsplan_sehen'     => 'Aufsichtsplan (Lehrer je Raum/Slot) einsehen',
+            'aufsichtsplan_verwalten' => 'Aufsichtsplan bearbeiten — Lehrer Räumen/Slots zuweisen (erfordert: aufsichtsplan_sehen)',
         ],
         'Anmeldungen' => [
             'anmeldungen_sehen'    => 'Alle Schüler-Anmeldungen einsehen',

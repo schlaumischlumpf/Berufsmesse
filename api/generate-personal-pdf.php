@@ -6,6 +6,7 @@
 require_once '../config.php';
 require_once '../functions.php';
 require_once '../fpdf/fpdf.php';
+require_once '../lib/qr.php';
 
 // Berechtigungsprüfung
 if (!isLoggedIn()) {
@@ -18,8 +19,10 @@ $db = getDB();
 $activeEditionId = getActiveEditionId();
 
 // Helper: UTF-8 zu Latin-1 konvertieren
-function conv($str) {
-    return iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', $str);
+if (!function_exists('conv')) {
+    function conv($str) {
+        return iconv('UTF-8', 'windows-1252//TRANSLIT//IGNORE', (string)$str);
+    }
 }
 
 // Benutzer-Registrierungen laden
@@ -273,6 +276,25 @@ $pdf->AddPage();
 $pdf->UserInfoCard(count($registrations));
 $pdf->ScheduleTable($schedule, $regBySlot);
 $pdf->Legend();
+
+// Persönlicher Check-in-QR-Code (nur wenn Lehrer-Check-in aktiv)
+if (getSchoolSetting(getCurrentSchoolId(), 'checkin_teacher_scan_enabled') === '1') {
+    $studentToken = getOrCreateStudentToken((int)$_SESSION['user_id'], $activeEditionId);
+    $pdf->Ln(8);
+    $qy = $pdf->GetY();
+    if ($qy > 240) { $pdf->AddPage(); $qy = $pdf->GetY(); }
+    qrDrawFpdf($pdf, $studentToken, 10, $qy, 32);
+    $pdf->SetFont('Arial', 'B', 11);
+    $pdf->SetXY(46, $qy + 4);
+    $pdf->Cell(0, 6, conv('Dein persönlicher Check-in-Code'), 0, 2);
+    $pdf->SetFont('Arial', '', 9);
+    $pdf->SetX(46);
+    $pdf->Cell(0, 5, conv($userName), 0, 2);
+    $pdf->SetTextColor(100, 100, 100);
+    $pdf->SetX(46);
+    $pdf->MultiCell(150, 5, conv('Zeige diesen Code der Aufsicht zum Einchecken. Bildschirmhelligkeit erhöhen oder dieses Blatt mitbringen.'));
+    $pdf->SetTextColor(0, 0, 0);
+}
 
 // PDF ausgeben
 $filename = 'Berufsmesse_Zeitplan_' . str_replace(' ', '_', $userName) . '_' . date('Y-m-d') . '.pdf';

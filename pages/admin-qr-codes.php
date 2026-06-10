@@ -243,6 +243,42 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
         <?php endif; ?>
     </div>
 
+    <?php if (getSchoolSetting(getCurrentSchoolId(), 'checkin_teacher_scan_enabled') === '1'):
+        $__qrSid = getCurrentSchoolId();
+        $clsStmt = $db->prepare("SELECT DISTINCT class FROM users WHERE role='student' AND edition_id=? "
+            . ($__qrSid !== null ? "AND school_id=?" : "") . " AND class IS NOT NULL AND class<>'' ORDER BY class");
+        $clsStmt->execute($__qrSid !== null ? [$activeEditionId, $__qrSid] : [$activeEditionId]);
+        $classList = $clsStmt->fetchAll(PDO::FETCH_COLUMN);
+    ?>
+    <div class="bg-white rounded-xl border border-gray-100 p-5">
+        <h3 class="text-sm font-semibold text-gray-800 mb-1"><i class="fas fa-id-card text-emerald-500 mr-2"></i>Schüler-QR-Karten (Klassensatz)</h3>
+        <p class="text-xs text-gray-500 mb-3">Druckbare Scheckkarten mit persönlichem Check-in-Code je Schüler — zum Ausschneiden/Laminieren.</p>
+        <div class="flex flex-wrap items-end gap-2">
+            <div>
+                <label class="block text-xs text-gray-500 mb-1">Klasse</label>
+                <select id="qrCardClass" class="border border-gray-200 rounded-lg px-3 py-2 text-sm">
+                    <option value="">Alle Klassen</option>
+                    <?php foreach ($classList as $c): ?>
+                        <option value="<?php echo htmlspecialchars($c); ?>"><?php echo htmlspecialchars($c); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <button type="button" onclick="openQrCards()"
+                    class="px-4 py-2 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition text-sm font-medium">
+                <i class="fas fa-file-pdf mr-1"></i>QR-Karten erzeugen
+            </button>
+        </div>
+    </div>
+    <script>
+    function openQrCards() {
+        const c = document.getElementById('qrCardClass').value;
+        let url = '<?php echo schoolUrl('api/generate-class-qr-cards.php'); ?>';
+        if (c) url += (url.includes('?') ? '&' : '?') + 'class=' + encodeURIComponent(c);
+        window.open(url, '_blank');
+    }
+    </script>
+    <?php endif; ?>
+
     <?php if (isset($_GET['generated'])): ?>
     <div class="bg-emerald-50 border border-emerald-200 p-4 rounded-xl">
         <div class="flex items-center">
@@ -366,7 +402,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                     <!-- QR-Code anzeigen -->
                     <div class="text-center mb-3">
                         <div id="qr-<?php echo $key; ?>" class="inline-block bg-white p-3 rounded-lg border border-gray-200">
-                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=<?php echo urlencode($qrCodeBaseUrl . '?page=qr-checkin&token=' . $token['token']); ?>" 
+                            <img src="<?php echo schoolUrl('api/qr-image.php?scale=5&data=' . urlencode($qrCodeBaseUrl . '?page=qr-checkin&token=' . $token['token'])); ?>"
                                  alt="QR-Code" class="w-36 h-36" loading="lazy">
                         </div>
                     </div>
@@ -375,7 +411,7 @@ $qrCodeBaseUrl = getSetting('qr_code_url', 'https://localhost' . BASE_URL);
                             Gültig bis: <?php echo date('d.m.Y H:i', strtotime($token['expires_at'])); ?>
                         </p>
                         <div class="flex gap-2 justify-center">
-                            <button onclick="window.open('https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=<?php echo urlencode($qrCodeBaseUrl . '?page=qr-checkin&token=' . $token['token']); ?>', '_blank')" 
+                            <button onclick="window.open('<?php echo schoolUrl('api/qr-image.php?scale=12&data=' . urlencode($qrCodeBaseUrl . '?page=qr-checkin&token=' . $token['token'])); ?>', '_blank')"
                                     class="px-3 py-1.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-xs">
                                 <i class="fas fa-print mr-1"></i>Gross
                             </button>

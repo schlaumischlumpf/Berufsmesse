@@ -1,0 +1,74 @@
+/* Tour-Engine (Phase 5) — Overlay, Spotlight, Tooltip, Banner */
+
+#tourOverlay { position: fixed; inset: 0; z-index: 10000; display: none; }
+#tourOverlay.active { display: block; }
+
+#tourBackdrop { position: absolute; inset: 0; background: rgba(17, 24, 39, 0.55); }
+
+#tourSpot {
+    position: fixed; border-radius: 0.6rem; display: none;
+    box-shadow: 0 0 0 4px rgba(168, 230, 207, 0.9), 0 0 0 9999px rgba(17, 24, 39, 0.55);
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); pointer-events: none; z-index: 10001;
+}
+
+#tourBox {
+    position: fixed; z-index: 10002; width: 340px; max-width: calc(100vw - 24px);
+    background: #fff; border-radius: 0.9rem; box-shadow: 0 20px 50px -12px rgba(0,0,0,0.35);
+    padding: 1.1rem 1.2rem; font-family: 'Inter', system-ui, sans-serif;
+}
+#tourBox #tourClose {
+    position: absolute; top: 0.5rem; right: 0.7rem; background: none; border: none;
+    font-size: 1.4rem; line-height: 1; color: #9ca3af; cursor: pointer;
+}
+#tourBox #tourClose:hover { color: #374151; }
+#tourStepNo { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: #6bc4a6; margin-bottom: 0.25rem; }
+#tourBox h3 { font-size: 1.05rem; font-weight: 700; color: #1f2937; margin: 0 0 0.4rem; }
+#tourBox p { font-size: 0.875rem; color: #4b5563; margin: 0 0 0.6rem; line-height: 1.45; }
+#tourActionHint { font-size: 0.75rem; color: #d97706; min-height: 0; margin-bottom: 0.4rem; }
+#tourActionHint:not(:empty) { padding: 0.3rem 0.5rem; background: #fffbeb; border-radius: 0.4rem; }
+
+#tourNav { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.4rem; }
+.tour-nav-right { display: flex; gap: 0.5rem; }
+
+.tour-btn-pri {
+    background: linear-gradient(135deg, #a8e6cf 0%, #6bc4a6 100%); color: #1f2937;
+    border: none; border-radius: 0.6rem; padding: 0.45rem 0.9rem; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+}
+.tour-btn-pri:disabled { opacity: 0.5; cursor: not-allowed; }
+.tour-btn-sec { background: #fff; color: #6b7280; border: 1px solid #e5e7eb; border-radius: 0.6rem; padding: 0.45rem 0.9rem; font-size: 0.85rem; cursor: pointer; }
+.tour-btn-text { background: none; border: none; color: #9ca3af; font-size: 0.8rem; cursor: pointer; text-decoration: underline; }
+.tour-btn-text:hover { color: #6b7280; }
+
+/* Toast */
+.tour-toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #1f2937; color: #fff; padding: 0.7rem 1.2rem; border-radius: 0.7rem; font-size: 0.9rem;
+    z-index: 10010; opacity: 0; transition: all 0.3s ease;
+}
+.tour-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* Resume / Recommend Banner */
+.tour-resume-banner, .tour-recommend {
+    position: fixed; bottom: 20px; right: 20px; z-index: 9000; max-width: calc(100vw - 40px);
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 0.8rem; box-shadow: 0 12px 30px -10px rgba(0,0,0,0.25);
+}
+.tour-resume-banner { padding: 0.7rem 1rem; display: flex; align-items: center; gap: 0.7rem; }
+.tour-recommend-inner { display: flex; align-items: center; gap: 0.8rem; padding: 0.8rem 1rem; }
+.tour-recommend-inner i { color: #6bc4a6; font-size: 1.3rem; }
+.tour-recommend-text { font-size: 0.85rem; color: #374151; max-width: 280px; }
+
+@media (max-width: 640px) {
+    .tour-recommend, .tour-resume-banner { left: 12px; right: 12px; bottom: 12px; }
+    .tour-recommend-text { max-width: none; }
+}
+
+/* Dark Mode (passend zur design-system.css, html.dark) */
+html.dark #tourBox,
+html.dark .tour-resume-banner,
+html.dark .tour-recommend { background: #18181b; border-color: #3f3f46; }
+html.dark #tourBox h3 { color: #f4f4f5; }
+html.dark #tourBox p,
+html.dark .tour-recommend-text { color: #d4d4d8; }
+html.dark .tour-btn-sec { background: #27272a; color: #d4d4d8; border-color: #3f3f46; }
+html.dark #tourActionHint:not(:empty) { background: #422006; color: #fbbf24; }
+html.dark .tour-toast { background: #3f3f46; }

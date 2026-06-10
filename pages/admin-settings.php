@@ -85,6 +85,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_qr_validity'])) 
     $message = ['type' => 'success', 'text' => 'Gültigkeitsdauer erfolgreich gespeichert'];
 }
 
+// ── Check-in 2.0: Modi pro Schule ────────────────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_checkin_modes'])) {
+    requireCsrf();
+    if (!isAdminOrSchoolAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+        die('Keine Berechtigung');
+    }
+    $sid       = getCurrentSchoolId();
+    $selfScan  = isset($_POST['checkin_self_scan_enabled']) ? '1' : '0';
+    $teachScan = isset($_POST['checkin_teacher_scan_enabled']) ? '1' : '0';
+    updateSchoolSetting($sid, 'checkin_self_scan_enabled', $selfScan);
+    updateSchoolSetting($sid, 'checkin_teacher_scan_enabled', $teachScan);
+    logAuditAction('checkin_modi_geaendert', "Selbst-Scan: $selfScan, Lehrer-Scan: $teachScan");
+    $message = ['type' => 'success', 'text' => 'Check-in-Modi gespeichert'];
+}
+
+// ── Check-in 2.0: Zeitfenster für Lehrer-Scans ───────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_teacher_validity'])) {
+    requireCsrf();
+    if (!isAdminOrSchoolAdmin() && !hasPermission('einstellungen_bearbeiten')) {
+        die('Keine Berechtigung');
+    }
+    $sid     = getCurrentSchoolId();
+    $tBefore = max(0, intval($_POST['qr_validity_teacher_before']));
+    $tAfter  = max(0, intval($_POST['qr_validity_teacher_after']));
+    $tEnabled = isset($_POST['qr_validity_teacher_enabled']) ? '1' : '0';
+    updateSchoolSetting($sid, 'qr_validity_teacher_enabled', $tEnabled);
+    updateSchoolSetting($sid, 'qr_validity_teacher_before', $tBefore);
+    updateSchoolSetting($sid, 'qr_validity_teacher_after', $tAfter);
+    logAuditAction('lehrer_gueltigkeit_geaendert', "Lehrer-Fenster: $tBefore vor / $tAfter nach | Aktiv: $tEnabled");
+    $message = ['type' => 'success', 'text' => 'Zeitfenster für Lehrer-Scans gespeichert'];
+}
+
+// ── Check-in 2.0: Generalprobe — Anwesenheitsdaten zurücksetzen ───────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['reset_attendance'])) {
+    requireCsrf();
+    if (!isAdminOrSchoolAdmin()) {
+        die('Keine Berechtigung — nur Schul-Administratoren');
+    }
+    $typed = trim($_POST['confirm_school_name'] ?? '');
+    $schoolName = $school['name'] ?? '';
+    if ($typed !== $schoolName) {
+        $message = ['type' => 'error', 'text' => 'Schulname stimmt nicht überein — Zurücksetzen abgebrochen.'];
+    } else {
+        try {
+            $db->beginTransaction();
+            $a = $db->prepare("DELETE FROM attendance WHERE edition_id = ?");
+            $a->execute([$activeEditionId]);
+            $delAttendance = $a->rowCount();
+            // Per QR-Check-in entstandene Frei-Slot-Registrierungen entfernen
+            $r = $db->prepare("DELETE FROM registrations WHERE edition_id = ? AND registration_type = 'qr_checkin'");
+            $r->execute([$activeEditionId]);
+            $delReg = $r->rowCount();
+            $db->commit();
+            logAuditAction('generalprobe_reset',
+                "Anwesenheit zurückgesetzt: $delAttendance Check-ins, $delReg QR-Registrierungen gelöscht", 'warning');
+            $message = ['type' => 'success', 'text' => "Zurückgesetzt: $delAttendance Check-ins und $delReg QR-Registrierungen gelöscht."];
+        } catch (Exception $e) {
+            if ($db->inTransaction()) $db->rollBack();
+            logErrorToAudit($e, 'Generalprobe-Reset');
+            $message = ['type' => 'error', 'text' => 'Fehler beim Zurücksetzen: ' . $e->getMessage()];
+        }
+    }
+}
+
+// ── Check-in 2.0: alle Schüler-QR-Tokens neu generieren (sperren) ─────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['regenerate_student_tokens'])) {
+    requireCsrf();
+    if (!isAdminOrSchoolAdmin()) {
+        die('Keine Berechtigung — nur Schul-Administratoren');
+    }
+    try {
+        $stmt = $db->prepare("UPDATE student_qr_tokens SET revoked = 1 WHERE edition_id = ? AND revoked = 0");
+        $stmt->execute([$activeEditionId]);
+        $revoked = $stmt->rowCount();
+        logAuditAction('schueler_tokens_neu', "$revoked Schüler-QR-Tokens gesperrt (werden bei Bedarf neu erzeugt)", 'warning');
+        $message = ['type' => 'success', 'text' => "$revoked bestehende Schüler-Tokens gesperrt. Neue Codes werden bei Bedarf automatisch erzeugt."];
+    } catch (Exception $e) {
+        logErrorToAudit($e, 'Schüler-Token-Reset');
+        $message = ['type' => 'error', 'text' => 'Fehler: ' . $e->getMessage()];
+    }
+}
+
+// Check-in-Einstellungen für die Anzeige laden (pro Schule)
+$__sid = getCurrentSchoolId();
+$checkinSettings = [
+    'checkin_self_scan_enabled'    => getSchoolSetting($__sid, 'checkin_self_scan_enabled'),
+    'checkin_teacher_scan_enabled' => getSchoolSetting($__sid, 'checkin_teacher_scan_enabled'),
+    'qr_validity_teacher_enabled'  => getSchoolSetting($__sid, 'qr_validity_teacher_enabled'),
+    'qr_validity_teacher_before'   => getSchoolSetting($__sid, 'qr_validity_teacher_before'),
+    'qr_validity_teacher_after'    => getSchoolSetting($__sid, 'qr_validity_teacher_after'),
+];
+
 // Branchen-Verwaltung wurde nach admin-exhibitors.php verschoben (Issue #XX)
 
 // Aktuelle Einstellungen laden
@@ -218,6 +310,10 @@ $allTimeslots = $stmt->fetchAll();
             <button onclick="switchSettingsTab('qrcodes')" data-tab="qrcodes"
                     class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
                 <i class="fas fa-qrcode"></i> <span>QR-Codes</span>
+            </button>
+            <button onclick="switchSettingsTab('checkin')" data-tab="checkin"
+                    class="settings-tab flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50 transition-all">
+                <i class="fas fa-user-check"></i> <span>Check-in</span>
             </button>
             <?php if (isAdmin()): ?>
             <button onclick="switchSettingsTab('sicherheit')" data-tab="sicherheit"
@@ -361,8 +457,8 @@ $allTimeslots = $stmt->fetchAll();
                     <!-- Live QR-Vorschau -->
                     <div class="flex flex-col sm:flex-row gap-4 items-start">
                         <div class="bg-white p-3 rounded-lg border-2 border-gray-200 inline-block flex-shrink-0">
-                            <img id="qrPreviewImg" 
-                                 src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
+                            <img id="qrPreviewImg"
+                                 src="<?php echo schoolUrl('api/qr-image.php?scale=6&data=' . urlencode($currentSettings['qr_code_url'])); ?>"
                                  alt="QR-Code Vorschau" class="w-36 h-36 sm:w-44 sm:h-44">
                         </div>
                         <div class="flex-1 space-y-2">
@@ -372,15 +468,15 @@ $allTimeslots = $stmt->fetchAll();
                                 <code id="qrPreviewUrl" class="text-xs text-emerald-600 break-all"><?php echo htmlspecialchars($currentSettings['qr_code_url']); ?>?page=qr-checkin&amp;token=BEISPIEL</code>
                             </p>
                             <div class="grid grid-cols-1 gap-2">
-                                <a href="https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
-                                   download="berufsmesse-qrcode.png" target="_blank"
+                                <a href="<?php echo schoolUrl('api/qr-image.php?scale=10&download=berufsmesse-qrcode&data=' . urlencode($currentSettings['qr_code_url'])); ?>"
+                                   target="_blank"
                                    class="flex items-center justify-center gap-2 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition text-xs font-medium">
-                                    <i class="fas fa-download"></i> Download (600px)
+                                    <i class="fas fa-download"></i> Download (SVG)
                                 </a>
-                                <a href="https://api.qrserver.com/v1/create-qr-code/?size=1200x1200&data=<?php echo urlencode($currentSettings['qr_code_url']); ?>" 
-                                   download="berufsmesse-qrcode-hd.png" target="_blank"
+                                <a href="<?php echo schoolUrl('api/qr-image.php?scale=20&download=berufsmesse-qrcode-hd&data=' . urlencode($currentSettings['qr_code_url'])); ?>"
+                                   target="_blank"
                                    class="flex items-center justify-center gap-2 px-3 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition text-xs font-medium">
-                                    <i class="fas fa-download"></i> Download HD (1200px)
+                                    <i class="fas fa-download"></i> Download HD (SVG)
                                 </a>
                                 <button type="button" onclick="window.print()"
                                         class="flex items-center justify-center gap-2 px-3 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition text-xs font-medium">
@@ -468,6 +564,146 @@ $allTimeslots = $stmt->fetchAll();
                     <?php endif; ?>
                 </form>
             </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- TAB: Check-in 2.0 -->
+        <!-- ============================================================ -->
+        <?php
+        // Existiert ein Aufsichtsplan für die aktive Edition?
+        $supChk = $db->prepare("SELECT COUNT(*) FROM teacher_room_assignments WHERE edition_id = ?");
+        $supChk->execute([$activeEditionId]);
+        $hasSupervision = (int)$supChk->fetchColumn() > 0;
+        $teacherScanOn = $checkinSettings['checkin_teacher_scan_enabled'] === '1';
+        ?>
+        <div id="tab-checkin" class="settings-tab-content hidden p-4 sm:p-6 space-y-8">
+
+            <!-- Check-in-Modi -->
+            <form method="POST" class="space-y-4">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">Check-in-Modi</h3>
+                    <p class="text-sm text-gray-500">Lege fest, wie Schüler ihre Anwesenheit bestätigen können. Beide Modi sind parallel möglich.</p>
+                </div>
+
+                <label class="flex items-start gap-3 p-3 border border-gray-100 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input type="checkbox" name="checkin_self_scan_enabled" value="1" class="mt-1"
+                           <?php echo $checkinSettings['checkin_self_scan_enabled'] === '1' ? 'checked' : ''; ?>>
+                    <span>
+                        <span class="font-medium text-gray-800">Selbst-Check-in durch Schüler</span>
+                        <span class="block text-sm text-gray-500">Schüler scannen den Raum-QR-Code selbst mit ihrem Gerät.</span>
+                    </span>
+                </label>
+
+                <label class="flex items-start gap-3 p-3 border border-gray-100 rounded-lg cursor-pointer hover:bg-gray-50">
+                    <input type="checkbox" name="checkin_teacher_scan_enabled" value="1" class="mt-1"
+                           <?php echo $teacherScanOn ? 'checked' : ''; ?>>
+                    <span>
+                        <span class="font-medium text-gray-800">Check-in durch Lehrer</span>
+                        <span class="block text-sm text-gray-500">Aufsichtslehrer scannen die persönlichen QR-Codes der Schüler.</span>
+                    </span>
+                </label>
+
+                <?php if ($teacherScanOn && !$hasSupervision): ?>
+                <div class="bg-amber-50 border border-amber-200 text-amber-800 text-sm p-3 rounded-lg">
+                    <i class="fas fa-triangle-exclamation mr-2"></i>
+                    Der Lehrer-Check-in ist aktiv, aber es existiert noch kein Aufsichtsplan.
+                    <a href="?page=admin-supervision" class="underline font-medium">Jetzt Aufsichtsplan pflegen</a>.
+                </div>
+                <?php endif; ?>
+
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                <button type="submit" name="save_checkin_modes"
+                        class="w-full sm:w-auto px-6 py-2.5 bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 transition font-medium text-sm">
+                    <i class="fas fa-save mr-2"></i>Modi speichern
+                </button>
+                <?php endif; ?>
+            </form>
+
+            <!-- Zeitfenster Lehrer-Scan -->
+            <form method="POST" class="space-y-4 border-t border-gray-100 pt-6">
+                <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">Zeitfenster für Lehrer-Scans</h3>
+                    <p class="text-sm text-gray-500">Separat vom Selbst-Check-in — üblicherweise großzügiger.</p>
+                </div>
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" name="qr_validity_teacher_enabled" value="1"
+                           <?php echo $checkinSettings['qr_validity_teacher_enabled'] === '1' ? 'checked' : ''; ?>>
+                    Zeitfenster für Lehrer-Scans aktiv
+                </label>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-md">
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Minuten vor Slot-Beginn</label>
+                        <input type="number" min="0" name="qr_validity_teacher_before"
+                               value="<?php echo htmlspecialchars($checkinSettings['qr_validity_teacher_before']); ?>"
+                               class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                    </div>
+                    <div>
+                        <label class="block text-sm text-gray-600 mb-1">Minuten nach Slot-Beginn</label>
+                        <input type="number" min="0" name="qr_validity_teacher_after"
+                               value="<?php echo htmlspecialchars($checkinSettings['qr_validity_teacher_after']); ?>"
+                               class="w-full border border-gray-200 rounded-lg px-3 py-2">
+                    </div>
+                </div>
+                <?php if (isAdminOrSchoolAdmin() || hasPermission('einstellungen_bearbeiten')): ?>
+                <button type="submit" name="save_teacher_validity"
+                        class="w-full sm:w-auto px-6 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition font-medium text-sm">
+                    <i class="fas fa-save mr-2"></i>Zeitfenster speichern
+                </button>
+                <?php endif; ?>
+            </form>
+
+            <?php if (isAdminOrSchoolAdmin()): ?>
+            <!-- Generalprobe / Wartung -->
+            <div class="space-y-4 border-t border-gray-100 pt-6">
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800">Generalprobe & Wartung</h3>
+                    <p class="text-sm text-gray-500">Setze die Anwesenheitsdaten nach einem Testdurchlauf zurück. Registrierungen, Aufsichtsplan und Logins bleiben erhalten.</p>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <button type="button" onclick="document.getElementById('resetAttendanceModal').classList.remove('hidden')"
+                            class="px-5 py-2.5 bg-red-50 text-red-700 border border-red-200 rounded-lg hover:bg-red-100 transition font-medium text-sm">
+                        <i class="fas fa-eraser mr-2"></i>Anwesenheitsdaten zurücksetzen
+                    </button>
+
+                    <form method="POST" onsubmit="return confirm('Wirklich alle Schüler-QR-Tokens sperren? Neue Codes werden bei Bedarf automatisch erzeugt.');">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                        <button type="submit" name="regenerate_student_tokens"
+                                class="px-5 py-2.5 bg-gray-100 text-gray-700 border border-gray-200 rounded-lg hover:bg-gray-200 transition font-medium text-sm">
+                            <i class="fas fa-rotate mr-2"></i>Alle Schüler-QR-Tokens neu generieren
+                        </button>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Reset-Bestätigungs-Modal -->
+            <div id="resetAttendanceModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                <div class="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+                    <h4 class="text-lg font-bold text-gray-800 mb-2"><i class="fas fa-triangle-exclamation text-red-500 mr-2"></i>Anwesenheit zurücksetzen</h4>
+                    <p class="text-sm text-gray-600 mb-4">
+                        Dies löscht <strong>alle Check-ins</strong> und per QR entstandene Frei-Slot-Registrierungen der aktiven Edition.
+                        Zur Bestätigung gib den Schulnamen ein:
+                        <span class="font-semibold text-gray-800">„<?php echo htmlspecialchars($school['name'] ?? ''); ?>“</span>
+                    </p>
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="<?php echo generateCsrfToken(); ?>">
+                        <input type="text" name="confirm_school_name" autocomplete="off"
+                               class="w-full border border-gray-300 rounded-lg px-3 py-2 mb-4"
+                               placeholder="Schulname zur Bestätigung">
+                        <div class="flex justify-end gap-3">
+                            <button type="button" onclick="document.getElementById('resetAttendanceModal').classList.add('hidden')"
+                                    class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm">Abbrechen</button>
+                            <button type="submit" name="reset_attendance"
+                                    class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-medium">
+                                <i class="fas fa-eraser mr-2"></i>Endgültig zurücksetzen
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <?php endif; ?>
         </div>
 
         <!-- ============================================================ -->
@@ -753,8 +989,8 @@ function updateQrPreview() {
     qrUpdateTimer = setTimeout(function() {
         const url = document.getElementById('qrUrlInput').value;
         if (url) {
-            document.getElementById('qrPreviewImg').src = 
-                'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(url);
+            document.getElementById('qrPreviewImg').src =
+                '<?php echo schoolUrl('api/qr-image.php?scale=6&data='); ?>' + encodeURIComponent(url);
             document.getElementById('qrPreviewUrl').textContent = url + '?page=qr-checkin&token=BEISPIEL';
         }
     }, 500);

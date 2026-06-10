@@ -17,6 +17,13 @@ requireCsrf();
 
 $db = getDB();
 $activeEditionId = getActiveEditionId();
+
+// Selbst-Check-in muss für die Schule aktiviert sein (QR 2.0)
+if (getSchoolSetting(getCurrentSchoolId(), 'checkin_self_scan_enabled') !== '1') {
+    echo json_encode(['success' => false, 'message' => 'Der Selbst-Check-in ist an deiner Schule deaktiviert. Bitte wende dich an die Aufsicht.']);
+    exit;
+}
+
 $data = json_decode(file_get_contents('php://input'), true);
 $token = $data['token'] ?? $_GET['token'] ?? '';
 
@@ -141,9 +148,14 @@ try {
         exit;
     }
 
-    // Anwesenheit eintragen
-    $stmt = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token, edition_id) VALUES (?, ?, ?, ?, ?)");
-    $stmt->execute([$userId, $exhibitorId, $timeslotId, $token, $activeEditionId]);
+    // Raum des Ausstellers für actual_room_id ermitteln
+    $stmtRoom = $db->prepare("SELECT room_id FROM exhibitors WHERE id = ? AND edition_id = ?");
+    $stmtRoom->execute([$exhibitorId, $activeEditionId]);
+    $actualRoomId = $stmtRoom->fetchColumn() ?: null;
+
+    // Anwesenheit eintragen (QR 2.0: Methode + tatsächlicher Raum)
+    $stmt = $db->prepare("INSERT INTO attendance (user_id, exhibitor_id, timeslot_id, qr_token, checkin_method, actual_room_id, edition_id) VALUES (?, ?, ?, ?, 'self_scan', ?, ?)");
+    $stmt->execute([$userId, $exhibitorId, $timeslotId, $token, $actualRoomId, $activeEditionId]);
 
     echo json_encode([
         'success' => true,
